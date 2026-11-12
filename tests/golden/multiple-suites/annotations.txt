@@ -1,0 +1,14 @@
+check 0: 0 annotations, 0 not shown
+check 1: 1 annotations, 0 not shown
+- failure src/lib/format.test.ts:1-1
+  title: formatDuration > rounds up
+  message: expected '1 m 47 s' to be '1 m 48 s' // Object.is equality
+    AssertionError: expected '1 m 47 s' to be '1 m 48 s' // Object.is equality
+    
+    Expected: "1 m 48 s"
+    Received: "1 m 47 s"
+    
+     ❯ src/lib/format.test.ts:18:36
+     ❯ node_modules/@vitest/runner/dist/index.js:145:11
+check 2: 0 annotations, 0 not shown
+check 3: 0 annotations, 0 not shown
