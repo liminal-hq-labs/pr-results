@@ -1,0 +1,12 @@
+[
+  {
+    "body": {
+      "context": "Example Rust tests",
+      "description": "3 passed",
+      "state": "success",
+      "target_url": "https://forgejo.example.invalid/example/app/actions/runs/77"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/statuses/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334"
+  }
+]

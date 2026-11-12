@@ -140,6 +140,7 @@ dependencies = [
  "miniz_oxide",
  "pr-results-core",
  "pr-results-render",
+ "rustls",
  "serde_json",
  "ureq",
 ]

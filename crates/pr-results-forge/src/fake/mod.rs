@@ -8,7 +8,8 @@
 //! summary and text of at most 65 535, 50 annotations to a request, and a path in the commit's
 //! tree for each annotation. Lists come back two items to a page with a `Link` header, so a
 //! missed page is a failing test. It is cheap to clone, and the clones share their state, so a
-//! test keeps a handle after giving one to [`crate::GitHub`].
+//! test keeps a handle after giving one to [`crate::GitHub`]. [`FakeForgejo`] is the same store
+//! answering Forgejo's routes (`forgejo.rs`).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -16,6 +17,10 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use serde_json::{json, Value};
+
+mod forgejo;
+
+pub use forgejo::{FakeForgejo, FakeStatus};
 
 use crate::api::{
 	percent_decode, ApiPath, ApiRequest, ApiResponse, BlobUrl, Forge, ForgeError, Method,
@@ -29,6 +34,9 @@ pub struct FakeComment {
 	pub id: u64,
 	pub pr: u64,
 	pub login: String,
+	/// The author's account id. GitHub's listing does not show it; Forgejo's does, and its
+	/// automatic token is -2.
+	pub user_id: i64,
 	pub body: String,
 }
 
@@ -160,9 +168,21 @@ struct Limits {
 /// Something to do once, right after a request has been answered.
 type Hook = Box<dyn FnOnce(&FakeForge)>;
 
+/// Which forge's routes the store answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Dialect {
+	GitHub,
+	Forgejo,
+}
+
 struct State {
+	dialect: Dialect,
 	repo: String,
 	bot: String,
+	bot_id: i64,
+	statuses: Vec<FakeStatus>,
+	/// The most entries one page of a tree holds, whatever `per_page` asks for.
+	tree_page_cap: usize,
 	page_size: usize,
 	now: u64,
 	artifacts: Vec<Artifact>,
@@ -192,8 +212,12 @@ impl FakeForge {
 	pub fn new(repo: &str) -> Self {
 		Self {
 			s: Rc::new(RefCell::new(State {
+				dialect: Dialect::GitHub,
 				repo: repo.to_owned(),
 				bot: "github-actions[bot]".to_owned(),
+				bot_id: 0,
+				statuses: Vec::new(),
+				tree_page_cap: 1000,
 				page_size: 2,
 				now: 1_700_000_000,
 				artifacts: Vec::new(),
@@ -341,6 +365,7 @@ impl FakeForge {
 				id,
 				pr,
 				login: login.to_owned(),
+				user_id: 0,
 				body: body.to_owned(),
 			});
 			id
@@ -495,11 +520,16 @@ impl State {
 		};
 		ApiResponse {
 			next: next.flatten(),
+			total_count: (self.dialect == Dialect::Forgejo && wrap.is_none())
+				.then_some(total as u64),
 			..json_response(200, &body)
 		}
 	}
 
 	fn handle(&mut self, req: &ApiRequest) -> ApiResponse {
+		if self.dialect == Dialect::Forgejo {
+			return self.handle_forgejo(req);
+		}
 		let target = req.target();
 		let path = req.path.path().to_owned();
 		let query = parse_query(&target);
@@ -632,6 +662,7 @@ impl State {
 						id,
 						pr: n,
 						login: self.bot.clone(),
+						user_id: 0,
 						body: other,
 					});
 				}
@@ -641,6 +672,7 @@ impl State {
 					id,
 					pr: n,
 					login: self.bot.clone(),
+					user_id: 0,
 					body: text.to_owned(),
 				});
 				json_response(

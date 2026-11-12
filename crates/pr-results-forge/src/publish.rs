@@ -6,6 +6,8 @@
 //! The order is deliberate. Artefacts are read and rendered first, then the check runs are
 //! written, because they hang on the commit and need no pull request, and the comment comes last
 //! so a refusal there (a read-only token, a locked conversation) still leaves the checks posted.
+//! On Forgejo the order is the other way round: the commit statuses link to the comment, so the
+//! comment is written first, and a refusal there leaves the statuses to link to the run's page.
 //! Nothing here prints a name from a report: what it reports are counts and fixed words, and the
 //! few names that reach a log go through [`Safe::log_line`].
 
@@ -14,17 +16,20 @@ use std::fmt;
 
 use pr_results_core::{
 	parse_junit_in, CommentKey, Flavour, Glob, Limits, Marker, RepoPath, Report, RunId, Safe,
-	ServerUrl, Sha, Status, Suite,
+	ServerUrl, Sha, Status, Suite, TrustedUrl,
 };
 use pr_results_render::{
-	check_with_paths, comment, job_summary, Comment, Conclusion, Input, Options, RunContext,
-	Section, Target,
+	check_with_paths, comment, job_summary, status, Comment, Conclusion, Input, Options,
+	RunContext, Section, StatusState, Target,
 };
 use serde_json::Value;
 
 use crate::api::ForgeError;
 use crate::archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
-use crate::host::{Artifact, CheckSpec, CommentAction, CommentSpec, Host, HostKind, Pull, Tree};
+use crate::host::{
+	Artifact, CheckSpec, CommentAction, CommentSpec, Host, HostKind, Pull, ResultSpec, StatusSpec,
+	Tree,
+};
 
 /// A pull request is commented on this many times at most when several verify.
 const MAX_PULLS: usize = 5;
@@ -36,6 +41,8 @@ const EVENT_FILE_NAME: &str = "event.json";
 #[derive(Debug, Clone)]
 pub struct WorkflowRun {
 	pub id: RunId,
+	/// The run's number, which names its page on Forgejo. Without it a link names the id.
+	pub run_number: Option<u64>,
 	pub head_sha: Sha,
 	pub head_branch: String,
 	pub head_repo: pr_results_core::RepoSlug,
@@ -189,8 +196,19 @@ pub struct CommentReport {
 	pub action: CommentAction,
 }
 
+/// What a section's result is on the forge that was written to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ResultKind {
+	#[default]
+	CheckRun,
+	CommitStatus,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PublishReport {
+	/// Check runs on GitHub, commit statuses on Forgejo; what `checks` and
+	/// `Failure::Check` mean.
+	pub results: ResultKind,
 	/// The run was cancelled or skipped, so nothing was read or written.
 	pub nothing_to_do: bool,
 	pub checks: Vec<CheckReport>,
@@ -227,13 +245,23 @@ impl PublishReport {
 				.unwrap_or_default()
 		};
 		for c in &self.checks {
-			out.push(format!(
-				"Check run {} for {}: {} annotations sent in {} batches.",
-				if c.created { "created" } else { "updated" },
-				title(c.section),
-				c.annotations_sent,
-				c.annotation_batches
-			));
+			out.push(match self.results {
+				ResultKind::CheckRun => format!(
+					"Check run {} for {}: {} annotations sent in {} batches.",
+					if c.created { "created" } else { "updated" },
+					title(c.section),
+					c.annotations_sent,
+					c.annotation_batches
+				),
+				ResultKind::CommitStatus => format!(
+					"Commit status written for {}: {}.",
+					title(c.section),
+					match c.conclusion {
+						Conclusion::Failure => "failure",
+						_ => "success",
+					}
+				),
+			});
 		}
 		for c in &self.comments {
 			let verb = match c.action {
@@ -307,7 +335,11 @@ impl PublishReport {
 		for f in &self.failures {
 			out.push(match f {
 				Failure::Check { section, status } => format!(
-					"The check run for {} was not written{}.",
+					"The {} for {} was not written{}.",
+					match self.results {
+						ResultKind::CheckRun => "check run",
+						ResultKind::CommitStatus => "commit status",
+					},
 					title(*section),
 					status.map(|s| format!(" (status {s})")).unwrap_or_default()
 				),
@@ -340,10 +372,13 @@ fn at(stage: &'static str) -> impl Fn(ForgeError) -> PublishError {
 	move |source| PublishError { stage, source }
 }
 
-/// What was read for each section.
-struct Loaded {
-	suites: Vec<Vec<Suite>>,
-	skipped: Vec<usize>,
+/// What was read for each section, in plan order: the suites parsed from its files, and how many
+/// files were found but could not be used. Where they came from is the caller's business: the
+/// run's artefacts for [`publish`], files in the job's own directory for a caller that has them.
+#[derive(Debug, Clone, Default)]
+pub struct Inputs {
+	pub suites: Vec<Vec<Suite>>,
+	pub skipped: Vec<usize>,
 }
 
 /// Posts the results of `run`: a check run per section, then the sticky comment on each pull
@@ -366,19 +401,49 @@ pub fn publish<H: Host>(
 	gh.begin_run();
 	let artifacts = gh.artifacts(run.id).map_err(at("listing artefacts"))?;
 	let loaded = load(gh, &artifacts, plan, &mut report)?;
+	Ok(finish(gh, run, server, plan, &loaded, &artifacts, report))
+}
 
+/// Posts the results of `run` from inputs the caller has already read, so it asks the host for no
+/// artefacts and needs no uploaded event file. Everything after the reading is [`publish`]'s.
+pub fn publish_inputs<H: Host>(
+	gh: &H,
+	run: &WorkflowRun,
+	server: &ServerUrl,
+	plan: &Plan,
+	inputs: &Inputs,
+) -> PublishReport {
+	let report = PublishReport {
+		titles: plan.sections.iter().map(|s| s.title.clone()).collect(),
+		..PublishReport::default()
+	};
+	gh.begin_run();
+	finish(gh, run, server, plan, inputs, &[], report)
+}
+
+/// Renders and writes what was read.
+fn finish<H: Host>(
+	gh: &H,
+	run: &WorkflowRun,
+	server: &ServerUrl,
+	plan: &Plan,
+	loaded: &Inputs,
+	artifacts: &[Artifact],
+	mut report: PublishReport,
+) -> PublishReport {
+	let target = match gh.kind() {
+		HostKind::GitHub => Target::GitHub,
+		HostKind::Forgejo => Target::Forgejo,
+	};
 	let ctx = RunContext {
 		server: server.clone(),
 		repo: gh.repo().clone(),
 		head_sha: run.head_sha.clone(),
 		run_id: run.id,
-		run_number: None,
+		run_number: run.run_number,
 		key: plan.key.clone(),
 		tool_version: plan.tool_version,
-		target: match gh.kind() {
-			HostKind::GitHub => Target::GitHub,
-			HostKind::Forgejo => Target::Forgejo,
-		},
+		target,
 	};
 	let sections: Vec<Section<'_>> = plan
 		.sections
@@ -403,13 +468,23 @@ pub fn publish<H: Host>(
 	let full: Comment = comment(&input);
 	report.job_summary = Some(job_summary(&full).as_str().to_owned());
 
-	let tree = read_tree(gh, run, &loaded, &mut report);
-	post_checks(gh, run, plan, &input, tree.as_ref(), &mut report);
-	post_comments(gh, run, plan, &input, &full, &artifacts, &mut report);
+	match gh.kind() {
+		HostKind::GitHub => {
+			let tree = read_tree(gh, run, loaded, &mut report);
+			post_checks(gh, run, plan, &input, tree.as_ref(), &mut report);
+			post_comments(gh, run, plan, &input, &full, artifacts, &mut report);
+		}
+		HostKind::Forgejo => {
+			// No annotations, so no tree is read. The comment goes first: a status links to it.
+			report.results = ResultKind::CommitStatus;
+			post_comments(gh, run, plan, &input, &full, artifacts, &mut report);
+			post_statuses(gh, run, server, plan, &input, &mut report);
+		}
+	}
 	if gh.retry_budget_spent() {
 		report.notes.push(Note::RetryBudgetSpent);
 	}
-	Ok(report)
+	report
 }
 
 // ---- reading -------------------------------------------------------------------------------
@@ -424,7 +499,7 @@ fn load<H: Host>(
 	artifacts: &[Artifact],
 	plan: &Plan,
 	report: &mut PublishReport,
-) -> Result<Loaded, PublishError> {
+) -> Result<Inputs, PublishError> {
 	let count = plan.sections.len();
 	let mut merged: Vec<Report> = (0..count).map(|_| Report::default()).collect();
 	let mut skipped = vec![0usize; count];
@@ -519,7 +594,7 @@ fn load<H: Host>(
 		// `entries` is dropped here, before the next archive is downloaded.
 	}
 
-	let mut loaded = Loaded {
+	let mut loaded = Inputs {
 		suites: Vec::new(),
 		skipped,
 	};
@@ -575,7 +650,7 @@ fn fetch<H: Host>(
 fn read_tree<H: Host>(
 	gh: &H,
 	run: &WorkflowRun,
-	loaded: &Loaded,
+	loaded: &Inputs,
 	report: &mut PublishReport,
 ) -> Option<Tree> {
 	let wanted = loaded.suites.iter().flatten().any(|s| {
@@ -634,7 +709,7 @@ fn post_checks<H: Host>(
 			external_id: &external_id,
 			output: &output,
 		};
-		let mut result = gh.upsert_result(&spec);
+		let mut result = gh.upsert_result(&ResultSpec::Check(spec));
 		let shortened;
 		if matches!(result, Err(ForgeError::Status { status: 422, .. })) {
 			// Over the size limit, or something GitHub will not take: say less.
@@ -652,7 +727,7 @@ fn post_checks<H: Host>(
 				shortened = minimal;
 				spec.output = &shortened;
 				report.notes.push(Note::CheckMinimal { section: index });
-				result = gh.upsert_result(&spec);
+				result = gh.upsert_result(&ResultSpec::Check(spec));
 			}
 		}
 		match result {
@@ -672,6 +747,56 @@ fn post_checks<H: Host>(
 					annotation_batches: r.annotation_batches,
 				});
 			}
+			Err(e) => report.failures.push(Failure::Check {
+				section: index,
+				status: e.status(),
+			}),
+		}
+	}
+}
+
+// ---- commit statuses -----------------------------------------------------------------------
+
+/// One commit status per section, the context its check name. A status links to the comment on the
+/// first pull request that was commented on, and to the run's page when there was no comment.
+fn post_statuses<H: Host>(
+	gh: &H,
+	run: &WorkflowRun,
+	server: &ServerUrl,
+	plan: &Plan,
+	input: &Input<'_>,
+	report: &mut PublishReport,
+) {
+	let url = match report.comments.first() {
+		Some(c) => TrustedUrl::comment_anchor(server, gh.repo(), c.pr, c.id),
+		None => match run.run_number {
+			Some(number) => TrustedUrl::forgejo_run(server, gh.repo(), number),
+			None => TrustedUrl::run(server, gh.repo(), run.id),
+		},
+	};
+	for (index, section) in plan.sections.iter().enumerate() {
+		let Some(out) = status(input, index) else {
+			continue;
+		};
+		let spec = StatusSpec {
+			context: &section.check_name,
+			head_sha: &run.head_sha,
+			state: out.state,
+			description: out.description.as_str(),
+			target_url: url.as_str(),
+		};
+		match gh.upsert_result(&ResultSpec::Status(spec)) {
+			Ok(r) => report.checks.push(CheckReport {
+				section: index,
+				id: r.id,
+				created: r.created,
+				conclusion: match out.state {
+					StatusState::Success => Conclusion::Success,
+					StatusState::Failure => Conclusion::Failure,
+				},
+				annotations_sent: 0,
+				annotation_batches: 0,
+			}),
 			Err(e) => report.failures.push(Failure::Check {
 				section: index,
 				status: e.status(),

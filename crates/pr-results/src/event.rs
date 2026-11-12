@@ -72,6 +72,7 @@ pub fn parse_event(bytes: &[u8]) -> Result<Event, &'static str> {
 		.unwrap_or_default();
 	let workflow_run = slug(run, &["head_repository", "full_name"]).map(|head_repo| WorkflowRun {
 		id: RunId(id),
+		run_number: run.get("run_number").and_then(Value::as_u64),
 		head_sha,
 		head_branch: text(run, &["head_branch"]).unwrap_or_default().to_owned(),
 		head_repo,
