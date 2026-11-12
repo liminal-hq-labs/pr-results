@@ -22,6 +22,11 @@ use crate::api::{ApiPath, ApiRequest, ApiResponse, Forge, ForgeError, Method};
 /// The login of `GITHUB_TOKEN`'s identity, whose comments are the only ones taken for ours.
 pub const DEFAULT_BOT_LOGIN: &str = "github-actions[bot]";
 
+/// The default total time one publish may spend waiting to retry.
+pub const RETRY_BUDGET_S: u64 = 600;
+/// The app that `GITHUB_TOKEN` acts as.
+pub const DEFAULT_CHECK_APP: &str = "github-actions";
+
 /// Writes are at least this far apart, which stays well inside the secondary rate limit.
 const WRITE_GAP: Duration = Duration::from_millis(500);
 const MAX_PAGES: usize = 100;
@@ -133,7 +138,13 @@ pub struct GitHub<F: Forge> {
 	forge: F,
 	repo: RepoSlug,
 	bot: String,
+	/// The app whose check runs are ours.
+	check_app: String,
 	writes: Cell<u64>,
+	/// When this run of the publisher began, by the forge's clock.
+	started: Cell<Option<u64>>,
+	retry_budget_s: u64,
+	budget_spent: Cell<bool>,
 }
 
 impl<F: Forge> GitHub<F> {
@@ -142,8 +153,51 @@ impl<F: Forge> GitHub<F> {
 			forge,
 			repo,
 			bot: bot_login.to_owned(),
+			check_app: DEFAULT_CHECK_APP.to_owned(),
 			writes: Cell::new(0),
+			started: Cell::new(None),
+			retry_budget_s: RETRY_BUDGET_S,
+			budget_spent: Cell::new(false),
 		}
+	}
+
+	/// The app slug whose check runs are ours (`github-actions` for `GITHUB_TOKEN`). A check run
+	/// with our name and `external_id` from another app is not touched.
+	pub fn with_check_app(mut self, slug: &str) -> Self {
+		self.check_app = slug.to_owned();
+		self
+	}
+
+	/// How many seconds of waiting, in total, one publish may spend on retries before it stops
+	/// retrying and reports what it has. The default is [`RETRY_BUDGET_S`].
+	pub fn with_retry_budget(mut self, seconds: u64) -> Self {
+		self.retry_budget_s = seconds;
+		self
+	}
+
+	/// Starts the clock of the retry budget. `publish` calls it first.
+	pub fn begin_run(&self) {
+		self.started.set(Some(self.forge.now_epoch()));
+		self.budget_spent.set(false);
+	}
+
+	/// Whether a retry was refused because the budget for waiting was used up.
+	pub fn retry_budget_spent(&self) -> bool {
+		self.budget_spent.get()
+	}
+
+	/// Whether waiting `wait` more seconds stays inside the budget; if not, says so for the report.
+	fn may_wait(&self, wait: u64) -> bool {
+		let now = self.forge.now_epoch();
+		let started = self.started.get().unwrap_or_else(|| {
+			self.started.set(Some(now));
+			now
+		});
+		let ok = now.saturating_sub(started).saturating_add(wait) <= self.retry_budget_s;
+		if !ok {
+			self.budget_spent.set(true);
+		}
+		ok
 	}
 
 	pub fn forge(&self) -> &F {
@@ -175,6 +229,12 @@ impl<F: Forge> GitHub<F> {
 	/// Sends `req` with spacing between writes and the retries described above. A response with a
 	/// failing status that is not worth retrying comes back as `Ok`, for the caller to judge.
 	fn request(&self, req: &ApiRequest) -> Result<ApiResponse, ForgeError> {
+		self.request_with(req, req.method.is_idempotent())
+	}
+
+	/// The same, for a call that is `idempotent` or not whatever its verb: a PATCH that appends
+	/// annotations is not, and is not repeated after a failure that may have applied it.
+	fn request_with(&self, req: &ApiRequest, idempotent: bool) -> Result<ApiResponse, ForgeError> {
 		if req.method.is_write() {
 			if self.writes.get() > 0 {
 				self.forge.sleep(WRITE_GAP);
@@ -185,21 +245,24 @@ impl<F: Forge> GitHub<F> {
 		loop {
 			let resp = match self.forge.send(req) {
 				Ok(r) => r,
-				Err(e @ ForgeError::Transport(_)) if req.method.is_idempotent() => {
+				Err(e @ ForgeError::Transport(_)) if idempotent => {
 					let Some(s) = BACKOFF_S.get(attempt) else {
 						return Err(e);
 					};
+					if !self.may_wait(*s) {
+						return Err(e);
+					}
 					self.forge.sleep(Duration::from_secs(*s));
 					attempt += 1;
 					continue;
 				}
 				Err(e) => return Err(e),
 			};
-			let wait = match self.wait_for(&resp, req, attempt)? {
+			let wait = match self.wait_for(&resp, idempotent, attempt)? {
 				Some(w) => w,
 				None => return Ok(resp),
 			};
-			if attempt >= BACKOFF_S.len() {
+			if attempt >= BACKOFF_S.len() || !self.may_wait(wait) {
 				return Ok(resp);
 			}
 			self.forge.sleep(Duration::from_secs(wait));
@@ -212,7 +275,7 @@ impl<F: Forge> GitHub<F> {
 	fn wait_for(
 		&self,
 		resp: &ApiResponse,
-		req: &ApiRequest,
+		idempotent: bool,
 		attempt: usize,
 	) -> Result<Option<u64>, ForgeError> {
 		let backoff = BACKOFF_S.get(attempt).copied().unwrap_or(MAX_WAIT_S);
@@ -241,7 +304,7 @@ impl<F: Forge> GitHub<F> {
 				None => Ok(Some(backoff)),
 			};
 		}
-		if resp.status >= 500 && req.method.is_idempotent() {
+		if resp.status >= 500 && idempotent {
 			return match resp.retry_after_s {
 				Some(s) if s > MAX_WAIT_S => Err(ForgeError::RateLimited { wait_s: s }),
 				Some(s) => Ok(Some(s.max(backoff))),
@@ -383,24 +446,62 @@ impl<F: Forge> GitHub<F> {
 
 	// ---- check runs --------------------------------------------------------------------------
 
-	fn find_check(&self, spec: &CheckSpec<'_>) -> Result<Option<u64>, ForgeError> {
+	/// Our check run for the spec: its id and how many annotations it already has. It must have
+	/// our `external_id` and have been made by our app, so another tool's check with the same
+	/// name and a copied `external_id` is not taken for ours.
+	fn find_check(&self, spec: &CheckSpec<'_>) -> Result<Option<(u64, usize)>, ForgeError> {
 		let req = self
 			.get(&format!("commits/{}/check-runs", spec.head_sha.as_str()))?
 			.with_query("check_name", spec.name)
 			.with_query("filter", "latest")
 			.with_query("per_page", PER_PAGE);
 		let items = self.paged(req, Some("check_runs"), "listing check runs", |c| {
-			(c.get("external_id").and_then(Value::as_str) == Some(spec.external_id))
-				.then(|| c.get("id").and_then(Value::as_u64))
-				.flatten()
+			let ours = c.get("external_id").and_then(Value::as_str) == Some(spec.external_id)
+				&& c.get("app")
+					.and_then(|a| a.get("slug"))
+					.and_then(Value::as_str)
+					== Some(self.check_app.as_str());
+			ours.then(|| {
+				let count = c
+					.get("output")
+					.and_then(|o| o.get("annotations_count"))
+					.and_then(Value::as_u64)
+					.unwrap_or(0);
+				Some((
+					c.get("id")?.as_u64()?,
+					usize::try_from(count).unwrap_or(usize::MAX),
+				))
+			})
+			.flatten()
 		})?;
 		Ok(items.first().copied())
 	}
 
-	/// Creates or updates the check run for `spec.external_id` on the commit, with the first 50
-	/// annotations, then adds the rest 50 at a time. A batch GitHub refuses with 422 is left out
-	/// and counted. A 422 on the run itself comes back as an error, for the caller to retry with
-	/// less.
+	/// How many annotations the check run has now.
+	fn annotation_count(&self, id: u64) -> Result<usize, ForgeError> {
+		let resp = Self::ok(
+			self.request(&self.get(&format!("check-runs/{id}"))?)?,
+			"reading a check run",
+		)?;
+		let count = resp
+			.json()?
+			.get("output")
+			.and_then(|o| o.get("annotations_count"))
+			.and_then(Value::as_u64)
+			.unwrap_or(0);
+		Ok(usize::try_from(count).unwrap_or(usize::MAX))
+	}
+
+	/// Creates or updates the check run for `spec.external_id` on the commit, then adds its
+	/// annotations 50 to a request, each in a request of its own.
+	///
+	/// GitHub appends annotations, so a request that carries them is never repeated blindly: the
+	/// run itself is written without any, and after a batch fails in a way that may have applied
+	/// it the run's annotation count is read back and the batch is sent again only if it did not
+	/// land. A run that already has annotations (from an earlier publish of the same commit) is
+	/// sent only those beyond what it has, so a re-run does not duplicate them. A batch GitHub
+	/// refuses with 422 is left out and counted. A 422 on the run itself comes back as an error,
+	/// for the caller to retry with less.
 	pub fn upsert_check(&self, spec: &CheckSpec<'_>) -> Result<CheckResult, ForgeError> {
 		let existing = self.find_check(spec)?;
 		let annotations: Vec<Value> = spec
@@ -409,40 +510,27 @@ impl<F: Forge> GitHub<F> {
 			.iter()
 			.map(annotation_json)
 			.collect();
-		let mut batches = annotations.chunks(ANNOTATION_BATCH);
-		let first: &[Value] = batches.next().unwrap_or(&[]);
-
+		let (id, created) = self.write_check(spec, existing.map(|(id, _)| id))?;
+		let mut landed = if created {
+			0
+		} else {
+			existing.map_or(0, |(_, n)| n)
+		};
 		let mut rejected = 0usize;
 		let mut sent = 0usize;
 		let mut sent_batches = 0usize;
-		let (id, created) = match self.write_check(spec, existing, first) {
-			Ok(r) => {
-				sent += first.len();
-				sent_batches += usize::from(!first.is_empty());
-				r
-			}
-			Err(ForgeError::Status { status: 422, .. }) if !first.is_empty() => {
-				rejected += first.len();
-				self.write_check(spec, existing, &[])?
-			}
-			Err(e) => return Err(e),
-		};
-		for batch in batches {
-			let body = check_body(spec, false, batch);
-			let req = self.json_request(Method::Patch, &format!("check-runs/{id}"), &body)?;
-			let resp = self.request(&req)?;
-			match resp.status {
-				s if (200..300).contains(&s) => {
+		for batch in annotations
+			.get(landed..)
+			.unwrap_or(&[])
+			.chunks(ANNOTATION_BATCH)
+		{
+			match self.send_batch(spec, id, batch, landed)? {
+				true => {
+					landed += batch.len();
 					sent += batch.len();
 					sent_batches += 1;
 				}
-				422 => rejected += batch.len(),
-				status => {
-					return Err(ForgeError::Status {
-						status,
-						op: "adding annotations",
-					})
-				}
+				false => rejected += batch.len(),
 			}
 		}
 		Ok(CheckResult {
@@ -454,14 +542,53 @@ impl<F: Forge> GitHub<F> {
 		})
 	}
 
+	/// Adds one batch of annotations to a check run that has `landed` already. `Ok(true)` when it
+	/// is there, `Ok(false)` when GitHub refused it with 422.
+	fn send_batch(
+		&self,
+		spec: &CheckSpec<'_>,
+		id: u64,
+		batch: &[Value],
+		landed: usize,
+	) -> Result<bool, ForgeError> {
+		let body = check_body(spec, false, batch);
+		let req = self.json_request(Method::Patch, &format!("check-runs/{id}"), &body)?;
+		for attempt in 0..CREATE_ATTEMPTS {
+			match self.request_with(&req, false) {
+				Ok(resp) if resp.ok() => return Ok(true),
+				Ok(resp) if resp.status == 422 => return Ok(false),
+				Ok(resp) if resp.status < 500 => {
+					return Err(ForgeError::Status {
+						status: resp.status,
+						op: "adding annotations",
+					})
+				}
+				Ok(_) | Err(ForgeError::Transport(_)) => {}
+				Err(e) => return Err(e),
+			}
+			// It may have been applied before the failure: read the count back before repeating.
+			let wait = BACKOFF_S.get(attempt).copied().unwrap_or(1);
+			if !self.may_wait(wait) {
+				break;
+			}
+			self.forge.sleep(Duration::from_secs(wait));
+			if self.annotation_count(id)? >= landed.saturating_add(batch.len()) {
+				return Ok(true);
+			}
+		}
+		Err(ForgeError::Status {
+			status: 502,
+			op: "adding annotations",
+		})
+	}
+
 	fn write_check(
 		&self,
 		spec: &CheckSpec<'_>,
 		existing: Option<u64>,
-		batch: &[Value],
 	) -> Result<(u64, bool), ForgeError> {
 		if let Some(id) = existing {
-			let body = check_body(spec, false, batch);
+			let body = check_body(spec, false, &[]);
 			let req = self.json_request(Method::Patch, &format!("check-runs/{id}"), &body)?;
 			let resp = self.request(&req)?;
 			if resp.status != 404 {
@@ -469,7 +596,7 @@ impl<F: Forge> GitHub<F> {
 			}
 			// It was deleted since it was listed: make it again.
 		}
-		let body = check_body(spec, true, batch);
+		let body = check_body(spec, true, &[]);
 		let req = self.json_request(Method::Post, "check-runs", &body)?;
 		for attempt in 0..CREATE_ATTEMPTS {
 			match self.request(&req) {
@@ -491,10 +618,12 @@ impl<F: Forge> GitHub<F> {
 				Err(e) => return Err(e),
 			}
 			// The create may have been applied before the failure: look before repeating it.
-			self.forge.sleep(Duration::from_secs(
-				BACKOFF_S.get(attempt).copied().unwrap_or(1),
-			));
-			if let Some(id) = self.find_check(spec)? {
+			let wait = BACKOFF_S.get(attempt).copied().unwrap_or(1);
+			if !self.may_wait(wait) {
+				break;
+			}
+			self.forge.sleep(Duration::from_secs(wait));
+			if let Some((id, _)) = self.find_check(spec)? {
 				return Ok((id, true));
 			}
 		}
@@ -642,9 +771,11 @@ impl<F: Forge> GitHub<F> {
 				Err(e) => return Err(e),
 			}
 			// It may have been applied: look for the same marker before repeating.
-			self.forge.sleep(Duration::from_secs(
-				BACKOFF_S.get(attempt).copied().unwrap_or(1),
-			));
+			let wait = BACKOFF_S.get(attempt).copied().unwrap_or(1);
+			if !self.may_wait(wait) {
+				break;
+			}
+			self.forge.sleep(Duration::from_secs(wait));
 			let ours = self.ours(self.comments(spec.pr)?, &spec.marker.key);
 			if let Some(c) = ours
 				.iter()

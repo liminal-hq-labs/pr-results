@@ -30,7 +30,7 @@ pub use dry::{requests_to_json, DryRun};
 pub use fake::{FakeCheck, FakeComment, FakeForge, FakePull, Fault};
 pub use github::{
 	Artifact, CheckResult, CheckSpec, Comment, CommentAction, CommentResult, CommentSpec, GitHub,
-	Pull, Tree, BODY_PREFIX_BYTES, DEFAULT_BOT_LOGIN,
+	Pull, Tree, BODY_PREFIX_BYTES, DEFAULT_BOT_LOGIN, DEFAULT_CHECK_APP, RETRY_BUDGET_S,
 };
 pub use publish::{
 	publish, CheckReport, CommentReport, Failure, Note, Plan, PublishError, PublishReport,

@@ -150,6 +150,8 @@ pub enum Note {
 	},
 	TreeUnavailable,
 	TreeTruncated,
+	/// Waiting to retry used up its time, so later failures were reported, not retried.
+	RetryBudgetSpent,
 	AnnotationsOutsideTree {
 		section: usize,
 		count: usize,
@@ -275,6 +277,9 @@ impl PublishReport {
 				Note::InputUnreadable { section } => {
 					format!("A file for {} could not be read.", title(*section))
 				}
+				Note::RetryBudgetSpent => {
+					"Retries stopped because the time allowed for waiting was used up.".to_owned()
+				}
 				Note::TreeUnavailable => {
 					"The commit's tree could not be read: annotations were not checked.".to_owned()
 				}
@@ -351,6 +356,7 @@ pub fn publish<F: Forge>(
 		return Ok(report);
 	}
 
+	gh.begin_run();
 	let artifacts = gh.artifacts(run.id).map_err(at("listing artefacts"))?;
 	let loaded = load(gh, &artifacts, plan, &mut report)?;
 
@@ -385,6 +391,9 @@ pub fn publish<F: Forge>(
 	let tree = read_tree(gh, run, &loaded, &mut report);
 	post_checks(gh, run, plan, &input, tree.as_ref(), &mut report);
 	post_comments(gh, run, plan, &input, &ctx, &artifacts, &mut report);
+	if gh.retry_budget_spent() {
+		report.notes.push(Note::RetryBudgetSpent);
+	}
 	Ok(report)
 }
 

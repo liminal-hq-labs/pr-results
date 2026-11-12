@@ -361,11 +361,10 @@ fn a_truncated_or_unreadable_tree_checks_nothing_and_says_so() {
 
 #[test]
 fn a_refused_annotation_batch_is_left_out_and_noted() {
-	// The first batch comes with the create.
 	let mut env = annotated_env(120);
 	env.plan.options.max_annotations = 500;
 	env.fake
-		.fail(Method::Post, "check-runs", 1, Fault::status(422));
+		.fail(Method::Patch, "check-runs", 1, Fault::status(422));
 	let report = env.publish();
 	let check = &env.fake.check_runs()[0];
 	assert_eq!(
@@ -378,19 +377,190 @@ fn a_refused_annotation_batch_is_left_out_and_noted() {
 		count: 50
 	}));
 	assert!(!report.failed());
+}
 
-	// A later batch comes with an update.
-	let mut env = annotated_env(120);
-	env.plan.options.max_annotations = 500;
+#[test]
+fn a_refused_create_is_written_again_in_its_minimal_form() {
+	let env = annotated_env(3);
 	env.fake
-		.fail(Method::Patch, "check-runs", 1, Fault::status(422));
+		.fail(Method::Post, "check-runs", 1, Fault::status(422));
 	let report = env.publish();
+	assert!(report.notes.contains(&Note::CheckMinimal { section: 0 }));
+	assert!(!report.failed());
+	assert!(
+		env.fake.check_runs()[0].annotations.is_empty(),
+		"the minimal form has none"
+	);
+}
+
+fn patches_to_check_runs(env: &Env) -> usize {
+	env.fake
+		.writes()
+		.iter()
+		.filter(|w| w.method == Method::Patch && w.path.as_str().contains("check-runs"))
+		.count()
+}
+
+#[test]
+fn a_batch_that_may_have_landed_is_read_back_and_not_sent_twice() {
+	for fault in [Fault::AppliedThenStatus(502), Fault::AppliedThenStatus(504)] {
+		let mut env = annotated_env(120);
+		env.plan.options.max_annotations = 500;
+		// The first PATCH is the first batch: it lands, and the answer is lost.
+		env.fake.fail(Method::Patch, "check-runs", 1, fault);
+		let report = env.publish();
+		assert!(!report.failed(), "{:?}", report.failures);
+		let check = &env.fake.check_runs()[0];
+		assert_eq!(check.annotations.len(), 120, "no annotation twice");
+		assert_eq!(check.batches, vec![50, 50, 20]);
+		assert_eq!(patches_to_check_runs(&env), 3, "no batch was sent again");
+	}
+}
+
+#[test]
+fn a_batch_that_did_not_land_is_sent_again_once_it_is_known() {
+	for fault in [Fault::status(502), Fault::Transport("reset".to_owned())] {
+		let mut env = annotated_env(120);
+		env.plan.options.max_annotations = 500;
+		env.fake.fail(Method::Patch, "check-runs", 1, fault);
+		let report = env.publish();
+		assert!(!report.failed(), "{:?}", report.failures);
+		let check = &env.fake.check_runs()[0];
+		assert_eq!(check.annotations.len(), 120);
+		assert_eq!(check.batches, vec![50, 50, 20]);
+		assert_eq!(
+			patches_to_check_runs(&env),
+			4,
+			"one batch was sent a second time"
+		);
+	}
+}
+
+#[test]
+fn an_annotation_patch_is_not_retried_by_the_transport() {
+	// If the transport had retried the PATCH on its own, the applied first attempt and the retry
+	// would both be in the log of requests before any count was read.
+	let env = annotated_env(10);
+	env.fake.fail(
+		Method::Patch,
+		"check-runs",
+		1,
+		Fault::AppliedThenStatus(502),
+	);
+	env.publish();
+	let reads_between: Vec<String> = env
+		.fake
+		.requests()
+		.iter()
+		.skip_while(|r| !(r.method == Method::Patch))
+		.take(2)
+		.map(ApiRequest::target)
+		.collect();
+	assert!(
+		reads_between[1].contains("check-runs/") && !reads_between[1].contains("commits"),
+		"{reads_between:?}"
+	);
+	assert_eq!(env.fake.check_runs()[0].annotations.len(), 10);
+}
+
+#[test]
+fn a_rerun_sends_only_the_annotations_the_run_lacks() {
+	let mut env = annotated_env(120);
+	env.plan.options.max_annotations = 50;
+	env.publish();
+	assert_eq!(env.fake.check_runs()[0].annotations.len(), 50);
+	env.plan.options.max_annotations = 500;
+	env.publish();
 	let check = &env.fake.check_runs()[0];
-	assert_eq!(check.batches, vec![50, 20]);
-	assert!(report.notes.contains(&Note::AnnotationsRejected {
-		section: 0,
-		count: 50
-	}));
+	assert_eq!(
+		check.annotations.len(),
+		120,
+		"the 70 missing ones were added, none twice"
+	);
+	assert_eq!(check.batches, vec![50, 50, 20]);
+}
+
+#[test]
+fn a_check_from_another_app_with_our_external_id_is_not_ours() {
+	let env = env_with_results();
+	let evil = env.fake.add_check_from_app(
+		"Example Rust tests",
+		SHA,
+		Some("pr-results:1:ci:Example Rust tests"),
+		"evil-app",
+	);
+	env.publish();
+	let checks = env.fake.check_runs();
+	assert_eq!(checks.len(), 2, "ours was made beside it");
+	let theirs = checks.iter().find(|c| c.id == evil).unwrap();
+	assert_eq!(
+		theirs.title, "other",
+		"the other app's check was not written to"
+	);
+
+	// An app that is configured as ours is found.
+	let env = env_with_results();
+	let mine = env.fake.add_check_from_app(
+		"Example Rust tests",
+		SHA,
+		Some("pr-results:1:ci:Example Rust tests"),
+		"my-app",
+	);
+	let gh = pr_results_github::GitHub::new(env.fake.clone(), env.run.head_repo.clone(), BOT)
+		.with_check_app("my-app");
+	let report = publish(&gh, &env.run, &env.server, &env.plan).unwrap();
+	assert_eq!(report.checks[0].id, mine);
+	assert!(!report.checks[0].created);
+}
+
+#[test]
+fn retries_stop_when_the_time_allowed_for_waiting_is_used_up() {
+	let env = env_with_results();
+	let gh = pr_results_github::GitHub::new(env.fake.clone(), env.run.head_repo.clone(), BOT)
+		.with_retry_budget(10);
+	// Each wait is 8 s: the first is inside the budget, the second would pass it.
+	env.fake.fail(
+		Method::Get,
+		"issues/7/comments",
+		99,
+		Fault::retry_after(429, 8),
+	);
+	let report = publish(&gh, &env.run, &env.server, &env.plan).unwrap();
+	assert_eq!(seconds(&env), [8]);
+	assert!(report.notes.contains(&Note::RetryBudgetSpent));
+	assert_eq!(
+		report.failures,
+		vec![Failure::Comment {
+			pr: 7,
+			status: Some(429)
+		}]
+	);
+	assert_eq!(
+		env.fake.check_runs().len(),
+		1,
+		"the checks were posted before the comment failed"
+	);
+
+	// The budget belongs to one publish: the next starts afresh.
+	let env2 = env_with_results();
+	let gh2 = pr_results_github::GitHub::new(env2.fake.clone(), env2.run.head_repo.clone(), BOT)
+		.with_retry_budget(10);
+	env2.fake
+		.fail(Method::Get, "/artifacts", 1, Fault::retry_after(429, 8));
+	assert!(!publish(&gh2, &env2.run, &env2.server, &env2.plan)
+		.unwrap()
+		.failed());
+	env2.fake
+		.fail(Method::Get, "/artifacts", 1, Fault::retry_after(429, 8));
+	let again = publish(&gh2, &env2.run, &env2.server, &env2.plan).unwrap();
+	assert!(!again.notes.contains(&Note::RetryBudgetSpent));
+	assert_eq!(seconds(&env2), [8, 8]);
+}
+
+#[test]
+fn the_default_budget_is_ten_minutes() {
+	assert_eq!(pr_results_github::RETRY_BUDGET_S, 600);
+	assert_eq!(pr_results_github::DEFAULT_CHECK_APP, "github-actions");
 }
 
 #[test]
@@ -400,8 +570,8 @@ fn a_check_run_is_found_by_its_external_id_and_updated() {
 	env.publish();
 	let checks = env.fake.check_runs();
 	assert_eq!(checks.len(), 1);
-	// Annotations append, so the second pass adds the same two again.
-	assert_eq!(checks[0].annotations.len(), 4);
+	// Annotations append, so the second pass sends only what the run lacks: nothing.
+	assert_eq!(checks[0].annotations.len(), 2);
 	let reads = targets(&env.fake.requests(), Method::Get);
 	assert!(reads
 		.iter()
