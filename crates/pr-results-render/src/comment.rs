@@ -261,7 +261,7 @@ pub(crate) fn comment(i: &Input<'_>) -> Comment {
 	}
 	let failures = entries(i.sections, is_failure);
 	let flaky = entries(i.sections, |s| s == Status::Flaky);
-	let (body, steps_taken) = fit(i.options.comment_limit, Plan::start(i.options), |plan| {
+	let (body, steps_taken) = fit(i.options.comment_limit(), Plan::start(i.options), |plan| {
 		render(i, &infos, &failures, &flaky, plan)
 	});
 	Comment { body, steps_taken }

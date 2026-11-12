@@ -191,3 +191,21 @@ fn the_smallest_comment_is_inert_and_small() {
 	assert!(measure(&c.body) <= 700);
 	assert_inert_all(&sc);
 }
+
+#[test]
+fn a_limit_above_githubs_is_held_to_it() {
+	for sc in [big(), astral()] {
+		let sc = with_limits(sc, 500_000);
+		let c = sc.comment();
+		assert!(
+			utf16(c.body.as_str()) <= GITHUB_CHECK,
+			"{}",
+			utf16(c.body.as_str())
+		);
+		for index in 0..sc.sections.len() {
+			let out = sc.with_ctx(|i| pr_results_render::check(i, index)).unwrap();
+			assert!(utf16(out.summary.as_str()) <= GITHUB_CHECK);
+			assert!(utf16(out.text.as_str()) <= GITHUB_CHECK);
+		}
+	}
+}

@@ -522,3 +522,67 @@ fn input_borrows_only_what_it_needs() {
 	};
 	assert!(pr_results_render::comment(&input).steps_taken.is_empty());
 }
+
+fn annotated(name: &str, message: &str) -> pr_results_render::CheckOutput {
+	let xml = format!(
+		"<testsuites><testsuite name=\"s\">\
+		<testcase classname=\"c\" name=\"{name}\" file=\"src/a.rs\" line=\"7\">\
+		<failure message=\"{message}\"/></testcase></testsuite></testsuites>"
+	);
+	let sc = Scenario::new(
+		"t",
+		"x",
+		vec![section("S", false, parse_text(&xml, Flavour::Generic))],
+	);
+	out(&sc, 0)
+}
+
+fn utf16(s: &str) -> usize {
+	s.encode_utf16().count()
+}
+
+#[test]
+fn an_annotation_title_never_passes_255_even_with_its_marker() {
+	for name in [
+		"n".repeat(1_000),
+		"\u{1f600}".repeat(1_000),
+		"\u{202e}".repeat(1_000),
+		"ab\u{1f600}".repeat(400),
+		"n".repeat(255),
+		"n".repeat(256),
+	] {
+		let o = annotated(&name, "x");
+		let title = o.annotations[0].title.as_str();
+		assert!(
+			title.chars().count() <= 255,
+			"{} chars",
+			title.chars().count()
+		);
+		assert!(utf16(title) <= 255, "{} units", utf16(title));
+		if name.chars().count() > 255 {
+			assert!(title.contains("more characters omitted"), "{title}");
+		}
+	}
+	let short = annotated(&"n".repeat(255), "x");
+	assert_eq!(short.annotations[0].title.as_str(), "n".repeat(255));
+}
+
+#[test]
+fn an_annotation_message_stays_under_64_kib_even_when_every_character_is_wide() {
+	for message in [
+		"\u{1f600}".repeat(100_000),
+		"m".repeat(100_000),
+		"\u{202e}".repeat(100_000),
+	] {
+		let o = annotated("t", &message);
+		let m = o.annotations[0].message.as_str();
+		assert!(m.len() <= 65_535, "{} bytes", m.len());
+		assert!(m.contains("more characters omitted"));
+	}
+}
+
+#[test]
+fn a_check_run_title_stays_under_255() {
+	let o = annotated("t", "x");
+	assert!(o.title.len_chars() <= 255);
+}
