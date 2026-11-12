@@ -17,6 +17,7 @@ use pr_results::config::{
 	default_check_name, suite_name_from_stem, title_from_repo, CommentMode, Settings,
 };
 use pr_results_core::Flavour;
+use pr_results_forge::HostKind;
 use pr_results_render::Symbols;
 
 fn err(text: &str) -> String {
@@ -321,4 +322,97 @@ fn every_settings_example_in_the_documents_is_valid() {
 	}
 	// SPEC.md has one, and the adoption guide has three: section 3, Playwright and Desk.
 	assert!(checked >= 4, "found only {checked} toml blocks");
+}
+
+// ---- [forge] -------------------------------------------------------------------------------
+
+#[test]
+fn without_a_forge_table_it_is_github_and_nothing_is_set() {
+	let f = Settings::parse("").unwrap().forge;
+	assert_eq!(f.kind, None);
+	assert_eq!(f.api_url, None);
+	assert_eq!(f.ca_file, None);
+	assert!(f.blob_hosts.is_empty());
+	assert_eq!(f.bot_login, None);
+}
+
+#[test]
+fn a_forgejo_table_reads_as_written() {
+	let f = Settings::parse(
+		r#"
+[forge]
+kind = "forgejo"
+api_url = "https://git.lan/git/api/v1"
+ca_file = "/etc/ssl/certs/lan-ca.pem"
+bot_login = "ci-bot"
+"#,
+	)
+	.unwrap()
+	.forge;
+	assert_eq!(f.kind, Some(HostKind::Forgejo));
+	assert_eq!(f.api_url.as_deref(), Some("https://git.lan/git/api/v1"));
+	assert_eq!(
+		f.ca_file.as_deref().and_then(|p| p.to_str()),
+		Some("/etc/ssl/certs/lan-ca.pem")
+	);
+	assert_eq!(f.bot_login.as_deref(), Some("ci-bot"));
+}
+
+#[test]
+fn a_github_enterprise_table_names_its_blob_hosts() {
+	let f = Settings::parse(
+		"[forge]\nkind = \"github\"\nblob_hosts = [\"Storage.Example.com\", \"*.blob.example.com\"]\n",
+	)
+	.unwrap()
+	.forge;
+	assert_eq!(f.kind, Some(HostKind::GitHub));
+	assert_eq!(f.blob_hosts, ["storage.example.com", "*.blob.example.com"]);
+}
+
+#[test]
+fn a_mistake_in_the_forge_table_names_the_key_and_the_line() {
+	let cases: [(&str, usize, &str); 12] = [
+		("[forge]\nkinds = \"x\"\n", 2, "unknown key `forge.kinds`"),
+		(
+			"[forge]\nkind = \"gitea\"\n",
+			2,
+			"`forge.kind` must be \"github\" or \"forgejo\"",
+		),
+		("[forge]\nkind = 1\n", 2, "`forge.kind` must be a string"),
+		(
+			"[forge]\n\napi_url = \"http://git.lan/api/v1\"\n",
+			3,
+			"plain http",
+		),
+		(
+			"[forge]\napi_url = \"git.lan/api/v1\"\n",
+			2,
+			"https:// address",
+		),
+		(
+			"[forge]\napi_url = \"https://u:p@git.lan/api/v1\"\n",
+			2,
+			"https:// address",
+		),
+		(
+			"[forge]\napi_url = \"https://git.lan/api/v1?x=1\"\n",
+			2,
+			"https:// address",
+		),
+		("[forge]\nca_file = \"\"\n", 2, "path of a PEM file"),
+		("[forge]\nblob_hosts = \"a\"\n", 2, "list of host names"),
+		("[forge]\nblob_hosts = [\"a b\"]\n", 2, "not a host name"),
+		(
+			"[forge]\nkind = \"forgejo\"\nblob_hosts = [\"a.example\"]\n",
+			3,
+			"refused for forgejo",
+		),
+		("[forge]\nbot_login = \"not a login\"\n", 2, "not a login"),
+	];
+	for (text, line, why) in cases {
+		let e = Settings::parse(text).unwrap_err();
+		assert_eq!(e.line, Some(line), "{text}: {e}");
+		assert!(e.to_string().contains(why), "{text}: {e}");
+	}
+	assert!(err("forge = 1").contains("`forge` must be a table"));
 }

@@ -13,6 +13,7 @@ use std::fmt;
 use std::ops::Range;
 
 use pr_results_core::{CommentKey, Flavour, Glob, RepoPath};
+use pr_results_forge::{BlobUrl, HostKind};
 use pr_results_render::{Options, Symbols};
 use toml::de::{DeArray, DeTable, DeValue};
 use toml::Spanned;
@@ -78,6 +79,22 @@ impl Default for Limits {
 	}
 }
 
+/// `[forge]`: which forge the tool talks to and how to reach it. Every key is optional, and the
+/// command line's `--forge` and `--bot-login` override `kind` and `bot_login`.
+#[derive(Debug, Clone, Default)]
+pub struct ForgeSettings {
+	/// As written; `None` is GitHub.
+	pub kind: Option<HostKind>,
+	/// Confirms the API address, which must be on the runner's own host. It never moves the token.
+	pub api_url: Option<String>,
+	/// A PEM file of the certificate authorities to trust instead of the built-in roots.
+	pub ca_file: Option<std::path::PathBuf>,
+	/// Where GitHub Enterprise Server keeps artefacts, when not on its own host. GitHub only.
+	pub blob_hosts: Vec<String>,
+	/// The account whose comments are ours, when the token is a bot account's personal token.
+	pub bot_login: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Settings {
 	/// The heading and the prefix of default check names. `None` is the repository's name in
@@ -91,6 +108,7 @@ pub struct Settings {
 	pub max_annotations: usize,
 	pub flaky_annotations: bool,
 	pub limits: Limits,
+	pub forge: ForgeSettings,
 	/// Empty means: infer one suite from each `*-test-results*` artefact.
 	pub suites: Vec<SuiteSettings>,
 }
@@ -108,6 +126,7 @@ impl Default for Settings {
 			max_annotations: options.max_annotations,
 			flaky_annotations: options.flaky_annotations,
 			limits: Limits::default(),
+			forge: ForgeSettings::default(),
 			suites: Vec::new(),
 		}
 	}
@@ -271,6 +290,7 @@ impl Reader<'_> {
 				"annotations",
 				"baseline",
 				"limits",
+				"forge",
 				"suite",
 			],
 			"",
@@ -316,6 +336,9 @@ impl Reader<'_> {
 		}
 		if let Some(t) = self.subtable(root, "limits")? {
 			self.limits(t, &mut s.limits)?;
+		}
+		if let Some(t) = self.subtable(root, "forge")? {
+			s.forge = self.forge(t)?;
 		}
 		if let Some(v) = self.find(root, "suite") {
 			s.suites = self.suites(v)?;
@@ -405,6 +428,76 @@ impl Reader<'_> {
 			}
 		}
 		Ok(())
+	}
+
+	fn forge(&self, t: &Table<'_>) -> Result<ForgeSettings, ConfigError> {
+		self.only(
+			t,
+			&["kind", "api_url", "ca_file", "blob_hosts", "bot_login"],
+			"forge.",
+		)?;
+		let mut f = ForgeSettings::default();
+		if let Some((k, span)) = self.string(t, "kind", "forge.")? {
+			f.kind =
+				Some(HostKind::from_name(&k).ok_or_else(|| {
+					self.err(span, "`forge.kind` must be \"github\" or \"forgejo\"")
+				})?);
+		}
+		if let Some((url, span)) = self.string(t, "api_url", "forge.")? {
+			if url.starts_with("http://") {
+				return Err(self.err(
+					span,
+					"`forge.api_url` is plain http, which is refused: the token would cross the network in clear",
+				));
+			}
+			let usable = BlobUrl::parse(&url).is_some() && !url.contains(['?', '#']);
+			if !usable {
+				return Err(self.err(
+					span,
+					"`forge.api_url` must be an https:// address with no user information, query or fragment",
+				));
+			}
+			f.api_url = Some(url);
+		}
+		if let Some((path, span)) = self.string(t, "ca_file", "forge.")? {
+			if path.is_empty() || path.len() > 4096 || path.chars().any(char::is_control) {
+				return Err(self.err(span, "`forge.ca_file` must be the path of a PEM file"));
+			}
+			f.ca_file = Some(std::path::PathBuf::from(path));
+		}
+		if let Some(v) = self.find(t, "blob_hosts") {
+			let DeValue::Array(items) = v.get_ref() else {
+				return Err(self.err(v.span(), "`forge.blob_hosts` must be a list of host names"));
+			};
+			if items.len() > 16 {
+				return Err(self.err(v.span(), "`forge.blob_hosts` lists more than 16 hosts"));
+			}
+			for item in items.iter() {
+				let DeValue::String(h) = item.get_ref() else {
+					return Err(self.err(item.span(), "`forge.blob_hosts` must hold strings"));
+				};
+				if !valid_blob_host(h) {
+					return Err(self.err(
+						item.span(),
+						"`forge.blob_hosts` holds a name that is not a host name or `*.suffix`",
+					));
+				}
+				f.blob_hosts.push(h.to_ascii_lowercase());
+			}
+			if !f.blob_hosts.is_empty() && f.kind == Some(HostKind::Forgejo) {
+				return Err(self.err(
+					v.span(),
+					"`forge.blob_hosts` is for GitHub Enterprise Server and is refused for forgejo, which has no blobs",
+				));
+			}
+		}
+		if let Some((login, span)) = self.string(t, "bot_login", "forge.")? {
+			if !valid_login(&login) {
+				return Err(self.err(span, "`forge.bot_login` is not a login"));
+			}
+			f.bot_login = Some(login);
+		}
+		Ok(f)
 	}
 
 	fn limits(&self, t: &Table<'_>, l: &mut Limits) -> Result<(), ConfigError> {
@@ -579,6 +672,29 @@ impl Reader<'_> {
 		}
 		Ok(())
 	}
+}
+
+/// An account login as either forge writes one: letters, digits, `-`, `_` and `.`, and the `[`
+/// and `]` of a GitHub app's `name[bot]`.
+pub fn valid_login(login: &str) -> bool {
+	!login.is_empty()
+		&& login.len() <= 64
+		&& login
+			.bytes()
+			.all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'[' | b']'))
+}
+
+/// A host name, or `*.suffix` for any name under it: letters, digits, `-` and `.`.
+fn valid_blob_host(h: &str) -> bool {
+	let name = h.strip_prefix("*.").unwrap_or(h);
+	!name.is_empty()
+		&& name.len() <= 253
+		&& !name.starts_with(['.', '-'])
+		&& !name.ends_with(['.', '-'])
+		&& !name.contains("..")
+		&& name
+			.bytes()
+			.all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.'))
 }
 
 /// `<title> <suite name>`, or the suite's name alone when there is no title yet.

@@ -5,8 +5,12 @@
 
 //! Publishing runs only from a `workflow_run` workflow on the default branch of the repository
 //! the event is for. Anything else is refused with exit status 2 before a request is made, so a
-//! misplaced job cannot post with a token it should not have. In-job publishing is planned for
-//! v0.2.
+//! misplaced job cannot post with a token it should not have. Forgejo has no `workflow_run`, so
+//! its host is wired here and waits for in-job publishing to be reachable from a Forgejo runner.
+//!
+//! Before any request the forge is settled: its kind (`--forge`, else `[forge] kind`, and a
+//! Forgejo runner on a `github` kind is refused), its API address (on the runner's own host and
+//! `https`, so the token cannot be sent elsewhere) and its CA file.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -15,17 +19,23 @@ use std::path::{Path, PathBuf};
 
 use pr_results_core::{Flavour, Glob, Limits as ParseLimits, RepoSlug, ServerUrl};
 use pr_results_forge::{
-	publish, requests_to_json, ApiRequest, ArchiveLimits, DryRun, GitHub, Host, Method, Plan,
-	PublishReport, SectionPlan, Token, WorkflowRun, DEFAULT_BOT_LOGIN,
+	publish, requests_to_json, ApiRequest, ArchiveLimits, CaBundle, DryRun, Forge, ForgeError,
+	Forgejo, GitHub, Host, HostKind, Method, Plan, PublishReport, SectionPlan, Token, WorkflowRun,
+	DEFAULT_BOT_LOGIN,
 };
 use pr_results_render::Conclusion;
 use serde_json::Value;
 
-use crate::args::PublishArgs;
-use crate::config::{self, CommentMode, Settings};
+use crate::args::{PublishArgs, DEFAULT_TOKEN_ENV};
+use crate::config::{self, valid_login, CommentMode, ForgeSettings, Settings};
 use crate::event::{parse_event, Event, MAX_EVENT_BYTES};
 use crate::render_cmd::{check_file, write};
-use crate::{CliError, ForgeFactory, Streams, VERSION};
+use crate::{CliError, ForgeFactory, ForgeSetup, Streams, VERSION};
+
+/// The token variable a Forgejo runner exports, tried after `GITHUB_TOKEN`.
+const FORGEJO_TOKEN_ENV: &str = "FORGEJO_TOKEN";
+/// A runner that sets this is a Forgejo's.
+const FORGEJO_SERVER_ENV: &str = "FORGEJO_SERVER_URL";
 
 /// Where the settings are read from when `--config` is not given. A missing file is fine then.
 const DEFAULT_CONFIG: &str = ".github/pr-results.toml";
@@ -39,7 +49,10 @@ type Vars<'a> = &'a dyn Fn(&str) -> Option<String>;
 struct Environment {
 	repo: RepoSlug,
 	server: ServerUrl,
-	api_base: String,
+	/// `GITHUB_SERVER_URL` as written (without a trailing slash), which `server` was parsed from.
+	server_text: String,
+	/// `GITHUB_API_URL`, if the runner set one. Whether it is usable is decided with the forge.
+	api_env: Option<String>,
 	event: Event,
 }
 
@@ -50,8 +63,10 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 	io: &mut Streams<'_>,
 ) -> Result<u8, CliError> {
 	let get = |name: &str| vars(name).filter(|v| !v.is_empty());
-	let env = environment(&get)?;
 	let settings = load_settings(a.config.as_deref())?;
+	let kind = forge_kind(a, &settings.forge, &get)?;
+	let env = environment(&get)?;
+	let setup = forge_setup(kind, &settings.forge, &env)?;
 	let Some(run) = env.event.run.clone() else {
 		io.say("The run's head repository has been deleted, so there is nothing to verify: nothing to publish.");
 		return Ok(0);
@@ -66,38 +81,190 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 		.or_else(|| get("FORGEJO_STEP_SUMMARY"))
 		.map(PathBuf::from);
 
-	let bot = match &a.bot_login {
-		Some(login) if valid_login(login) => login.clone(),
-		Some(_) => return Err(CliError::usage("--bot-login is not a GitHub login")),
-		None => DEFAULT_BOT_LOGIN.to_owned(),
+	let bot = match a
+		.bot_login
+		.clone()
+		.or_else(|| settings.forge.bot_login.clone())
+	{
+		Some(login) if valid_login(&login) => Some(login),
+		Some(_) => return Err(CliError::usage("--bot-login is not a login")),
+		None => None,
 	};
-	let token = get(&a.token_env)
-		.and_then(|t| Token::new(&t))
-		.ok_or_else(|| {
-			CliError::usage(format!(
-				"the token is not in {}: set it in the step's `env`",
-				a.token_env
-			))
-		})?;
+	let token = token(a, kind, &get)?;
 	// Before any request, so the runner hides it from every later line.
 	io.command(&token.mask_command());
 	let forge = factory
-		.make(&env.api_base, token)
+		.make(&setup, token)
 		.map_err(|e| CliError::usage(format!("the API address cannot be used: {e}")))?;
 
-	let report = match &a.dry_run {
-		Some(dir) => {
-			let gh = GitHub::new(DryRun::new(forge), env.repo.clone(), &bot);
+	let report = match (kind, &a.dry_run) {
+		(HostKind::GitHub, Some(dir)) => {
+			let bot = bot.as_deref().unwrap_or(DEFAULT_BOT_LOGIN);
+			let gh = GitHub::new(DryRun::new(forge), env.repo.clone(), bot);
 			let report = execute(&gh, &run, &env, &settings, summary.as_deref(), io)?;
 			write_dry_run(dir, &gh.forge().requests(), io)?;
 			report
 		}
-		None => {
-			let gh = GitHub::new(forge, env.repo.clone(), &bot);
+		(HostKind::GitHub, None) => {
+			let bot = bot.as_deref().unwrap_or(DEFAULT_BOT_LOGIN);
+			let gh = GitHub::new(forge, env.repo.clone(), bot);
 			execute(&gh, &run, &env, &settings, summary.as_deref(), io)?
+		}
+		(HostKind::Forgejo, Some(dir)) => {
+			let host = forgejo(DryRun::new(forge), &env, bot.as_deref())?;
+			let report = execute(&host, &run, &env, &settings, summary.as_deref(), io)?;
+			write_dry_run(dir, &host.forge().requests(), io)?;
+			report
+		}
+		(HostKind::Forgejo, None) => {
+			let host = forgejo(forge, &env, bot.as_deref())?;
+			execute(&host, &run, &env, &settings, summary.as_deref(), io)?
 		}
 	};
 	Ok(exit_code(&report, a.fail_on_failures))
+}
+
+/// The Forgejo host, with the token's account checked when a bot login names one: a token that
+/// belongs to another account is a usage error, found before anything is written.
+fn forgejo<F: Forge>(
+	forge: F,
+	env: &Environment,
+	bot: Option<&str>,
+) -> Result<Forgejo<F>, CliError> {
+	let host = Forgejo::new(forge, env.repo.clone());
+	let host = match bot {
+		Some(login) => host.with_account(login),
+		None => host,
+	};
+	match host.identity() {
+		Ok(_) => Ok(host),
+		Err(
+			e @ (ForgeError::Refused(_)
+			| ForgeError::Status {
+				status: 401 | 403, ..
+			}),
+		) => Err(CliError::usage(format!(
+			"the bot login cannot be used: {e}"
+		))),
+		Err(e) => Err(CliError::failed(format!(
+			"publishing stopped: reading the token's account: {e}"
+		))),
+	}
+}
+
+/// Which forge this is: `--forge`, else `[forge] kind`, else GitHub. A Forgejo runner exports
+/// `FORGEJO_SERVER_URL`, and publishing as GitHub from one would send its token to the wrong API,
+/// so that is refused rather than guessed at.
+fn forge_kind(
+	a: &PublishArgs,
+	f: &ForgeSettings,
+	get: &dyn Fn(&str) -> Option<String>,
+) -> Result<HostKind, CliError> {
+	let kind = a.forge.or(f.kind).unwrap_or(HostKind::GitHub);
+	if kind == HostKind::GitHub && get(FORGEJO_SERVER_ENV).is_some() {
+		return Err(CliError::usage(
+			"this is a Forgejo runner (FORGEJO_SERVER_URL is set) and the forge kind is github: set `kind = \"forgejo\"` under `[forge]`, or pass --forge forgejo",
+		));
+	}
+	Ok(kind)
+}
+
+/// The token: `--token-env`'s variable, which is `GITHUB_TOKEN` unless named, and on Forgejo
+/// `FORGEJO_TOKEN` after it.
+fn token(
+	a: &PublishArgs,
+	kind: HostKind,
+	get: &dyn Fn(&str) -> Option<String>,
+) -> Result<Token, CliError> {
+	let value = get(&a.token_env).or_else(|| {
+		(kind == HostKind::Forgejo && a.token_env == DEFAULT_TOKEN_ENV)
+			.then(|| get(FORGEJO_TOKEN_ENV))
+			.flatten()
+	});
+	value.and_then(|t| Token::new(&t)).ok_or_else(|| {
+		CliError::usage(format!(
+			"the token is not in {}: set it in the step's `env`",
+			a.token_env
+		))
+	})
+}
+
+/// `host:port` of an `https://` URL, lower-cased, with the default port dropped.
+fn authority(url: &str) -> Option<String> {
+	let rest = url.strip_prefix("https://")?;
+	let authority = rest.split(['/', '?', '#']).next()?.to_ascii_lowercase();
+	Some(
+		authority
+			.strip_suffix(":443")
+			.unwrap_or(&authority)
+			.to_owned(),
+	)
+}
+
+/// Settles where the token may go and how its certificate is trusted, before any request.
+///
+/// The API address is `[forge] api_url`, else `GITHUB_API_URL`. It must be `https`, and for a
+/// Forgejo or whenever `api_url` is set it must be on the host of `GITHUB_SERVER_URL`: the setting
+/// can confirm the runner's own API, and cannot send the token anywhere else.
+fn forge_setup(
+	kind: HostKind,
+	f: &ForgeSettings,
+	env: &Environment,
+) -> Result<ForgeSetup, CliError> {
+	if kind == HostKind::Forgejo && authority(&env.server_text).as_deref() == Some("github.com") {
+		return Err(CliError::usage(
+			"the forge kind is forgejo but GITHUB_SERVER_URL is github.com",
+		));
+	}
+	let api_base = match (&f.api_url, &env.api_env) {
+		(Some(url), _) => url.clone(),
+		(None, Some(url)) => url.clone(),
+		(None, None) => {
+			return Err(CliError::usage(
+				"GITHUB_API_URL is not set: this is not a workflow run",
+			))
+		}
+	};
+	if !api_base.starts_with("https://") {
+		return Err(CliError::usage(if api_base.starts_with("http://") {
+			"the API address is plain http, which is refused: the token would cross the network in clear"
+		} else {
+			"GITHUB_API_URL is not an https:// address"
+		}));
+	}
+	if kind == HostKind::Forgejo || f.api_url.is_some() {
+		let server = authority(&env.server_text);
+		let api = authority(&api_base);
+		if server.is_none() || server != api {
+			return Err(CliError::usage(
+				"the API address is not on the runner's own host (GITHUB_SERVER_URL): the token is sent nowhere else",
+			));
+		}
+	}
+	if kind == HostKind::Forgejo && !f.blob_hosts.is_empty() {
+		return Err(CliError::usage(
+			"`forge.blob_hosts` is for GitHub Enterprise Server and is refused for forgejo",
+		));
+	}
+	let ca = f.ca_file.as_deref().map(read_ca).transpose()?;
+	Ok(ForgeSetup {
+		kind,
+		api_base,
+		ca,
+		blob_hosts: (!f.blob_hosts.is_empty()).then(|| f.blob_hosts.clone()),
+	})
+}
+
+/// Reads a `ca_file`: a PEM of at most 1 MiB that holds certificates and nothing else.
+fn read_ca(path: &Path) -> Result<CaBundle, CliError> {
+	let shown = path.display();
+	let file = fs::File::open(path)
+		.map_err(|_| CliError::usage(format!("ca_file {shown}: cannot be opened")))?;
+	let mut bytes = Vec::new();
+	file.take(CaBundle::MAX_BYTES as u64 + 1)
+		.read_to_end(&mut bytes)
+		.map_err(|_| CliError::usage(format!("ca_file {shown}: cannot be read")))?;
+	CaBundle::from_pem(&bytes).map_err(|e| CliError::usage(format!("ca_file {shown}: {e}")))
 }
 
 /// 1 when something the plan asked for was not written, else 4 when tests failed and the caller
@@ -117,14 +284,6 @@ fn exit_code(report: &PublishReport, fail_on_failures: bool) -> u8 {
 	}
 }
 
-fn valid_login(login: &str) -> bool {
-	!login.is_empty()
-		&& login.len() <= 64
-		&& login
-			.bytes()
-			.all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'[' | b']'))
-}
-
 /// The preconditions. Every failure is exit status 2.
 fn environment(get: &dyn Fn(&str) -> Option<String>) -> Result<Environment, CliError> {
 	let need = |name: &str| {
@@ -134,18 +293,22 @@ fn environment(get: &dyn Fn(&str) -> Option<String>) -> Result<Environment, CliE
 	};
 	let event_name = need("GITHUB_EVENT_NAME")?;
 	if event_name != "workflow_run" {
-		return Err(CliError::usage(format!(
-			"publish runs only in a workflow_run workflow, not on {event_name}: see docs/adopting.md"
-		)));
+		return Err(CliError::usage(if get(FORGEJO_SERVER_ENV).is_some() {
+			format!(
+				"publish runs only in a workflow_run workflow, not on {event_name}, and Forgejo has no workflow_run trigger: see docs/adopting-forgejo.md"
+			)
+		} else {
+			format!(
+				"publish runs only in a workflow_run workflow, not on {event_name}: see docs/adopting.md"
+			)
+		}));
 	}
 	let repo = RepoSlug::parse(&need("GITHUB_REPOSITORY")?)
 		.ok_or_else(|| CliError::usage("GITHUB_REPOSITORY is not owner/name"))?;
 	let git_ref = need("GITHUB_REF")?;
-	let api_base = need("GITHUB_API_URL")?;
-	if !api_base.starts_with("https://") {
-		return Err(CliError::usage("GITHUB_API_URL is not an https:// address"));
-	}
-	let server = ServerUrl::parse(need("GITHUB_SERVER_URL")?.trim_end_matches('/'))
+	let api_env = get("GITHUB_API_URL");
+	let server_text = need("GITHUB_SERVER_URL")?.trim_end_matches('/').to_owned();
+	let server = ServerUrl::parse(&server_text)
 		.ok_or_else(|| CliError::usage("GITHUB_SERVER_URL is not an https:// address"))?;
 	let path = need("GITHUB_EVENT_PATH")?;
 	let bytes = read_event(Path::new(&path))?;
@@ -165,7 +328,8 @@ fn environment(get: &dyn Fn(&str) -> Option<String>) -> Result<Environment, CliE
 	Ok(Environment {
 		repo,
 		server,
-		api_base,
+		server_text,
+		api_env,
 		event,
 	})
 }
@@ -430,6 +594,40 @@ fn write_dry_run(
 			),
 		)?;
 	}
+	// A commit status (Forgejo) is one request for each write: the file says its state, the
+	// description and the link, under the context that names it.
+	for r in requests {
+		if r.method != Method::Post || !r.path.path().contains("/statuses/") {
+			continue;
+		}
+		let Some(body) = r
+			.body
+			.as_deref()
+			.and_then(|b| serde_json::from_slice::<Value>(b).ok())
+		else {
+			continue;
+		};
+		let text = |key: &str| {
+			body.get(key)
+				.and_then(Value::as_str)
+				.unwrap_or_default()
+				.to_owned()
+		};
+		let context = text("context");
+		if seen.contains(&context) {
+			continue;
+		}
+		seen.push(context.clone());
+		write(
+			&checks_dir.join(format!("{}.md", seen.len() - 1)),
+			&check_file(
+				&text("state"),
+				&text("description"),
+				&format!("context: {context}\nlink: {}\n", text("target_url")),
+				"",
+			),
+		)?;
+	}
 	io.say(&format!(
 		"Wrote requests.json and {} check {} to {}.",
 		seen.len(),
@@ -437,4 +635,64 @@ fn write_dry_run(
 		dir.display()
 	));
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+	use pr_results_forge::ApiPath;
+	use serde_json::json;
+
+	use super::*;
+
+	#[test]
+	fn a_dry_run_of_commit_statuses_writes_a_file_for_each_context() {
+		let dir =
+			std::env::temp_dir().join(format!("pr-results-dry-statuses-{}", std::process::id()));
+		let _ = fs::remove_dir_all(&dir);
+		let status = |context: &str, state: &str| {
+			ApiRequest::json(
+				Method::Post,
+				ApiPath::parse(
+					"/repos/example/app/statuses/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+				)
+				.unwrap(),
+				&json!({
+					"context": context,
+					"state": state,
+					"description": "1 failed, 2 passed",
+					"target_url": "https://git.lan/example/app/pulls/7#issuecomment-5",
+				}),
+			)
+		};
+		// The second status for a context supersedes the first and has no file of its own.
+		let requests = [
+			status("App Rust tests", "failure"),
+			status("App E2E", "success"),
+			status("App Rust tests", "success"),
+		];
+		let (mut out, mut err) = (Vec::new(), Vec::new());
+		let mut io = Streams {
+			out: &mut out,
+			err: &mut err,
+		};
+		write_dry_run(&dir, &requests, &mut io).unwrap();
+
+		let first = fs::read_to_string(dir.join("checks/0.md")).unwrap();
+		assert!(
+			first.starts_with("conclusion: failure\ntitle: 1 failed, 2 passed\n"),
+			"{first}"
+		);
+		assert!(first.contains(
+			"context: App Rust tests\nlink: https://git.lan/example/app/pulls/7#issuecomment-5"
+		));
+		assert!(fs::read_to_string(dir.join("checks/1.md"))
+			.unwrap()
+			.contains("context: App E2E"));
+		assert!(!dir.join("checks/2.md").exists());
+		assert!(String::from_utf8(out)
+			.unwrap()
+			.contains("Wrote requests.json and 2 check files"));
+	}
 }
