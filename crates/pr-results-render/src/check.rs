@@ -27,13 +27,17 @@ const SLOWEST: usize = 10;
 /// The longest body of one failure in the text, in characters.
 const DETAIL_CHARS: usize = 20_000;
 
-pub(crate) fn check(i: &Input<'_>, index: usize) -> Option<CheckOutput> {
+pub(crate) fn check(
+	i: &Input<'_>,
+	index: usize,
+	keep: &dyn Fn(&RepoPath) -> bool,
+) -> Option<CheckOutput> {
 	let section = i.sections.get(index)?;
 	let info = SectionInfo::new(section);
 	let one = std::slice::from_ref(section);
 	let failures = entries(one, is_failure);
 	let flaky = entries(one, |s| s == Status::Flaky);
-	let (annotations, capped) = annotations(i, section);
+	let (annotations, capped) = annotations(i, section, keep);
 
 	let conclusion = match info.verdict {
 		Verdict::Failed => Conclusion::Failure,
@@ -363,8 +367,13 @@ fn assemble_text(shown: &[Vec<Safe>], total: usize, slow: &[Safe]) -> Safe {
 	}
 }
 
-/// An annotation for each failed or errored case with a path, then (if asked) each flaky one.
-fn annotations(i: &Input<'_>, section: &Section<'_>) -> (Vec<Annotation>, usize) {
+/// An annotation for each failed or errored case with a path that `keep` accepts, then (if
+/// asked) each flaky one.
+fn annotations(
+	i: &Input<'_>,
+	section: &Section<'_>,
+	keep: &dyn Fn(&RepoPath) -> bool,
+) -> (Vec<Annotation>, usize) {
 	let o = i.options;
 	let mut found = Vec::new();
 	for (wanted, level) in [
@@ -383,7 +392,7 @@ fn annotations(i: &Input<'_>, section: &Section<'_>) -> (Vec<Annotation>, usize)
 				if !matches {
 					continue;
 				}
-				if let Some(a) = annotation(case, level) {
+				if let Some(a) = annotation(case, level).filter(|a| keep(&a.path)) {
 					found.push(a);
 				}
 			}

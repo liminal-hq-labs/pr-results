@@ -314,6 +314,31 @@ fn flaky_cases_are_annotated_as_warnings_only_when_asked() {
 }
 
 #[test]
+fn paths_the_tree_lacks_are_left_out_and_the_summary_counts_what_is_kept() {
+	let xml = "<testsuites><testsuite name=\"s\">\
+		<testcase classname=\"c\" name=\"a\" file=\"src/a.rs\" line=\"3\"><failure message=\"x\"/></testcase>\
+		<testcase classname=\"c\" name=\"b\" file=\"src/gone.rs\" line=\"4\"><failure message=\"x\"/></testcase>\
+		</testsuite></testsuites>";
+	let sc = Scenario::new(
+		"t",
+		"x",
+		vec![section("S", false, parse_text(xml, Flavour::Generic))],
+	);
+	let o = sc
+		.with_ctx(|i| pr_results_render::check_with_paths(i, 0, &|p| p.as_str() != "src/gone.rs"))
+		.unwrap();
+	assert_eq!(o.annotations.len(), 1);
+	assert_eq!(o.annotations[0].path.as_str(), "src/a.rs");
+	assert_eq!(
+		o.annotations_capped, 0,
+		"a left-out path is not a capped one"
+	);
+	assert!(o.summary.as_str().contains("Annotations: 1."));
+	let all = out(&sc, 0);
+	assert_eq!(all.annotations.len(), 2);
+}
+
+#[test]
 fn no_results_is_a_short_comment_with_a_marker() {
 	let c = no_results(&ctx(), "Example checks");
 	let body = c.body.as_str();

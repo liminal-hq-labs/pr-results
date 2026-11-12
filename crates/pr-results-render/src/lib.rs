@@ -173,7 +173,18 @@ pub fn comment(i: &Input<'_>) -> Comment {
 
 /// The check run for `section`, or nothing if there is no such section.
 pub fn check(i: &Input<'_>, section: usize) -> Option<CheckOutput> {
-	check::check(i, section)
+	check::check(i, section, &|_| true)
+}
+
+/// Like [`check`], but an annotation is made only for a path that `keep` accepts, so a publisher
+/// that has read the commit's tree can leave out paths GitHub would reject the batch for. The
+/// summary counts what is kept.
+pub fn check_with_paths(
+	i: &Input<'_>,
+	section: usize,
+	keep: &dyn Fn(&RepoPath) -> bool,
+) -> Option<CheckOutput> {
+	check::check(i, section, keep)
 }
 
 /// The comment for a run that uploaded nothing.
