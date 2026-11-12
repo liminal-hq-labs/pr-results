@@ -116,8 +116,11 @@ fn private_words(xml: &str) -> BTreeSet<String> {
 		.collect()
 }
 
+/// A salt of sixteen bytes, which is what the command line asks for.
+const SALT: &str = "0123456789abcdef";
+
 fn anonymize(bytes: &[u8]) -> String {
-	anonymize_junit(bytes, "").unwrap()
+	anonymize_junit(bytes, SALT).unwrap()
 }
 
 #[test]
@@ -338,4 +341,204 @@ fn bad_input_is_refused_like_the_parser_refuses_it() {
 	// A byte-order mark and invalid UTF-8 are handled as the parser handles them.
 	let out = anonymize_junit(b"\xef\xbb\xbf<testsuites name=\"\xff\xfe\"/>", "").unwrap();
 	assert!(out.contains("<testsuites"));
+}
+
+/// The names of the elements and attributes in `xml`, in order.
+fn names(xml: &str) -> (Vec<String>, Vec<String>) {
+	let mut reader = Reader::from_str(xml);
+	let (mut elements, mut attributes) = (Vec::new(), Vec::new());
+	loop {
+		match reader.read_event().unwrap() {
+			Event::Eof => break,
+			Event::Start(e) | Event::Empty(e) => {
+				elements.push(e.name().as_ref().to_owned());
+				for a in e.attributes() {
+					attributes.push(a.unwrap().key.as_ref().to_owned());
+				}
+			}
+			_ => {}
+		}
+	}
+	(elements, attributes)
+}
+
+#[test]
+fn tokens_are_a_prefix_and_twelve_hex_digits_that_depend_on_the_salt() {
+	let xml = "<testsuites name=\"x\"><testsuite name=\"alpha beta 12345\"/></testsuites>";
+	let a = anonymize_junit(xml.as_bytes(), SALT).unwrap();
+	let b = anonymize_junit(xml.as_bytes(), "fedcba9876543210").unwrap();
+	let token = |t: &str| {
+		t.len() == 13
+			&& matches!(t.as_bytes()[0], b'w' | b'n' | b'x')
+			&& t[1..]
+				.bytes()
+				.all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+	};
+	let a_values = values(&a);
+	let tokens: Vec<&str> = a_values
+		.iter()
+		.flat_map(|v| v.split(' '))
+		.filter(|t| !t.trim().is_empty() && *t != "x")
+		.collect();
+	assert!(tokens.iter().all(|t| token(t)), "{tokens:?}");
+	assert_ne!(values(&a), values(&b), "another salt gives other tokens");
+	// A word and the same word under another salt share nothing.
+	let (sa, sb) = (values(&a), values(&b));
+	for (x, y) in sa.iter().zip(&sb) {
+		for (p, q) in x.split(' ').zip(y.split(' ')) {
+			if token(p) {
+				assert_ne!(p, q);
+			}
+		}
+	}
+}
+
+#[test]
+fn element_attribute_and_namespace_names_outside_the_vocabulary_are_replaced() {
+	let xml = r#"<?xml version="1.0"?>
+<acme:testsuites xmlns:acme="http://acme.example.invalid/ns" xmlns="http://acme.example.invalid/default" secretattr="v" name="vitest tests">
+  <testsuite name="s" secretproject="orders" acme:flag="1">
+    <testcase name="t" classname="c" time="0.5"><secretelement acme:x="y">text</secretelement></testcase>
+  </testsuite>
+</acme:testsuites>"#;
+	let out = anonymize(xml.as_bytes());
+	for secret in [
+		"acme",
+		"secretattr",
+		"secretproject",
+		"secretelement",
+		"orders",
+		"flag",
+	] {
+		assert!(!out.contains(secret), "{secret} survived:\n{out}");
+	}
+	let (elements, attributes) = names(&out);
+	// Every name is the readers' vocabulary or a valid XML name made of a token.
+	let vocabulary = ["testsuites", "testsuite", "testcase"];
+	for e in &elements {
+		let local = e.rsplit(':').next().unwrap();
+		assert!(
+			vocabulary.contains(&e.as_str())
+				|| vocabulary.contains(&local)
+				|| (e.starts_with('x') && e.len() >= 13),
+			"{e}"
+		);
+	}
+	for a in &attributes {
+		assert!(
+			["name", "classname", "time", "xmlns"].contains(&a.as_str())
+				|| a.starts_with('x')
+				|| a.starts_with("xmlns:x"),
+			"{a}"
+		);
+	}
+	assert!(
+		attributes.iter().any(|a| a.starts_with("xmlns:x")),
+		"a prefix declaration stays one"
+	);
+	assert!(attributes.iter().any(|a| a == "xmlns"));
+	// The vocabulary the readers use stays, and the document still parses.
+	assert!(out.contains("<testcase name="));
+	assert!(out.contains("time=\"0.5\""));
+}
+
+#[test]
+fn a_prefixed_name_and_its_declaration_use_the_same_token() {
+	let xml = "<a:testsuites xmlns:a=\"u\"><a:testsuite/></a:testsuites>";
+	let out = anonymize(xml.as_bytes());
+	let (elements, attributes) = names(&out);
+	let prefix = |n: &str| n.split(':').next().unwrap().to_owned();
+	assert_eq!(prefix(&elements[0]), prefix(&elements[1]));
+	assert_eq!(attributes[0], format!("xmlns:{}", prefix(&elements[0])));
+}
+
+#[test]
+fn addresses_ports_and_long_numbers_are_replaced_but_counts_and_positions_stay() {
+	let xml = r#"<testsuites name="x" tests="12345" failures="3">
+<testsuite name="s" tests="12" failures="3" errors="0" skipped="1" time="1234.5678">
+<testcase name="connects to 10.0.0.12:5432 and 192.168.1.7" classname="c" line="42" time="0.25">
+<failure message="connect ECONNREFUSED 10.0.0.12:5432 (order 987654321)">Error: connect ECONNREFUSED 10.0.0.12:5432 user 424242 port 8080
+    at connect (net.js:12:5)
+    at Socket.emit (10.0.0.12:5432)
+    at fetch (https://api.example.invalid:8443/v1/x.js:30:9)
+    at src/a.js:123456:7
+    at localhost:3000
+thread 'x' panicked at src/lib.rs:341:5:
+[chromium] › a.spec.js:24:4 › login 99
+</failure></testcase></testsuite></testsuites>"#;
+	let out = anonymize(xml.as_bytes());
+	for gone in [
+		"10.0.0.12",
+		"192.168",
+		"5432",
+		"987654321",
+		"424242",
+		"8080",
+		"8443",
+		"123456",
+		"3000",
+		"12345",
+	] {
+		assert!(!out.contains(gone), "{gone} survived:\n{out}");
+	}
+	// Counts and lines up to four digits, the time, and the positions that end a frame stay.
+	for kept in [
+		"failures=\"3\"",
+		"tests=\"12\"",
+		"errors=\"0\"",
+		"skipped=\"1\"",
+		"line=\"42\"",
+		"time=\"1234.5678\"",
+		"(w",
+		":12:5)",
+		":341:5:",
+		":24:4 ",
+	] {
+		assert!(out.contains(kept), "{kept} lost:\n{out}");
+	}
+	assert!(
+		out.contains("tests=\"w") || out.contains("tests=\"n"),
+		"five digits is not a count"
+	);
+	assert!(!out.contains("port 8"), "a number in prose is replaced");
+}
+
+#[test]
+fn the_output_keeps_the_punctuation_and_layout_it_was_given() {
+	let xml = "<testsuites name=\"x\"><testsuite name=\"s\"><testcase name=\"a, b: c (d) [e] {f} 'g'\" classname=\"c\"><failure>  indented line\n\n\tTabbed - dashes + plus\n</failure></testcase></testsuite></testsuites>";
+	let out = anonymize(xml.as_bytes());
+	let real = |xml: &str| -> Vec<String> {
+		values(xml)
+			.into_iter()
+			.filter(|v| !v.trim().is_empty() || v.contains('\t'))
+			.collect()
+	};
+	let (a, b) = (real(xml), real(&out));
+	assert_eq!(a.len(), b.len());
+	for (x, y) in a.iter().zip(&b) {
+		// Punctuation, spaces, tabs and line breaks stay where they were.
+		let punct = |t: &str| {
+			t.chars()
+				.filter(|c| !c.is_alphanumeric() && *c != '_')
+				.collect::<String>()
+		};
+		assert_eq!(punct(x), punct(y));
+	}
+}
+
+#[test]
+fn word_lengths_are_hidden_but_the_number_of_words_is_not() {
+	let xml =
+		"<testsuites name=\"x\"><testsuite name=\"a bb ccccccccccccccccccccccc\"/></testsuites>";
+	let out = anonymize(xml.as_bytes());
+	let v: Vec<String> = values(&out)
+		.into_iter()
+		.filter(|v| !v.trim().is_empty())
+		.collect();
+	let words: Vec<&str> = v[1].split(' ').collect();
+	assert_eq!(words.len(), 3, "the word count shows");
+	assert!(
+		words.iter().all(|w| w.len() == 13),
+		"every token is the same length: {words:?}"
+	);
 }
