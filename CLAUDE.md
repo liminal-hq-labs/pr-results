@@ -4,7 +4,7 @@ A summary of [AGENTS.md](AGENTS.md), which is canonical. Keep the two in sync.
 
 ## What this is
 
-pr-results is a Liminal HQ Labs experiment: Calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental, so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
+pr-results is a Liminal HQ Labs experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental and not built yet, so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
 
 ## Rules to remember
 
@@ -13,7 +13,8 @@ pr-results is a Liminal HQ Labs experiment: Calm test and check results for pull
 - **Git.** Topic branches, merge commits only, branches deleted on merge. Never push, tag, publish or dispatch workflows unless asked. Never `git add -A` or `git commit -a`. `PLAN.md` stays out of git.
 - **Formatting.** Tabs everywhere except YAML. Rust uses rustfmt with hard tabs (`rustfmt.toml`).
 - **Headers.** SPDX header on every source, script, YAML, TOML and SVG file: summary line, blank, "(c) Copyright 2026 Liminal HQ, Scott Morris", `SPDX-License-Identifier: Apache-2.0 OR MIT`.
-- **CI.** One job per check. Shared images come from `liminal-hq/.github`. Dependabot is off unless the project opts in.
+- **CI.** One job per check. Shared images come from `liminal-hq/.github`, pinned by digest. Every action is pinned by full commit SHA with the version in a comment. Dependabot is on (GitHub Actions, and Cargo once there is a manifest).
+- **Architecture.** Untrusted input is escaped only through `Safe`. No network outside `pr-results-github`. No pull request code in privileged workflows, and no secret beyond `GITHUB_TOKEN`. SPEC first. Deterministic output. No unsafe code.
 - **Docs.** Update `SPEC.md` and `docs/decisions.md` in the same change as the behaviour.
 
 ## Commands
@@ -22,4 +23,8 @@ pr-results is a Liminal HQ Labs experiment: Calm test and check results for pull
 bash scripts/check-headers.sh
 bash scripts/check-banner.sh     # add --shots /tmp/shots for review frames
 docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.17.2 "**/*.md"
+# once there are crates:
+cargo nextest run --workspace --locked
+cargo deny check
+PR_RESULTS_BLESS=1 cargo nextest run   # rewrite the goldens, then review the diff
 ```
