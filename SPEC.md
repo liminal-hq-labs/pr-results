@@ -114,7 +114,7 @@ pr-results --version | --help
 
 `collect` (normalize in a CI job) is deferred, and refused with a message. A flag takes its value as `--flag value` or `--flag=value`.
 
-**`publish`** runs in a `workflow_run` workflow on the default branch and nowhere else. It exits `2` before any request unless `GITHUB_EVENT_NAME` is `workflow_run`, `GITHUB_REF` is `refs/heads/<default branch>` (the default branch is the one the event names), the event's `repository` and its run's `repository` are `GITHUB_REPOSITORY` (without regard to case), `GITHUB_API_URL` and `GITHUB_SERVER_URL` are `https://` and the token is in the variable `--token-env` names (default `GITHUB_TOKEN`). Publishing from the test job itself is v0.2. The settings file is `--config`, which must exist, or `.github/pr-results.toml` when that exists, or the defaults. `--bot-login` is the login the sticky comment must be authored by (default `github-actions[bot]`).
+**`publish`** without `--from` runs in a `workflow_run` workflow on the default branch. It exits `2` before any request unless `GITHUB_EVENT_NAME` is `workflow_run`, `GITHUB_REF` is `refs/heads/<default branch>` (the default branch is the one the event names), the event's `repository` and its run's `repository` are `GITHUB_REPOSITORY` (without regard to case), `GITHUB_API_URL` and `GITHUB_SERVER_URL` are `https://` and the token is in the variable `--token-env` names (default `GITHUB_TOKEN`). With `--from DIR`, it accepts only `pull_request` and `push` events, reads the runner’s own event and local downloaded artefacts, and skips fork pull requests before contacting the forge. The settings file is `--config`, which must exist, or `.github/pr-results.toml` when that exists, or the defaults. `--bot-login` is the login the sticky comment must be authored by (default `github-actions[bot]`).
 
 `--dry-run DIR` reads from GitHub for real and writes nothing. It saves `requests.json` (every write it would have sent, with its body), `comment.md` (the first comment body) and `checks/<n>.md` (each check run's conclusion, title, summary and text, in the layout of the goldens) in `DIR`, and prints the comment.
 
@@ -217,7 +217,7 @@ Forgejo has no check runs and no annotations. With `Target::Forgejo` (decision D
 
 - **Commit statuses** replace check runs: `status` gives one per section, `success` or `failure` (a neutral section is `success`, since `skipped` and `warning` are not known to satisfy branch protection), with the check's title as the description in plain text, at most 140 characters. Forgejo sets no limit (its `description` is an unbounded `TEXT` column, trimmed: [commit_status.go](https://code.forgejo.org/forgejo/forgejo/raw/tag/v17.0.1/models/git/commit_status.go), [Swagger](https://code.forgejo.org/swagger.v1.json)); 140 is GitHub's documented limit, kept for both. `check` gives nothing.
 - **The sticky comment carries what a check run's summary holds.** Its fixed words name no check runs and no GitHub limit ("to fit the size limit", "…and N more failures, not listed here."), and each failure shows `` at `path:line` `` after its message when the case has a whole repository path, because there are no annotations. GitHub's comment is unchanged, as its annotations carry the location.
-- **The footer** links the commit and the run (by its number when known, which `publish` does not yet pass: until in-job publishing reads the run number from the environment it links the run id), with no artefacts link.
+- **The footer** links the commit and the run (by its number when known, from `GITHUB_RUN_NUMBER` for in-job publishing, otherwise the run id), with no artefacts link.
 - **Inertness.** Outside code Forgejo also links a bare commit hash (7 to 64 hexadecimal digits), `!12`, `$…$` and `:emoji:`. Names, messages and paths are in code, where it links nothing; the only ordinary text is fixed words and the heading's title. A title that holds `$`, `!` before a digit, seven hexadecimal digits in a row, `:word:`, `://` or `www.` (checked with the colon and space that follow it) is written in a code span; `forgejo_inert_title` tells a loader which.
 
 ### Forge settings and host
@@ -434,7 +434,7 @@ The reusable workflow runs on `ubuntu-24.04` without a container so it starts fa
     args: --dry-run out        # split on whitespace
 ```
 
-`publish` runs only from a `workflow_run` workflow on the default branch in v0.1. In-job publishing on `pull_request` (same-repository pull requests and pushes) is v0.2, and forks and Dependabot need the `workflow_run` form in any case. The documentation says so plainly.
+`publish --from DIR` supports same-repository pull requests and pushes; fork pull requests need the `workflow_run` form on GitHub. The documentation says so plainly.
 
 ### Why not `liminal-hq/.github`
 
@@ -545,3 +545,9 @@ Q5, Q8, Q10 and Q11 are answered in [docs/decisions.md](docs/decisions.md) (D38 
 - That any workflow here runs on GitHub: `action.yml`, `publish.yml`, `publish-test-results.yml` and the new `ci.yml` jobs are checked by actionlint, zizmor (also `--pedantic`) and a local test of their shell steps, and nothing else. In particular: `workflow_run` runs the file from the default branch only, so the dogfood publisher is inert until merged; `uses: ./` and `github.action_path` in a composite action; `rustup` and a pinned toolchain on the runner for `build: source`; the sparse checkout of `.github`; `actions/upload-artifact` inside the `ci-rust` container (it needs the runner's Node); the concurrency group expression in a reusable workflow; and that the caller's four permissions reach the called job.
 - That `toml` reports a line for every kind of mistake in a settings file. Spans were checked for the cases in the tests.
 - That the fixtures of the `workflow_run` event match a real payload. They are written by hand from GitHub's documentation with only the fields the tool reads.
+
+## In-job publishing
+
+`publish --from DIR` accepts only `pull_request` and `push`, reads the runner event and `GITHUB_RUN_ID` and optionally `GITHUB_RUN_NUMBER`, and refuses a mismatched repository. A fork pull request exits successfully without making a request. A same-repository pull request is checked against the host before a comment is written. This mode reads settings from the checkout and is intended only where its code and job token are trusted.
+
+Downloaded artefacts occupy one directory per artefact under `DIR`. File and artefact globs retain their normal meaning. The collector opens directory entries without following symbolic links and counts skipped links; its configured file count, per-file and total byte limits apply before parsing. Directory count is bounded by the file limit plus one and nesting by 64. In-job collection requires a Unix runner. For Forgejo, `.forgejo/pr-results.toml` takes precedence over `.github/pr-results.toml` when Forgejo is selected.

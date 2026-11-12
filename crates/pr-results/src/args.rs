@@ -23,6 +23,7 @@ pub enum Command {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishArgs {
 	pub config: Option<PathBuf>,
+	pub from: Option<PathBuf>,
 	pub dry_run: Option<PathBuf>,
 	pub token_env: String,
 	pub bot_login: Option<String>,
@@ -100,6 +101,7 @@ pub fn parse(args: &[String]) -> Result<Command, UsageError> {
 fn publish(c: &mut Cursor<'_>) -> Result<Command, UsageError> {
 	let mut a = PublishArgs {
 		config: None,
+		from: None,
 		dry_run: None,
 		token_env: DEFAULT_TOKEN_ENV.to_owned(),
 		bot_login: None,
@@ -116,6 +118,7 @@ fn publish(c: &mut Cursor<'_>) -> Result<Command, UsageError> {
 						usage(format!("unknown forge: {name} (github or forgejo)"))
 					})?);
 			}
+			"--from" => a.from = Some(PathBuf::from(c.value(flag, inline)?)),
 			"--config" => a.config = Some(PathBuf::from(c.value(flag, inline)?)),
 			"--dry-run" => a.dry_run = Some(PathBuf::from(c.value(flag, inline)?)),
 			"--token-env" => a.token_env = c.value(flag, inline)?.to_owned(),

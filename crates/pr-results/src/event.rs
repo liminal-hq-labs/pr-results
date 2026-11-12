@@ -87,3 +87,79 @@ pub fn parse_event(bytes: &[u8]) -> Result<Event, &'static str> {
 		run: workflow_run,
 	})
 }
+
+/// Reads the runner's own pull request or push event, never an uploaded event.
+pub fn parse_in_job(
+	bytes: &[u8],
+	kind: &str,
+	id: u64,
+	number: Option<u64>,
+) -> Result<Event, &'static str> {
+	let doc: Value =
+		serde_json::from_slice(bytes).map_err(|_| "the event file is not valid JSON")?;
+	let repository = slug(&doc, &["repository", "full_name"])
+		.ok_or("the event has no repository name it can use")?;
+	let (head_repo, head_sha, head_branch, pulls) = match kind {
+		"pull_request" => {
+			let pr = doc
+				.get("pull_request")
+				.ok_or("the event has no pull request")?;
+			let base = slug(pr, &["base", "repo", "full_name"])
+				.ok_or("the pull request has no base repository")?;
+			if !base
+				.to_string()
+				.eq_ignore_ascii_case(&repository.to_string())
+			{
+				return Err("the pull request has another base repository");
+			}
+			let head = slug(pr, &["head", "repo", "full_name"])
+				.ok_or("the pull request has no head repository")?;
+			let sha = text(pr, &["head", "sha"])
+				.and_then(Sha::parse)
+				.ok_or("the pull request has no commit it can use")?;
+			let n = pr
+				.get("number")
+				.or_else(|| doc.get("number"))
+				.and_then(Value::as_u64)
+				.filter(|n| *n > 0)
+				.ok_or("the pull request has no number")?;
+			(
+				head,
+				sha,
+				text(pr, &["head", "ref"]).unwrap_or_default().to_owned(),
+				vec![n],
+			)
+		}
+		"push" => {
+			let sha = text(&doc, &["after"])
+				.and_then(Sha::parse)
+				.ok_or("the push has no commit it can use")?;
+			(
+				repository.clone(),
+				sha,
+				text(&doc, &["ref"])
+					.unwrap_or_default()
+					.strip_prefix("refs/heads/")
+					.unwrap_or_default()
+					.to_owned(),
+				Vec::new(),
+			)
+		}
+		_ => return Err("in-job publishing requires a pull_request or push event"),
+	};
+	Ok(Event {
+		run_repository: repository.clone(),
+		repository,
+		default_branch: String::new(),
+		run: Some(WorkflowRun {
+			id: RunId(id),
+			run_number: number,
+			head_sha,
+			head_branch,
+			head_repo,
+			event: kind.to_owned(),
+			conclusion: None,
+			pull_requests: pulls,
+		}),
+	})
+}

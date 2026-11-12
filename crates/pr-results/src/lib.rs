@@ -18,6 +18,7 @@
 pub mod args;
 pub mod config;
 pub mod event;
+mod local;
 mod publish_cmd;
 mod render_cmd;
 
@@ -35,7 +36,7 @@ const HELP: &str = "\
 pr-results: calm test and check results for pull requests
 
 Usage:
-  pr-results publish [--config PATH] [--dry-run DIR] [--token-env NAME]
+  pr-results publish [--from DIR] [--config PATH] [--dry-run DIR] [--token-env NAME]
                      [--bot-login LOGIN] [--forge github|forgejo] [--fail-on-failures]
   pr-results render [--config PATH] [--title TEXT] [--flavour NAME] FILE... [--out DIR]
   pr-results validate-config PATH
