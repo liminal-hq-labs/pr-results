@@ -3,7 +3,8 @@
 // (c) Copyright 2026 Liminal HQ, Scott Morris
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::junit::{Facts, Limits};
+use crate::error::ParseError;
+use crate::junit::{Budget, Facts, Limits};
 use crate::model::{Case, Flavour, Suite, Untrusted};
 
 /// Settles `Auto` from what the file said about itself. Steps files are never guessed: a product
@@ -23,22 +24,38 @@ pub(crate) fn resolve(requested: Flavour, facts: &Facts) -> Flavour {
 	}
 }
 
-/// Stamps the suite with its flavour and fills in the locations that flavour implies.
-pub(crate) fn apply(flavour: Flavour, suite: &mut Suite, limits: &Limits) {
+/// Stamps the suite with its flavour and fills in the locations that flavour implies. What a case
+/// gets is charged to `budget`; a path taken from the suite's name is stored once and shared.
+pub(crate) fn apply(
+	flavour: Flavour,
+	suite: &mut Suite,
+	limits: &Limits,
+	budget: &mut Budget,
+) -> Result<(), ParseError> {
 	suite.flavour = flavour;
-	let suite_name = suite.name.as_str().to_owned();
+	let cap = limits.max_name_bytes;
+	let suite_file = match matches!(flavour, Flavour::Vitest | Flavour::Playwright) {
+		true => match clean_path(suite.name.as_str(), cap).filter(|p| looks_like_file(p)) {
+			Some(path) => Some(budget.keep(Untrusted::new(path))?),
+			None => None,
+		},
+		false => None,
+	};
 	for case in &mut suite.cases {
 		if case.file.is_some() {
 			continue;
 		}
 		match flavour {
-			Flavour::Nextest => rust_location(case, limits),
+			Flavour::Nextest => rust_location(case, limits, budget)?,
 			// vitest names its suites and class names after the test file.
 			Flavour::Vitest => {
-				let from_class = clean_path(case.classname.as_str(), limits.max_name_bytes);
-				let candidate =
-					from_class.or_else(|| clean_path(&suite_name, limits.max_name_bytes));
-				case.file = candidate.filter(|p| looks_like_file(p)).map(Untrusted::new);
+				case.file = match clean_path(case.classname.as_str(), cap) {
+					Some(path) if looks_like_file(&path) => {
+						Some(budget.keep(Untrusted::new(path))?)
+					}
+					Some(_) => None,
+					None => suite_file.clone(),
+				};
 			}
 			// Playwright writes the file, then the titles, joined by " › ".
 			Flavour::Playwright => {
@@ -48,13 +65,18 @@ pub(crate) fn apply(flavour: Flavour, suite: &mut Suite, limits: &Limits) {
 					.split(" \u{203a} ")
 					.next()
 					.unwrap_or_default();
-				let candidate = clean_path(head, limits.max_name_bytes)
-					.or_else(|| clean_path(&suite_name, limits.max_name_bytes));
-				case.file = candidate.filter(|p| looks_like_file(p)).map(Untrusted::new);
+				case.file = match clean_path(head, cap) {
+					Some(path) if looks_like_file(&path) => {
+						Some(budget.keep(Untrusted::new(path))?)
+					}
+					Some(_) => None,
+					None => suite_file.clone(),
+				};
 			}
 			_ => {}
 		}
 	}
+	Ok(())
 }
 
 fn looks_like_file(path: &str) -> bool {
@@ -65,15 +87,16 @@ fn looks_like_file(path: &str) -> bool {
 
 /// Reads `panicked at <path>:<line>:<col>` from a failure, in both the current format
 /// (`panicked at src/lib.rs:12:5:`) and the older one (`panicked at 'msg', src/lib.rs:12:5`).
-fn rust_location(case: &mut Case, limits: &Limits) {
+fn rust_location(case: &mut Case, limits: &Limits, budget: &mut Budget) -> Result<(), ParseError> {
 	let sources = [case.detail.as_ref(), case.message.as_ref()];
 	for text in sources.into_iter().flatten() {
 		if let Some((path, line)) = find_panic_location(text.as_str(), limits.max_name_bytes) {
-			case.file = Some(Untrusted::new(path));
+			case.file = Some(budget.keep(Untrusted::new(path))?);
 			case.line = Some(line);
-			return;
+			return Ok(());
 		}
 	}
+	Ok(())
 }
 
 pub(crate) fn find_panic_location(text: &str, max_path: usize) -> Option<(String, u32)> {

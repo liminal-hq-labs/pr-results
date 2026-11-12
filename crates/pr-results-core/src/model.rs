@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 
 /// The schema name of the model when it is written out.
 pub const REPORT_SCHEMA: &str = "pr-results-report/1";
@@ -12,9 +13,12 @@ pub const REPORT_SCHEMA: &str = "pr-results-report/1";
 /// Text that came from a test report. It has no `Display`: the only way to put it in output is
 /// [`Safe`](crate::Safe). It remembers how many bytes were cut when it was capped, so truncation is
 /// always explicit.
+///
+/// The text is shared, so cloning is cheap: a suite's `file` attribute is held once, however many
+/// cases inherit it.
 #[derive(Clone, PartialEq, Eq, Default)]
 pub struct Untrusted {
-	text: String,
+	text: Arc<str>,
 	omitted: usize,
 }
 
@@ -22,7 +26,7 @@ impl Untrusted {
 	/// Keeps all of `text`.
 	pub fn new(text: impl Into<String>) -> Self {
 		Self {
-			text: text.into(),
+			text: Arc::from(text.into()),
 			omitted: 0,
 		}
 	}
@@ -34,7 +38,7 @@ impl Untrusted {
 			end -= 1;
 		}
 		Self {
-			text: text.get(..end).unwrap_or_default().to_owned(),
+			text: Arc::from(text.get(..end).unwrap_or_default()),
 			omitted: text.get(end..).map_or(0, |tail| tail.chars().count()),
 		}
 	}
@@ -53,13 +57,27 @@ impl Untrusted {
 		self.text.is_empty()
 	}
 
-	/// The text without surrounding whitespace, or nothing if it was all whitespace.
-	pub(crate) fn trimmed(self) -> Option<Self> {
-		let text = self.text.trim();
-		(!text.is_empty()).then(|| Self {
-			text: text.to_owned(),
-			omitted: self.omitted,
-		})
+	/// The length of the kept text, in bytes.
+	pub fn len(&self) -> usize {
+		self.text.len()
+	}
+
+	/// Whether `self` and `other` are the same stored text, not just equal.
+	pub fn shares_text_with(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.text, &other.text)
+	}
+}
+
+/// Text being collected from an element, up to a cap, before it becomes an [`Untrusted`].
+#[derive(Default)]
+pub(crate) struct TextBuf {
+	text: String,
+	omitted: usize,
+}
+
+impl TextBuf {
+	pub(crate) fn as_str(&self) -> &str {
+		&self.text
 	}
 
 	pub(crate) fn push_capped(&mut self, more: &str, max_bytes: usize) {
@@ -72,11 +90,20 @@ impl Untrusted {
 		let cut = more.get(end..).map_or(0, |tail| tail.chars().count());
 		self.omitted = self.omitted.saturating_add(cut);
 	}
+
+	/// The text without surrounding whitespace, or nothing if it was all whitespace.
+	pub(crate) fn trimmed(self) -> Option<Untrusted> {
+		let text = self.text.trim();
+		(!text.is_empty()).then(|| Untrusted {
+			text: Arc::from(text),
+			omitted: self.omitted,
+		})
+	}
 }
 
 impl fmt::Debug for Untrusted {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Untrusted({:?}", self.text)?;
+		write!(f, "Untrusted({:?}", &*self.text)?;
 		if self.omitted > 0 {
 			write!(f, ", +{} omitted", self.omitted)?;
 		}
@@ -86,7 +113,7 @@ impl fmt::Debug for Untrusted {
 
 impl PartialEq<&str> for Untrusted {
 	fn eq(&self, other: &&str) -> bool {
-		self.omitted == 0 && self.text == *other
+		self.omitted == 0 && &*self.text == *other
 	}
 }
 

@@ -25,6 +25,8 @@ pub enum ParseError {
 	TooManyCases { limit: usize },
 	/// The input holds more suites than the limit.
 	TooManySuites { limit: usize },
+	/// The text kept from the input would use more memory than the limit.
+	TooMuchText { limit: usize },
 	/// An element has more attributes than the limit.
 	TooManyAttributes { limit: usize },
 	/// A named entity other than the five predefined ones, or an invalid character reference.
@@ -57,6 +59,9 @@ impl fmt::Display for ParseError {
 			Self::TooDeep { limit } => write!(f, "elements are nested deeper than {limit} levels"),
 			Self::TooManyCases { limit } => write!(f, "the input has more than {limit} test cases"),
 			Self::TooManySuites { limit } => write!(f, "the input has more than {limit} suites"),
+			Self::TooMuchText { limit } => {
+				write!(f, "the input holds more than {limit} bytes of text to keep")
+			}
 			Self::TooManyAttributes { limit } => {
 				write!(f, "an element has more than {limit} attributes")
 			}

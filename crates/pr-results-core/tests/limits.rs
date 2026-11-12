@@ -153,3 +153,152 @@ fn the_default_suite_limit_is_ten_thousand() {
 		ParseError::TooManySuites { limit: 10_000 }
 	);
 }
+
+fn doc_with_suite_file(cases: usize, file: &str) -> Vec<u8> {
+	let mut s = format!("<testsuites><testsuite name=\"s\" file=\"{file}\">");
+	for i in 0..cases {
+		s.push_str(&format!("<testcase classname=\"c\" name=\"t{i}\"/>"));
+	}
+	s.push_str("</testsuite></testsuites>");
+	s.into_bytes()
+}
+
+#[test]
+fn cases_share_their_suites_file_instead_of_copying_it() {
+	let file = "d/".repeat(512);
+	let doc = doc_with_suite_file(1000, &file);
+	let report = parse_junit(&doc, Flavour::Generic, &Limits::default()).unwrap();
+	let cases = &report.suites[0].cases;
+	let first = cases[0].file.as_ref().unwrap();
+	assert_eq!(first.as_str(), file.trim_end_matches('/'));
+	assert!(cases
+		.iter()
+		.all(|c| c.file.as_ref().unwrap().shares_text_with(first)));
+}
+
+#[test]
+fn nested_suites_share_the_innermost_file() {
+	let doc =
+		br#"<testsuites><testsuite name="o" file="outer.rs"><testsuite name="i" file="inner.rs">
+		<testcase classname="c" name="a"/><testcase classname="c" name="b"/></testsuite>
+		<testcase classname="c" name="c"/></testsuite></testsuites>"#;
+	let report = parse_junit(doc, Flavour::Generic, &Limits::default()).unwrap();
+	let cases = &report.suites[0].cases;
+	let files: Vec<&str> = cases
+		.iter()
+		.map(|c| c.file.as_ref().unwrap().as_str())
+		.collect();
+	assert_eq!(files, ["inner.rs", "inner.rs", "outer.rs"]);
+	assert!(cases[0]
+		.file
+		.as_ref()
+		.unwrap()
+		.shares_text_with(cases[1].file.as_ref().unwrap()));
+}
+
+#[test]
+fn a_suite_path_taken_for_playwright_and_vitest_cases_is_stored_once() {
+	let mut s = String::from("<testsuites><testsuite name=\"tests/a.spec.ts\">");
+	for i in 0..100 {
+		s.push_str(&format!("<testcase classname=\"\" name=\"t{i}\"/>"));
+	}
+	s.push_str("</testsuite></testsuites>");
+	for flavour in [Flavour::Vitest, Flavour::Playwright] {
+		let report = parse_junit(s.as_bytes(), flavour, &Limits::default()).unwrap();
+		let cases = &report.suites[0].cases;
+		let first = cases[0].file.as_ref().unwrap();
+		assert_eq!(first.as_str(), "tests/a.spec.ts");
+		assert!(cases
+			.iter()
+			.all(|c| c.file.as_ref().unwrap().shares_text_with(first)));
+	}
+}
+
+#[test]
+fn the_text_budget_refuses_with_a_count() {
+	let name = "n".repeat(100);
+	let doc = format!(
+		"<testsuites><testsuite name=\"s\"><testcase classname=\"c\" name=\"{name}\"/></testsuite></testsuites>"
+	);
+	// The suite name (1), the class name (1) and the case name (100).
+	let exact = Limits {
+		max_text_bytes: 102,
+		..Limits::default()
+	};
+	assert!(parse_junit(doc.as_bytes(), Flavour::Generic, &exact).is_ok());
+	let under = Limits {
+		max_text_bytes: 101,
+		..Limits::default()
+	};
+	let err = parse_junit(doc.as_bytes(), Flavour::Generic, &under).unwrap_err();
+	assert_eq!(err, ParseError::TooMuchText { limit: 101 });
+	assert_eq!(
+		err.to_string(),
+		"the input holds more than 101 bytes of text to keep"
+	);
+}
+
+#[test]
+fn repeated_bodies_that_are_not_kept_still_count() {
+	let body = "b".repeat(1000);
+	let mut doc =
+		String::from("<testsuites><testsuite name=\"s\"><testcase classname=\"c\" name=\"t\">");
+	for _ in 0..50 {
+		doc.push_str(&format!("<failure message=\"m\">{body}</failure>"));
+	}
+	doc.push_str("</testcase></testsuite></testsuites>");
+	let tight = Limits {
+		max_text_bytes: 10_000,
+		..Limits::default()
+	};
+	assert_eq!(
+		parse_junit(doc.as_bytes(), Flavour::Generic, &tight).unwrap_err(),
+		ParseError::TooMuchText { limit: 10_000 }
+	);
+}
+
+#[test]
+fn invalid_utf8_counts_at_its_replaced_size() {
+	// 300 bad bytes become 300 three-byte replacement characters: 900 bytes of name.
+	let mut doc = b"<testsuites><testsuite name=\"s\"><testcase classname=\"c\" name=\"".to_vec();
+	doc.extend(std::iter::repeat_n(0xff, 300));
+	doc.extend_from_slice(b"\"/></testsuite></testsuites>");
+	let limits = |n| Limits {
+		max_text_bytes: n,
+		..Limits::default()
+	};
+	let report = parse_junit(&doc, Flavour::Generic, &limits(902)).unwrap();
+	assert_eq!(report.suites[0].cases[0].name.as_str().len(), 900);
+	assert_eq!(
+		parse_junit(&doc, Flavour::Generic, &limits(901)).unwrap_err(),
+		ParseError::TooMuchText { limit: 901 }
+	);
+	// The same count of valid bytes is a third of the cost.
+	let valid = String::from_utf8(
+		doc.iter()
+			.map(|&b| if b == 0xff { b'x' } else { b })
+			.collect(),
+	)
+	.unwrap();
+	assert!(parse_junit(valid.as_bytes(), Flavour::Generic, &limits(302)).is_ok());
+}
+
+#[test]
+fn input_that_grows_past_the_size_limit_when_repaired_is_refused() {
+	let mut doc = b"<testsuites><testsuite name=\"".to_vec();
+	doc.extend(std::iter::repeat_n(0xff, 100));
+	doc.extend_from_slice(b"\"/></testsuites>");
+	let given = doc.len();
+	let limits = Limits {
+		max_bytes: given + 10,
+		..Limits::default()
+	};
+	let err = parse_junit(&doc, Flavour::Generic, &limits).unwrap_err();
+	assert_eq!(
+		err,
+		ParseError::TooLarge {
+			len: given + 200,
+			limit: given + 10
+		}
+	);
+}

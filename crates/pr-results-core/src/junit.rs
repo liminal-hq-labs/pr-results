@@ -9,7 +9,7 @@ use quick_xml::{Reader, XmlVersion};
 
 use crate::error::ParseError;
 use crate::flavour;
-use crate::model::{Attempt, Case, Flavour, Report, Status, Suite, Untrusted};
+use crate::model::{Attempt, Case, Flavour, Report, Status, Suite, TextBuf, Untrusted};
 
 /// The most attributes one element may carry.
 const MAX_ATTRIBUTES: usize = 256;
@@ -17,8 +17,13 @@ const MAX_ATTRIBUTES: usize = 256;
 /// What the parser will accept before it gives up.
 #[derive(Debug, Clone)]
 pub struct Limits {
-	/// The whole input, in bytes.
+	/// The whole input, in bytes, both as given and after invalid UTF-8 is replaced (each bad byte
+	/// becomes the three-byte U+FFFD, so the second is the larger).
 	pub max_bytes: usize,
+	/// All the text the report keeps, in bytes: names, class names, paths, messages and bodies,
+	/// counted once per stored copy after invalid UTF-8 is replaced. A file path shared by every
+	/// case of a suite is stored and counted once.
+	pub max_text_bytes: usize,
 	/// Element nesting, root included.
 	pub max_depth: usize,
 	/// Test cases across all suites.
@@ -39,6 +44,7 @@ impl Default for Limits {
 	fn default() -> Self {
 		Self {
 			max_bytes: 50 * 1024 * 1024,
+			max_text_bytes: 64 * 1024 * 1024,
 			max_depth: 64,
 			max_cases: 200_000,
 			max_suites: 10_000,
@@ -66,6 +72,13 @@ pub fn parse_junit(input: &[u8], flavour: Flavour, limits: &Limits) -> Result<Re
 	}
 	let input = input.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(input);
 	let text = String::from_utf8_lossy(input);
+	// Invalid bytes grow to three each, so the copy that is parsed is bounded as well.
+	if text.len() > limits.max_bytes {
+		return Err(ParseError::TooLarge {
+			len: text.len(),
+			limit: limits.max_bytes,
+		});
+	}
 	if text.trim().is_empty() {
 		return Err(ParseError::Empty);
 	}
@@ -80,9 +93,35 @@ pub fn parse_junit(input: &[u8], flavour: Flavour, limits: &Limits) -> Result<Re
 	let mut suites = parser.suites;
 	let resolved = flavour::resolve(flavour, &parser.facts);
 	for suite in &mut suites {
-		flavour::apply(resolved, suite, limits);
+		flavour::apply(resolved, suite, limits, &mut parser.budget)?;
 	}
 	Ok(Report { suites })
+}
+
+/// How much kept text is left.
+pub(crate) struct Budget {
+	used: usize,
+	limit: usize,
+}
+
+impl Budget {
+	fn new(limit: usize) -> Self {
+		Self { used: 0, limit }
+	}
+
+	pub(crate) fn charge(&mut self, bytes: usize) -> Result<(), ParseError> {
+		self.used = self.used.saturating_add(bytes);
+		if self.used > self.limit {
+			return Err(ParseError::TooMuchText { limit: self.limit });
+		}
+		Ok(())
+	}
+
+	/// Charges for `text` and hands it back.
+	pub(crate) fn keep(&mut self, text: Untrusted) -> Result<Untrusted, ParseError> {
+		self.charge(text.len())?;
+		Ok(text)
+	}
 }
 
 /// What the file said about itself, for flavour detection.
@@ -150,7 +189,7 @@ struct CaseBuilder {
 /// The element whose text is being collected.
 struct Sink {
 	message: Option<Untrusted>,
-	text: Untrusted,
+	text: TextBuf,
 	cap: usize,
 }
 
@@ -160,11 +199,12 @@ struct Parser<'l> {
 	roots: usize,
 	suites: Vec<Suite>,
 	suite: Option<SuiteBuilder>,
-	/// The `file` attribute of each open suite, innermost last.
-	files: Vec<Option<String>>,
+	/// The `file` attribute of each open suite, innermost last. Cases share it, not copy it.
+	files: Vec<Option<Untrusted>>,
 	case: Option<CaseBuilder>,
 	sink: Option<Sink>,
 	cases_seen: usize,
+	budget: Budget,
 	facts: Facts,
 	/// Byte position of the event being handled, for error messages.
 	position: u64,
@@ -182,6 +222,7 @@ impl<'l> Parser<'l> {
 			case: None,
 			sink: None,
 			cases_seen: 0,
+			budget: Budget::new(limits.max_text_bytes),
 			facts: Facts::default(),
 			position: 0,
 		}
@@ -353,11 +394,14 @@ impl<'l> Parser<'l> {
 				if self.stack.is_empty() {
 					self.facts.root_name = get("name").unwrap_or_default().to_owned();
 				}
-				let file = get("file").and_then(|f| flavour::clean_path(f, name_cap));
+				let file = match get("file").and_then(|f| flavour::clean_path(f, name_cap)) {
+					Some(path) => Some(self.budget.keep(Untrusted::new(path))?),
+					None => None,
+				};
 				self.files.push(file);
 				if self.suite.is_none() {
 					self.suite = Some(SuiteBuilder {
-						name: capped(get("name").unwrap_or_default()),
+						name: self.budget.keep(capped(get("name").unwrap_or_default()))?,
 						time_ms: get("time").map(parse_time_ms),
 						cases: Vec::new(),
 					});
@@ -370,30 +414,40 @@ impl<'l> Parser<'l> {
 						limit: self.limits.max_cases,
 					});
 				}
-				let file = get("file")
-					.and_then(|f| flavour::clean_path(f, name_cap))
-					.or_else(|| self.files.iter().rev().find_map(Clone::clone));
+				let own = match get("file").and_then(|f| flavour::clean_path(f, name_cap)) {
+					Some(path) => Some(self.budget.keep(Untrusted::new(path))?),
+					None => None,
+				};
+				let file = own.or_else(|| self.files.iter().rev().find_map(Clone::clone));
 				self.case = Some(CaseBuilder {
-					name: capped(get("name").unwrap_or_default()),
-					classname: capped(get("classname").unwrap_or_default()),
-					file: file.map(Untrusted::new),
+					name: self.budget.keep(capped(get("name").unwrap_or_default()))?,
+					classname: self
+						.budget
+						.keep(capped(get("classname").unwrap_or_default()))?,
+					file,
 					line: get("line").and_then(|l| l.trim().parse::<u32>().ok()),
 					time_ms: get("time").map_or(0, parse_time_ms),
 					..CaseBuilder::default()
 				});
 			}
 			t if t.is_result() => {
+				let message = match get("message") {
+					Some(m) => Some(
+						self.budget
+							.keep(Untrusted::capped(m, self.limits.max_message_bytes))?,
+					),
+					None => None,
+				};
 				self.sink = Some(Sink {
-					message: get("message")
-						.map(|m| Untrusted::capped(m, self.limits.max_message_bytes)),
-					text: Untrusted::default(),
+					message,
+					text: TextBuf::default(),
 					cap: self.limits.max_detail_bytes,
 				});
 			}
 			Tag::SystemOut | Tag::SystemErr => {
 				self.sink = Some(Sink {
 					message: None,
-					text: Untrusted::default(),
+					text: TextBuf::default(),
 					cap: self.limits.max_detail_bytes,
 				});
 			}
@@ -442,6 +496,8 @@ impl<'l> Parser<'l> {
 				if sink.text.as_str().contains("[[ATTACHMENT|") {
 					self.facts.saw_attachment = true;
 				}
+				// Charged whether or not the case keeps it, so repeated elements cannot hide cost.
+				self.budget.charge(sink.text.as_str().len())?;
 				let max = self.limits.max_attempts;
 				if let Some(case) = self.case.as_mut() {
 					let detail = sink.text.trimmed();
