@@ -150,8 +150,10 @@ fn push_markdown(
 		'>' => out.push_str("&gt;"),
 		'"' => out.push_str("&quot;"),
 		'\'' => out.push_str("&#39;"),
-		'@' => out.push_str("&#64;"),
-		'#' => out.push_str("&#35;"),
+		// Fullwidth forms: visible, and not read as a mention or an issue reference. An entity
+		// would be decoded back before GitHub's filters run, so it is no defence.
+		'@' => out.push('\u{ff20}'),
+		'#' => out.push('\u{ff03}'),
 		' ' if at_start => out.push_str("&#32;"),
 		':' if prev == Some(':') || next == Some('/') => out.push_str("&#58;"),
 		'\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '(' | ')' | '+' | '-' | '.' | '!'
@@ -238,6 +240,72 @@ impl Safe {
 		Self(out)
 	}
 
+	/// Inline code, on one line: the preferred form for test names, file paths and anything else
+	/// a reader needs to see exactly, because GitHub does not look for mentions or issue
+	/// references in code and Markdown does not interpret anything inside it.
+	///
+	/// The delimiter is one backtick longer than the longest backtick run in the content, and the
+	/// content is padded with a space on each side when it starts or ends with a backtick, or
+	/// starts and ends with a space, so it reads back exactly. Line breaks become `\u{23ce}` and
+	/// other control characters are dropped or spelled out like everywhere else. A pipe is written
+	/// `\|`, which a table cell renders as a pipe and any other place shows with its backslash.
+	/// Empty content is a single space. Cutting is the same as in [`Safe::text_max`]: the budget
+	/// counts characters of content after the above, and the marker follows the closing delimiter.
+	pub fn code_span<S: Source + ?Sized>(source: &S, max_chars: usize) -> Self {
+		let mut body = String::new();
+		let mut written = 0usize;
+		let mut omitted = source.omitted();
+		let mut prev_cr = false;
+		let mut chars = source.raw().chars();
+		while let Some(c) = chars.next() {
+			let after_cr = std::mem::replace(&mut prev_cr, c == '\r');
+			let piece: String = match c {
+				'\n' if after_cr => continue,
+				'\n' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}' => LINE_BREAK_MARK.to_string(),
+				'|' => "\\|".into(),
+				_ => match classify(c) {
+					Clean::Drop => continue,
+					Clean::Space => " ".into(),
+					Clean::Show => shown(c),
+					Clean::Keep => c.to_string(),
+				},
+			};
+			let n = piece.chars().count();
+			if written + n > max_chars {
+				omitted = omitted.saturating_add(1 + chars.count());
+				break;
+			}
+			written += n;
+			body.push_str(&piece);
+		}
+		if body.is_empty() {
+			body.push(' ');
+		}
+		let mut longest = 0usize;
+		let mut run = 0usize;
+		for c in body.chars() {
+			if c == '`' {
+				run += 1;
+				longest = longest.max(run);
+			} else {
+				run = 0;
+			}
+		}
+		let fence = "`".repeat(longest + 1);
+		let all_spaces = body.chars().all(|c| c == ' ');
+		let pad = !all_spaces
+			&& (body.starts_with('`')
+				|| body.ends_with('`')
+				|| (body.starts_with(' ') && body.ends_with(' ')));
+		let gap = if pad { " " } else { "" };
+		let mut out = format!("{fence}{gap}{body}{gap}{fence}");
+		if omitted > 0 {
+			out.push(' ');
+			out.push_str(&markers(omitted));
+		}
+		Self(out)
+	}
+
 	/// A fenced code block. The fence is one backtick longer than the longest run in the content,
 	/// and at least four, so the content cannot close it. Line breaks are kept.
 	pub fn code_block<S: Source + ?Sized>(source: &S, max_chars: usize) -> Self {
@@ -274,11 +342,14 @@ impl Safe {
 	}
 
 	/// One line of plain text for a workflow log that is not a command. `::` and `##[` cannot
-	/// start a command or a runner directive. Line breaks become spaces.
+	/// start a command or a runner directive, and `@` and `#` are written fullwidth so the line
+	/// can also be quoted in a comment without mentioning anyone. Line breaks become spaces.
 	pub fn log_line<S: Source + ?Sized>(source: &S, max_chars: usize) -> Self {
 		Self::plain(source, max_chars, |c, prev, next, out| match c {
 			':' if prev == Some(':') || next == Some(':') => out.push_str("%3A"),
 			'#' if next == Some('#') || prev == Some('#') => out.push_str("%23"),
+			'@' => out.push('\u{ff20}'),
+			'#' => out.push('\u{ff03}'),
 			_ => out.push(c),
 		})
 	}
@@ -357,6 +428,9 @@ impl Safe {
 		Self(out)
 	}
 }
+
+/// Stands for a line break inside a code span, which cannot hold one.
+const LINE_BREAK_MARK: char = '\u{23ce}';
 
 /// The cleaned characters of `s`, one line: controls dropped, breaks as spaces, bidirectional and
 /// zero-width characters spelled out.

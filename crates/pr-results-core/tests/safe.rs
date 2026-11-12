@@ -61,19 +61,46 @@ fn assert_inert(out: &str, input: &str) {
 			"invisible {c:?} in {out:?} from {input:?}"
 		);
 	}
-	// A hash sign is only ever the start of a numeric entity.
-	for (i, c) in out.char_indices() {
-		assert!(
-			c != '#' || out[..i].ends_with('&'),
-			"raw # in {out:?} from {input:?}"
-		);
-	}
+	assert_no_bare_mention_marks(out, input);
 	for needle in ["::", "://", "](", "![", "www."] {
 		assert!(
 			!out.contains(needle),
 			"{needle:?} survives in {out:?} from {input:?}"
 		);
 	}
+}
+
+/// Outside code there is no `@` or `#` at all, apart from the `#` of the numeric entities the
+/// escaper itself writes. Mentions and issue references are read from what is left.
+fn assert_no_bare_mention_marks(out: &str, input: &str) {
+	let mut rest = out;
+	while let Some(i) = rest.find("&#") {
+		let tail = &rest[i + 2..];
+		let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+		assert!(
+			digits > 0 && tail[digits..].starts_with(';'),
+			"stray &# in {out:?} from {input:?}"
+		);
+		rest = &tail[digits + 1..];
+	}
+	let stripped = strip_numeric_entities(out);
+	assert!(
+		!stripped.contains('@') && !stripped.contains('#'),
+		"bare @ or # in {out:?} from {input:?}"
+	);
+}
+
+fn strip_numeric_entities(s: &str) -> String {
+	let mut out = String::new();
+	let mut rest = s;
+	while let Some(i) = rest.find("&#") {
+		out.push_str(&rest[..i]);
+		let tail = &rest[i + 2..];
+		let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+		rest = tail.get(digits + 1..).unwrap_or_default();
+	}
+	out.push_str(rest);
+	out
 }
 
 #[test]
@@ -87,8 +114,11 @@ fn hostile_strings_are_inert_as_text() {
 fn text_escapes_each_class() {
 	assert_eq!(Safe::text("a|b").as_str(), "a\\|b");
 	assert_eq!(Safe::text("<b>&").as_str(), "&lt;b&gt;&amp;");
-	assert_eq!(Safe::text("@everyone").as_str(), "&#64;everyone");
-	assert_eq!(Safe::text("fix #12").as_str(), "fix &#35;12");
+	assert_eq!(Safe::text("@everyone").as_str(), "\u{ff20}everyone");
+	assert_eq!(Safe::text("fix #12").as_str(), "fix \u{ff03}12");
+	assert_eq!(Safe::text("@org/team").as_str(), "\u{ff20}org/team");
+	assert_eq!(Safe::text("org/repo#123").as_str(), "org/repo\u{ff03}123");
+	assert_eq!(Safe::text("GH-1 \u{ff20}x").as_str(), "GH\\-1 \u{ff20}x");
 	assert_eq!(
 		Safe::text("crate::module::test").as_str(),
 		"crate:&#58;module:&#58;test"
@@ -338,4 +368,155 @@ fn ordinary_text_is_untouched_by_the_invisible_rules() {
 		let out = Safe::text(kept);
 		assert_eq!(out.as_str(), kept, "{kept:?}");
 	}
+}
+
+#[test]
+fn no_constructor_leaves_a_mention_or_reference_outside_code() {
+	for input in HOSTILE.iter().copied().chain([
+		"org/repo#123",
+		"@org/team",
+		"@everyone",
+		"@octocat fixed #1",
+		"user@example.invalid",
+		"\u{e0040}octocat",
+	]) {
+		assert_no_bare_mention_marks(Safe::text(input).as_str(), input);
+		assert_no_bare_mention_marks(Safe::log_line(input, 4096).as_str(), input);
+		// Code is exempt from mention filtering, so it has to be code.
+		let span = Safe::code_span(input, 4096);
+		assert!(span.as_str().starts_with('`'), "{span:?} from {input:?}");
+		let block = Safe::code_block(input, 4096);
+		assert!(
+			block.as_str().starts_with("````"),
+			"{block:?} from {input:?}"
+		);
+	}
+}
+
+#[test]
+fn log_lines_keep_commands_and_directives_inert() {
+	let out = Safe::log_line("##[error]x ::error::y @a #1", 100);
+	assert_eq!(
+		out.as_str(),
+		"%23%23[error]x %3A%3Aerror%3A%3Ay \u{ff20}a \u{ff03}1"
+	);
+}
+
+/// Reads a code span back the way CommonMark does: the delimiter, one stripped space of padding on
+/// each side when both are spaces and the content is not all spaces.
+fn read_code_span(span: &str) -> String {
+	let fence = span.chars().take_while(|&c| c == '`').count();
+	let inner = &span[fence..];
+	let end = inner.rfind(&"`".repeat(fence)).unwrap();
+	assert_eq!(inner[end..].len(), fence, "closing delimiter in {span:?}");
+	let body = &inner[..end];
+	assert!(
+		!body.contains(&"`".repeat(fence)),
+		"body closes early in {span:?}"
+	);
+	if body.starts_with(' ') && body.ends_with(' ') && body.chars().any(|c| c != ' ') {
+		body[1..body.len() - 1].to_owned()
+	} else {
+		body.to_owned()
+	}
+}
+
+#[test]
+fn code_span_adapts_its_delimiter_to_backticks_of_every_length() {
+	for n in 1..=12usize {
+		let ticks = "`".repeat(n);
+		let cases = [
+			ticks.clone(),
+			format!("a{ticks}b"),
+			format!("{ticks}a"),
+			format!("a{ticks}"),
+			format!("{ticks}a{ticks}"),
+			format!("`a{ticks}``b"),
+		];
+		for input in cases {
+			let out = Safe::code_span(input.as_str(), 4096);
+			assert_eq!(read_code_span(out.as_str()), input, "{input:?} -> {out:?}");
+			assert!(!out.as_str().contains('\n'));
+		}
+	}
+	assert_eq!(Safe::code_span("plain", 100).as_str(), "`plain`");
+	assert_eq!(Safe::code_span("`", 100).as_str(), "`` ` ``");
+	assert_eq!(Safe::code_span("a`b", 100).as_str(), "``a`b``");
+	assert_eq!(Safe::code_span("``", 100).as_str(), "``` `` ```");
+	assert_eq!(Safe::code_span("", 100).as_str(), "` `");
+	assert_eq!(Safe::code_span("   ", 100).as_str(), "`   `");
+	assert_eq!(Safe::code_span(" a ", 100).as_str(), "`  a  `");
+}
+
+#[test]
+fn code_span_shows_mentions_as_they_are_and_cannot_be_broken_out_of() {
+	assert_eq!(Safe::code_span("@octocat", 100).as_str(), "`@octocat`");
+	assert_eq!(Safe::code_span("org/repo#1", 100).as_str(), "`org/repo#1`");
+	for input in HOSTILE {
+		let out = Safe::code_span(*input, 4096);
+		assert!(!out.as_str().contains(['\n', '\r']), "{out:?}");
+		let one_span = read_code_span(out.as_str());
+		assert!(!one_span.contains('\n'));
+	}
+	// A pipe is written for a table cell.
+	assert_eq!(Safe::code_span("a|b", 100).as_str(), "`a\\|b`");
+}
+
+#[test]
+fn code_span_marks_line_breaks_and_drops_controls() {
+	assert_eq!(
+		Safe::code_span("a\nb\r\nc\rd", 100).as_str(),
+		"`a\u{23ce}b\u{23ce}c\u{23ce}d`"
+	);
+	assert_eq!(
+		Safe::code_span("a\u{2028}b\u{85}c", 100).as_str(),
+		"`a\u{23ce}b\u{23ce}c`"
+	);
+	assert_eq!(Safe::code_span("a\tb\0c\u{1b}d", 100).as_str(), "`a bcd`");
+}
+
+#[test]
+fn code_span_spells_out_invisible_characters() {
+	assert_eq!(
+		Safe::code_span("\u{e0041}hidden", 100).as_str(),
+		"`\\u{e0041}hidden`"
+	);
+	for &(first, last, what) in INVISIBLE {
+		for code in first..=last {
+			let c = char::from_u32(code).unwrap();
+			let out = Safe::code_span(format!("a{c}b").as_str(), 100);
+			assert_eq!(
+				out.as_str(),
+				format!("`a\\u{{{code:x}}}b`"),
+				"{what} U+{code:04X}"
+			);
+		}
+	}
+}
+
+#[test]
+fn code_span_is_cut_and_says_so() {
+	let big = "N".repeat(10 * 1024 * 1024);
+	let out = Safe::code_span(big.as_str(), 50);
+	assert!(out.len_chars() < 120, "{}", out.len_chars());
+	assert!(out.as_str().starts_with(&format!("`{}` ", "N".repeat(50))));
+	assert!(out.as_str().ends_with(&format!(
+		"({} more characters omitted)",
+		10 * 1024 * 1024 - 50
+	)));
+	// The cut never lands inside an escape.
+	assert_eq!(
+		Safe::code_span("ab|cd", 3).as_str(),
+		"`ab` \u{2026} (3 more characters omitted)"
+	);
+	assert_eq!(
+		Safe::code_span("abc\u{200b}", 5).as_str(),
+		"`abc` \u{2026} (1 more characters omitted)"
+	);
+	// What the parser already cut is counted too.
+	let capped = Untrusted::capped("abcdef", 3);
+	assert_eq!(
+		Safe::code_span(&capped, 100).as_str(),
+		"`abc` \u{2026} (3 more characters omitted)"
+	);
 }
