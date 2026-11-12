@@ -17,8 +17,32 @@ use std::collections::BTreeSet;
 
 use common::{assert_inert_all, golden_dir, scenarios, Scenario};
 
+/// Whether the goldens are being rewritten. CI must compare, never rewrite, so blessing there
+/// is an error.
 fn blessing() -> bool {
-	std::env::var("PR_RESULTS_BLESS").is_ok_and(|v| v == "1")
+	blessing_in(
+		std::env::var_os("CI").is_some(),
+		std::env::var("PR_RESULTS_BLESS").ok().as_deref(),
+	)
+}
+
+fn blessing_in(ci: bool, bless: Option<&str>) -> bool {
+	let asked = bless == Some("1");
+	assert!(
+		!(ci && asked),
+		"PR_RESULTS_BLESS must not be set when CI is set"
+	);
+	asked
+}
+
+#[test]
+fn blessing_in_ci_is_refused() {
+	assert!(blessing_in(false, Some("1")));
+	assert!(!blessing_in(false, None));
+	assert!(!blessing_in(true, None));
+	assert!(!blessing_in(true, Some("0")));
+	let refused = std::panic::catch_unwind(|| blessing_in(true, Some("1")));
+	assert!(refused.is_err());
 }
 
 fn check_scenario(sc: &Scenario) {
