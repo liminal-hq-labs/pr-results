@@ -143,6 +143,8 @@ for pair in "$action:$action_body" "$workflow:$workflow_body"; do
 	done
 	# Each target must be paired with its own digest, not another's.
 	flat="$(tr -s ' \n' '  ' <<<"$body")"
+	# These are literal text to find in the script, so no expansion is wanted.
+	# shellcheck disable=SC2016
 	for pairing in \
 		'target=x86_64-unknown-linux-musl want="$PR_RESULTS_SHA256_X86_64"' \
 		'target=aarch64-unknown-linux-musl want="$PR_RESULTS_SHA256_AARCH64"'; do
