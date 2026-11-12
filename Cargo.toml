@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/pr-results-core", "crates/pr-results-render", "crates/pr-results"]
+members = ["crates/pr-results-core", "crates/pr-results-render", "crates/pr-results-github", "crates/pr-results"]
 
 [workspace.package]
 version = "0.1.0-dev"
@@ -12,8 +12,10 @@ publish = false
 
 [workspace.dependencies]
 quick-xml = { version = "=0.42.0", default-features = false }
+miniz_oxide = { version = "=0.9.1", default-features = false, features = ["with-alloc"] }
 pr-results-core = { version = "0.1.0-dev", path = "crates/pr-results-core" }
 pr-results-render = { version = "0.1.0-dev", path = "crates/pr-results-render" }
+pr-results-github = { version = "0.1.0-dev", path = "crates/pr-results-github" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

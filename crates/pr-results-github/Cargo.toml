@@ -1,0 +1,17 @@
+[package]
+name = "pr-results-github"
+description = "The GitHub client behind a Forge trait, the artefact reader and the publish flow"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+miniz_oxide.workspace = true
+pr-results-core.workspace = true
+pr-results-render.workspace = true
+
+[lints]
+workspace = true
