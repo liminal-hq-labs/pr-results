@@ -297,5 +297,6 @@ fn every_settings_example_in_the_documents_is_valid() {
 			checked += 1;
 		}
 	}
-	assert!(checked >= 2, "found only {checked} toml blocks");
+	// SPEC.md has one, and the adoption guide has three: section 3, Playwright and Desk.
+	assert!(checked >= 4, "found only {checked} toml blocks");
 }

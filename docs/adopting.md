@@ -1,6 +1,6 @@
 # Adopting pr-results
 
-> **Planned.** `pr-results` is not released yet: there is no action, reusable workflow or binary to pin. This page describes the intended setup so the CI of a product can be prepared now. The publisher exists as a library and is tested against an in-memory GitHub, but the command line does not call it yet. The behaviour is specified in [SPEC.md](../SPEC.md).
+> **Not released.** pr-results has no release yet, so there is no binary to pin: the reusable workflow and the composite action stop with a message that says so until a release writes its SHA-256 into them, and `build: source` in the composite action builds the checkout instead. The command line, the action and the workflows are built and tested against an in-memory GitHub, but none of them has run on GitHub. The behaviour is specified in [SPEC.md](../SPEC.md).
 
 The publisher runs after your CI finishes, in a `workflow_run` workflow, so it works for pull requests from forks and from Dependabot, where a `pull_request` job's token is read-only. Your CI only needs to upload the results as artefacts.
 
@@ -12,24 +12,34 @@ In each job that produces results, upload them with `if: always()`, so a failing
 | --- | --- |
 | `rust-test-results` | nextest JUnit, `target/nextest/ci/junit.xml` |
 | `frontend-test-results` or `js-test-results` | vitest or bun JUnit |
+| `e2e-test-results-1`, `e2e-test-results-2` | Playwright JUnit, one artefact per shard, read as one suite |
 | `steps-test-results` | step-results JUnit from a shell-step project |
 | `event-file` | `${{ github.event_path }}`, a hint for finding the pull request (verified, never trusted on its own) |
+
+Any artefact named `<name>-test-results` or `<name>-test-results-<more>` becomes a suite called "<Name> tests", with its check run named "<Title> <Name> tests". Names with anything but letters, digits, `.`, `_` and `-` are ignored, because a fork chooses its artefact names. Name your suites in a settings file (below) when you want something else.
 
 ```yaml
 - name: Upload Rust test results
   if: always()
-  uses: actions/upload-artifact@<full commit sha> # vX.Y.Z
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
   with:
     name: rust-test-results
     path: target/nextest/ci/junit.xml
     if-no-files-found: ignore
+
+- name: Upload the event file
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: event-file
+    path: ${{ github.event_path }}
 ```
 
-Keep the CI workflow at `contents: read`.
+Keep the CI workflow at `contents: read`. The recipes for each test runner are [below](#recipes-for-each-test-runner).
 
 ## 2. Add the publisher workflow
 
-Planned, not yet available. Create `.github/workflows/publish-test-results.yml`:
+Create `.github/workflows/publish-test-results.yml`:
 
 ```yaml
 # Posts the results of a finished CI run to its pull request: one comment and a check run per suite.
@@ -50,20 +60,34 @@ jobs:
   publish:
     if: github.event.workflow_run.conclusion != 'skipped' && github.event.workflow_run.conclusion != 'cancelled'
     permissions:
-      actions: read
-      checks: write
-      pull-requests: write
-      contents: read
+      actions: read # list and download the run's artefacts
+      checks: write # create and update check runs and annotations
+      pull-requests: write # create and update the sticky comment
+      contents: read # check out .github/ from the default branch
     uses: liminal-hq-labs/pr-results/.github/workflows/publish.yml@<full commit sha> # v0.1.0
 ```
 
-Pin the `uses:` line by full commit SHA and keep the version in the comment, so Dependabot's `github-actions` ecosystem can update both. Pinning the commit also pins the exact binary, because `action.yml` at that commit carries its SHA-256. The workflow takes two inputs: `config` (default `.github/pr-results.toml`) and `build` (`release`, the default, or `source` for a runner the binaries do not cover).
+Pin the `uses:` line by full commit SHA and keep the version in the comment, so Dependabot's `github-actions` ecosystem can update both. Pinning the commit also pins the exact binary, because `publish.yml` at that commit carries its SHA-256 and checks it before running it. The workflow takes one input, `config` (default `.github/pr-results.toml`). It runs on `ubuntu-24.04`, checks out only `.github/` of your default branch with no credentials, and never your pull request.
 
 The publisher is a `workflow_run` workflow, so GitHub only runs it once the file is on the default branch. Merge it before expecting comments on other branches.
 
+### The composite action
+
+The same binary is available as a step, for a custom flow or for `render`:
+
+```yaml
+- name: Render the results
+  uses: liminal-hq-labs/pr-results@<full commit sha> # v0.1.0
+  with:
+    command: render
+    args: --out out target/nextest/ci/junit.xml
+```
+
+The inputs are `command` (`publish`, `render` or `validate-config`), `args` (split on whitespace), `config`, `build` (`release`, the default, or `source`, which builds the action's checkout with a pinned toolchain) and `token` (default `github.token`). `publish` works only in a `workflow_run` workflow on the default branch, and stops with a message anywhere else. Publishing from the test job itself is planned for v0.2.
+
 ## 3. Configure it (optional)
 
-With the default artefact names, no file is needed: suites are inferred from artefacts matching `*-test-results*`. To name check runs, map suites or set limits, add `.github/pr-results.toml` on the default branch. Unknown keys are an error. Every setting and its default is in [SPEC.md](../SPEC.md#settings-and-defaults); validate a file with `pr-results validate-config .github/pr-results.toml`.
+With the default artefact names, no file is needed: suites are inferred from artefacts matching `*-test-results*`. To name check runs, map suites or set limits, add `.github/pr-results.toml` on the default branch. Unknown keys are an error, and so is a setting for a later version. Every setting and its default is in [SPEC.md](../SPEC.md#settings-and-defaults); validate a file with `pr-results validate-config .github/pr-results.toml`.
 
 ```toml
 # pr-results settings: one comment, a check run per suite.
@@ -90,7 +114,185 @@ Render the Markdown from local files with no network, to see what a pull request
 pr-results render target/nextest/ci/junit.xml --out out/
 ```
 
-`pr-results publish --dry-run DIR` runs the whole flow without writing and saves the would-be API requests in `DIR`.
+This writes `out/comment.md` and `out/checks/0.md`, one file per suite. Without `--out` it prints the comment. With a settings file (`--config`), each file goes to the first suite whose `files` patterns match its path. The footer links point at a placeholder repository, because there is no run.
+
+To try the publisher itself, add `args: --dry-run out` to a publisher step in a branch. It reads from GitHub for real, writes nothing, and saves the would-be API requests in `out/requests.json`, the comment in `out/comment.md` and each check run in `out/checks/`.
+
+## Recipes for each test runner
+
+Each recipe is the upload step to add to your CI and, where the defaults do not fit, the suite for `.github/pr-results.toml`. The publisher is the same for all of them. The JavaScript flavours (vitest, bun, jest, Playwright) are parsed in v0.1 and tuned in v0.2: results, failures and times show, and annotations at the file and line, path mapping and Playwright's retries follow in v0.2.
+
+### Rust: nextest
+
+Set a `ci` profile that writes JUnit in `.config/nextest.toml`, then run it and upload the file:
+
+```toml nextest
+# nextest settings: the `ci` profile writes JUnit that pr-results reads.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+[profile.ci]
+retries = 1
+
+[profile.ci.junit]
+path = "junit.xml"
+```
+
+```yaml
+- name: Run the tests
+  run: cargo nextest run --workspace --locked --profile ci
+
+- name: Upload Rust test results
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: rust-test-results
+    path: target/nextest/ci/junit.xml
+    if-no-files-found: ignore
+```
+
+`retries = 1` makes a test that passes on its second try show as flaky instead of failing. The artefact name is a default, so no settings file is needed.
+
+### JavaScript: vitest
+
+```yaml
+- name: Run the tests
+  run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/junit.xml
+
+- name: Upload frontend test results
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: frontend-test-results
+    path: test-results/junit.xml
+    if-no-files-found: ignore
+```
+
+### JavaScript: Playwright shards
+
+Each shard uploads its own artefact under a name that starts with the suite's, and the publisher reads them as one suite:
+
+```yaml
+# Runs the end-to-end tests in two shards.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the tests
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: results/junit.xml
+        run: |
+          npm ci
+          npx playwright install --with-deps
+          npx playwright test --shard=${{ matrix.shard }}/2 --reporter=list,junit
+
+      - name: Upload end-to-end test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-test-results-${{ matrix.shard }}
+          path: results/junit.xml
+          if-no-files-found: ignore
+```
+
+The artefacts `e2e-test-results-1` and `e2e-test-results-2` become one suite, "E2e tests". To name it and give it the Playwright flavour, add to `.github/pr-results.toml`:
+
+```toml
+# pr-results settings: the end-to-end shards as one suite.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+title = "Example checks"
+
+[[suite]]
+name = "End-to-end tests"
+check = "Example end-to-end tests"
+artifact = "e2e-test-results-*"
+files = ["**/junit.xml"]
+flavour = "playwright"
+```
+
+### JavaScript: bun
+
+```yaml
+- name: Run the tests
+  run: bun test --reporter=junit --reporter-outfile=test-results/junit.xml
+
+- name: Upload JavaScript test results
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: js-test-results
+    path: test-results/junit.xml
+    if-no-files-found: ignore
+```
+
+### Shell steps and Rust together: Desk
+
+Desk runs its checks as groups of steps and uploads one artefact per job, `results-<job>`, holding the converter's `steps.xml` and nextest's `nextest-*.xml`. The default `*-test-results*` misses those names, so Desk needs a settings file with two suites that each take their own files from every `results-*` artefact:
+
+```yaml
+- name: Upload the results
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: results-${{ github.job }}
+    path: |
+      results/steps.xml
+      results/nextest-*.xml
+    if-no-files-found: ignore
+```
+
+```toml
+# pr-results settings for Desk: the step results and the Rust tests, from every results-* artefact.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+title = "Desk checks"
+
+[[suite]]
+name = "Desk steps"
+check = "Desk check steps"
+artifact = "results-*"
+files = ["**/steps.xml"]
+flavour = "steps"
+required = true
+
+[[suite]]
+name = "Rust tests"
+check = "Desk Rust tests"
+artifact = "results-*"
+files = ["**/nextest-*.xml"]
+flavour = "nextest"
+```
+
+`required = true` makes a run with no step results a failure ("No results were uploaded") where an optional suite is neutral. The `steps` flavour reads one suite per group or one per job, the shape Desk's converter writes (see [docs/inputs.md](inputs.md)). Desk adopts it after this repository's own dogfood, in a small pull request that swaps its current reporter steps for the publisher workflow above.
 
 ## What the publisher does with a run
 
