@@ -39,8 +39,9 @@ mutation() {
 	local name="$1" file="$2"
 	shift 2
 	fresh
+	cp "$work/repo/$file" "$work/before"
 	sed -i "$@" "$work/repo/$file"
-	if cmp -s "$file" "$work/repo/$file"; then
+	if cmp -s "$work/before" "$work/repo/$file"; then
 		echo "test-check-pins: '$name' changed nothing: the test is stale" >&2
 		failures=$((failures + 1))
 		return
