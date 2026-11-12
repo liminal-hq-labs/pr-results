@@ -269,3 +269,52 @@ fn a_prefix_applies_to_a_nextest_panic_and_to_an_attribute_too() {
 		"crates/core/tests/u.rs"
 	);
 }
+
+#[test]
+fn a_frame_with_an_invisible_character_in_its_path_is_not_a_location() {
+	// `RepoPath` refuses these paths, so using one would replace the case's good file with a
+	// path that loses the annotation.
+	for hidden in [
+		'\u{200b}',
+		'\u{202e}',
+		'\u{feff}',
+		'\u{2060}',
+		'\u{e0041}',
+		'\u{ad}',
+	] {
+		let body = format!("at src/a{hidden}b.js:1:1");
+		assert_eq!(vitest(&body), "test/a.test.js:-", "{hidden:?}");
+		let body = format!("at fn (src/a{hidden}b.js:1:1)\nat src/ok.js:2:2");
+		assert_eq!(
+			vitest(&body),
+			"src/ok.js:2",
+			"{hidden:?}: the next frame is used"
+		);
+		let body = format!("❯ src/a{hidden}b.js:1:1");
+		assert_eq!(vitest(&body), "test/a.test.js:-", "{hidden:?}");
+	}
+	let heading = "[chromium] › a\u{200b}b.spec.ts:12:5 › login";
+	assert_eq!(
+		located(Flavour::Playwright, "login.spec.ts", heading, None),
+		"login.spec.ts:-"
+	);
+}
+
+#[test]
+fn a_frame_without_parentheses_is_the_whole_remainder_with_its_spaces() {
+	let table = [
+		("at src/a b.js:1:1", "src/a b.js:1"),
+		("at src/my dir/a.js:7:3", "src/my dir/a.js:7"),
+		("at  src/a b.js:1  ", "src/a b.js:1"),
+		("❯ src/a b.js:1:1", "src/a b.js:1"),
+		("❯ divide src/a b.js:5:2", "src/a b.js:5"),
+		("❯ divide src/a.js:5:2", "src/a.js:5"),
+		("❯ src/a.js:5:2", "src/a.js:5"),
+		// With parentheses the place is what is inside them, as before.
+		("at fn (src/a b.js:1:1)", "src/a b.js:1"),
+		("at async Promise.all (index 0)", "test/a.test.js:-"),
+	];
+	for (body, want) in table {
+		assert_eq!(vitest(body), want, "{body:?}");
+	}
+}
