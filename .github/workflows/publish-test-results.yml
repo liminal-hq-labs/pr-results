@@ -1,0 +1,51 @@
+# Posts the results of this repository's own CI run to its pull request, with its own action.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+#
+# Until the first release this builds `main`'s reviewed source (`build: source`) rather than a
+# pinned binary, from the default branch's checkout, never from the pull request. A follow-up
+# after the v0.1.0 tag pins the release by commit SHA, as the adoption guide shows. It is inert
+# until this file is on the default branch, because `workflow_run` workflows run from there.
+
+
+name: Publish Test Results
+
+on:
+  # zizmor: ignore[dangerous-triggers] This is the publisher the design needs: it holds the write token
+  # but runs only the default branch's code, reads the run's artefacts as untrusted data and never
+  # checks out a pull request.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: pr-results-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish
+    if: github.event.workflow_run.conclusion != 'skipped' && github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read # list and download the run's artefacts
+      checks: write # create and update check runs and annotations
+      pull-requests: write # create and update the sticky comment
+      contents: read # check out .github/ from the default branch (needed in private repositories)
+    steps:
+      # A `workflow_run` workflow checks out the default branch, which is what runs here.
+      - name: Checkout the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Publish the results
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: publish
+          build: source

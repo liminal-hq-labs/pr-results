@@ -1,6 +1,6 @@
 # One job per check, so a pull request's checks list names exactly what passed or failed.
-# The Rust jobs run in the shared ci-rust image. The dependency policy, goldens, reproducible-build
-# and action-smoke jobs the specification lists follow with the code they check.
+# The Rust jobs run in the shared ci-rust image. The reproducible-build job the specification lists
+# follows with the release.
 #
 # Every action is pinned by full commit SHA with its version in a comment, and images by digest.
 #
@@ -110,6 +110,11 @@ jobs:
       - name: Run actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
 
+      # The workflows and steps the documents show are copied into repositories, so they get the
+      # same linting as the ones here.
+      - name: Run actionlint over the documents' YAML
+        run: bash scripts/check-doc-yaml.sh
+
   zizmor:
     name: Workflow audit
     runs-on: ubuntu-24.04
@@ -185,8 +190,108 @@ jobs:
       - name: Run the tests
         run: cargo nextest run --workspace --locked --profile ci
 
-      # Uploading target/nextest/ci/junit.xml as `rust-test-results` for the publisher waits for the
-      # upload-artifact action to be pinned and for the first release of the publisher itself.
+      # The publisher of this repository's own results reads these two artefacts.
+      - name: Upload the test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rust-test-results
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
-  # The dependency policy job (`cargo deny check` in the same image) follows with the goldens and
-  # the reproducible build.
+      - name: Upload the event file
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: event-file
+          path: ${{ github.event_path }}
+          retention-days: 14
+
+  goldens:
+    name: Goldens
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pr-results
+
+      # Every test that compares output with a file under a `golden` directory: the renderer's
+      # scenarios, the publisher's request sequences and the command line's `render`. `CI` is
+      # set, which makes `PR_RESULTS_BLESS` an error, so a golden cannot be rewritten here.
+      - name: Compare the goldens
+        run: cargo nextest run --workspace --locked --no-tests=fail -E 'binary(golden) | test(golden)'
+
+  deny:
+    name: Dependency policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the dependencies
+        run: cargo deny check
+
+  action-smoke:
+    name: Action smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Runs this checkout's own action, built from source: a pull request cannot pin a release
+      # that does not exist yet, and render needs no token.
+      - name: Validate this repository's settings
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: validate-config
+          build: source
+
+      - name: Render the fixtures
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: render
+          build: source
+          args: --title Smoke --out ${{ runner.temp }}/smoke tests/fixtures/nextest/pass.xml tests/fixtures/nextest/fail.xml
+
+      - name: Check what it wrote
+        env:
+          SMOKE: ${{ runner.temp }}/smoke
+        run: |
+          test -s "$SMOKE/comment.md"
+          test -s "$SMOKE/checks/0.md"
+          grep -q '^<!-- pr-results:1 key=ci ' "$SMOKE/comment.md"
+          grep -q '^### Smoke: ' "$SMOKE/comment.md"
+
+  pins:
+    name: Release pins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the pins
+        run: bash scripts/check-pins.sh
+
+  # The reproducible build (the musl binaries built twice, with their digests compared) follows
+  # with the release.
