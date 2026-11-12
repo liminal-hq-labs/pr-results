@@ -1178,3 +1178,38 @@ fn only_the_files_a_section_asks_for_are_inflated() {
 	);
 	assert!(env.bot_comments(7)[0].body.contains("All 2 passed"));
 }
+
+// ---- verification, one condition at a time --------------------------------------------------
+
+#[test]
+fn a_pull_request_into_another_repository_does_not_verify() {
+	// Open, at this run's commit, from this run's head repository: only the base differs.
+	let mut env = env_with_results();
+	env.fake.add_pull(FakePull {
+		base_repo: "other/repo".to_owned(),
+		..FakePull::same_repo(12, REPO, SHA, "feature")
+	});
+	env.run.pull_requests = vec![12];
+	env.fake.close_pull(7);
+	let report = env.publish();
+	assert!(
+		report.notes.contains(&Note::NoPullRequest),
+		"{:?}",
+		report.notes
+	);
+	assert!(report.comments.is_empty());
+	assert!(env.fake.comments(12).is_empty());
+}
+
+#[test]
+fn a_pull_request_from_another_head_repository_does_not_verify() {
+	let mut env = env_with_results();
+	env.fake.add_pull(FakePull {
+		head_repo: Some("someone/else".to_owned()),
+		..FakePull::same_repo(13, REPO, SHA, "feature")
+	});
+	env.run.pull_requests = vec![13];
+	let report = env.publish();
+	assert!(report.notes.contains(&Note::NoPullRequest));
+	assert!(env.fake.comments(13).is_empty());
+}
