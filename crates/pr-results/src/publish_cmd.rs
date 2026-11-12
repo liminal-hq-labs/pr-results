@@ -65,7 +65,11 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 		|| (a.forge.is_none() && get(FORGEJO_SERVER_ENV).is_some());
 	let settings = load_settings(a.config.as_deref(), forgejo_config)?;
 	let kind = forge_kind(a, &settings.forge, &get)?;
-	let env = environment(&get, a.from.is_some(), kind == HostKind::Forgejo && settings.forge.allow_http)?;
+	let env = environment(
+		&get,
+		a.from.is_some(),
+		kind == HostKind::Forgejo && settings.forge.allow_http,
+	)?;
 	let setup = forge_setup(kind, &settings.forge, &env)?;
 	let Some(run) = env.event.run.clone() else {
 		io.say("The run's head repository has been deleted, so there is nothing to verify: nothing to publish.");
