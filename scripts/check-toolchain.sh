@@ -27,6 +27,14 @@ bad() {
 	failed=1
 }
 
+for tool in rustc cargo; do
+	want_version="$(grep "^$tool " scripts/rust-toolchain.txt)"
+	found_version="$("$tool" -V)"
+	if [[ -z "$want_version" || "$found_version" != "$want_version" ]]; then
+		bad "toolchain drift: expected $want_version, found $found_version; rebuild and re-pin (docs/releasing.md)"
+	fi
+done
+
 arch="$(dpkg --print-architecture)"
 found="$(dpkg-query -W -f='${Package} ${Version}\n' musl musl-dev musl-tools 2>/dev/null | sort || true)"
 want="$(awk -v a="$arch" '$1 == a { print $2 " " $3 }' scripts/musl-packages.txt | sort)"
