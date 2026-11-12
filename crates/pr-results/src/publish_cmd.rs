@@ -3,10 +3,8 @@
 // (c) Copyright 2026 Liminal HQ, Scott Morris
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Publishing runs only from a `workflow_run` workflow on the default branch of the repository
-//! the event is for. Anything else is refused with exit status 2 before a request is made, so a
-//! misplaced job cannot post with a token it should not have. Forgejo has no `workflow_run`, so
-//! its host is wired here and waits for in-job publishing to be reachable from a Forgejo runner.
+//! A `workflow_run` publisher runs on the default branch. With `--from`, publishing uses the
+//! current pull request or push and bounded local inputs; fork pull requests are skipped.
 //!
 //! Before any request the forge is settled: its kind (`--forge`, else `[forge] kind`, and a
 //! Forgejo runner on a `github` kind is refused), its API address (on the runner's own host and
@@ -19,16 +17,16 @@ use std::path::{Path, PathBuf};
 
 use pr_results_core::{Flavour, Glob, Limits as ParseLimits, RepoSlug, ServerUrl};
 use pr_results_forge::{
-	publish, requests_to_json, ApiRequest, ArchiveLimits, CaBundle, DryRun, Forge, ForgeError,
-	Forgejo, GitHub, Host, HostKind, Method, Plan, PublishReport, SectionPlan, Token, WorkflowRun,
-	DEFAULT_BOT_LOGIN,
+	publish, publish_inputs, requests_to_json, ApiRequest, ArchiveLimits, CaBundle, DryRun, Forge,
+	ForgeError, Forgejo, GitHub, Host, HostKind, Method, Plan, PublishReport, SectionPlan, Token,
+	WorkflowRun, DEFAULT_BOT_LOGIN,
 };
 use pr_results_render::Conclusion;
 use serde_json::Value;
 
 use crate::args::{PublishArgs, DEFAULT_TOKEN_ENV};
 use crate::config::{self, valid_login, CommentMode, ForgeSettings, Settings};
-use crate::event::{parse_event, Event, MAX_EVENT_BYTES};
+use crate::event::{parse_event, parse_in_job, Event, MAX_EVENT_BYTES};
 use crate::render_cmd::{check_file, write};
 use crate::{CliError, ForgeFactory, ForgeSetup, Streams, VERSION};
 
@@ -63,14 +61,26 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 	io: &mut Streams<'_>,
 ) -> Result<u8, CliError> {
 	let get = |name: &str| vars(name).filter(|v| !v.is_empty());
-	let settings = load_settings(a.config.as_deref())?;
+	let forgejo_config = a.forge == Some(HostKind::Forgejo)
+		|| (a.forge.is_none() && get(FORGEJO_SERVER_ENV).is_some());
+	let settings = load_settings(a.config.as_deref(), forgejo_config)?;
 	let kind = forge_kind(a, &settings.forge, &get)?;
-	let env = environment(&get, kind == HostKind::Forgejo && settings.forge.allow_http)?;
+	let env = environment(&get, a.from.is_some(), kind == HostKind::Forgejo && settings.forge.allow_http)?;
 	let setup = forge_setup(kind, &settings.forge, &env)?;
 	let Some(run) = env.event.run.clone() else {
 		io.say("The run's head repository has been deleted, so there is nothing to verify: nothing to publish.");
 		return Ok(0);
 	};
+	if a.from.is_some()
+		&& run.event == "pull_request"
+		&& !run
+			.head_repo
+			.to_string()
+			.eq_ignore_ascii_case(&env.repo.to_string())
+	{
+		io.say("A fork pull request has a read-only token: nothing to publish.");
+		return Ok(0);
+	}
 	if matches!(run.conclusion.as_deref(), Some("cancelled" | "skipped")) {
 		io.say("The run was cancelled or skipped: nothing to publish.");
 		return Ok(0);
@@ -101,24 +111,56 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 		(HostKind::GitHub, Some(dir)) => {
 			let bot = bot.as_deref().unwrap_or(DEFAULT_BOT_LOGIN);
 			let gh = GitHub::new(DryRun::new(forge), env.repo.clone(), bot);
-			let report = execute(&gh, &run, &env, &settings, summary.as_deref(), io)?;
+			let report = execute(
+				&gh,
+				&run,
+				&env,
+				&settings,
+				summary.as_deref(),
+				a.from.as_deref(),
+				io,
+			)?;
 			write_dry_run(dir, &gh.forge().requests(), io)?;
 			report
 		}
 		(HostKind::GitHub, None) => {
 			let bot = bot.as_deref().unwrap_or(DEFAULT_BOT_LOGIN);
 			let gh = GitHub::new(forge, env.repo.clone(), bot);
-			execute(&gh, &run, &env, &settings, summary.as_deref(), io)?
+			execute(
+				&gh,
+				&run,
+				&env,
+				&settings,
+				summary.as_deref(),
+				a.from.as_deref(),
+				io,
+			)?
 		}
 		(HostKind::Forgejo, Some(dir)) => {
 			let host = forgejo(DryRun::new(forge), &env, bot.as_deref())?;
-			let report = execute(&host, &run, &env, &settings, summary.as_deref(), io)?;
+			let report = execute(
+				&host,
+				&run,
+				&env,
+				&settings,
+				summary.as_deref(),
+				a.from.as_deref(),
+				io,
+			)?;
 			write_dry_run(dir, &host.forge().requests(), io)?;
 			report
 		}
 		(HostKind::Forgejo, None) => {
 			let host = forgejo(forge, &env, bot.as_deref())?;
-			execute(&host, &run, &env, &settings, summary.as_deref(), io)?
+			execute(
+				&host,
+				&run,
+				&env,
+				&settings,
+				summary.as_deref(),
+				a.from.as_deref(),
+				io,
+			)?
 		}
 	};
 	Ok(exit_code(&report, a.fail_on_failures))
@@ -301,6 +343,7 @@ fn exit_code(report: &PublishReport, fail_on_failures: bool) -> u8 {
 /// The preconditions. Every failure is exit status 2.
 fn environment(
 	get: &dyn Fn(&str) -> Option<String>,
+	in_job: bool,
 	allow_http: bool,
 ) -> Result<Environment, CliError> {
 	let need = |name: &str| {
@@ -309,29 +352,40 @@ fn environment(
 		})
 	};
 	let event_name = need("GITHUB_EVENT_NAME")?;
-	if event_name != "workflow_run" {
-		return Err(CliError::usage(if get(FORGEJO_SERVER_ENV).is_some() {
-			format!(
-				"publish runs only in a workflow_run workflow, not on {event_name}, and Forgejo has no workflow_run trigger: see docs/adopting-forgejo.md"
-			)
-		} else {
-			format!(
-				"publish runs only in a workflow_run workflow, not on {event_name}: see docs/adopting.md"
-			)
-		}));
+	if (in_job && !matches!(event_name.as_str(), "pull_request" | "push"))
+		|| (!in_job && event_name != "workflow_run")
+	{
+		return Err(CliError::usage(format!("publish requires workflow_run, or pull_request or push with --from; received {event_name}")));
 	}
 	let repo = RepoSlug::parse(&need("GITHUB_REPOSITORY")?)
 		.ok_or_else(|| CliError::usage("GITHUB_REPOSITORY is not owner/name"))?;
-	let git_ref = need("GITHUB_REF")?;
+	let git_ref = get("GITHUB_REF").unwrap_or_default();
 	let api_env = get("GITHUB_API_URL");
 	let server_text = need("GITHUB_SERVER_URL")?.trim_end_matches('/').to_owned();
 	let server = ServerUrl::parse_with_http(&server_text, allow_http)
 		.ok_or_else(|| CliError::usage("GITHUB_SERVER_URL is not an https:// address"))?;
 	let path = need("GITHUB_EVENT_PATH")?;
 	let bytes = read_event(Path::new(&path))?;
-	let event = parse_event(&bytes).map_err(CliError::usage)?;
+	let event = if in_job {
+		let id = need("GITHUB_RUN_ID")?
+			.parse::<u64>()
+			.ok()
+			.filter(|n| *n > 0)
+			.ok_or_else(|| CliError::usage("GITHUB_RUN_ID is not a positive number"))?;
+		let number = get("GITHUB_RUN_NUMBER")
+			.map(|s| {
+				s.parse::<u64>()
+					.ok()
+					.filter(|n| *n > 0)
+					.ok_or_else(|| CliError::usage("GITHUB_RUN_NUMBER is not a positive number"))
+			})
+			.transpose()?;
+		parse_in_job(&bytes, &event_name, id, number).map_err(CliError::usage)?
+	} else {
+		parse_event(&bytes).map_err(CliError::usage)?
+	};
 
-	if git_ref != format!("refs/heads/{}", event.default_branch) {
+	if !in_job && git_ref != format!("refs/heads/{}", event.default_branch) {
 		return Err(CliError::usage(
 			"publish runs only on the default branch: GITHUB_REF is not the default branch",
 		));
@@ -365,10 +419,17 @@ fn read_event(path: &Path) -> Result<Vec<u8>, CliError> {
 }
 
 /// `--config` must exist. Without it the default path is read if it is there.
-fn load_settings(explicit: Option<&Path>) -> Result<Settings, CliError> {
+fn load_settings(explicit: Option<&Path>, forgejo: bool) -> Result<Settings, CliError> {
 	let default = Path::new(DEFAULT_CONFIG);
 	let path = match explicit {
 		Some(p) => Some(p),
+		None if (forgejo
+			|| config::read(Some(Path::new(".forgejo/pr-results.toml")))
+				.is_ok_and(|s| s.forge.kind == Some(HostKind::Forgejo)))
+			&& Path::new(".forgejo/pr-results.toml").is_file() =>
+		{
+			Some(Path::new(".forgejo/pr-results.toml"))
+		}
 		None if default.is_file() => Some(default),
 		None => None,
 	};
@@ -381,20 +442,37 @@ fn execute<H: Host>(
 	env: &Environment,
 	settings: &Settings,
 	summary: Option<&Path>,
+	from: Option<&Path>,
 	io: &mut Streams<'_>,
 ) -> Result<PublishReport, CliError> {
 	let title = settings
 		.title
 		.clone()
 		.unwrap_or_else(|| config::title_from_repo(env.repo.name()));
+	let seed = plan(settings, &title, Vec::new());
+	let local = from
+		.map(|dir| crate::local::files(dir, &seed))
+		.transpose()?;
 	let sections = if settings.suites.is_empty() {
-		inferred_sections(gh, run, &title, io)?
+		if let Some((files, _)) = &local {
+			inferred_names(files.iter().map(|(a, _, _)| a.as_str()), &title, io)?
+		} else {
+			inferred_sections(gh, run, &title, io)?
+		}
 	} else {
 		configured_sections(settings, &title)?
 	};
 	let plan = plan(settings, &title, sections);
-	let report = publish(gh, run, &env.server, &plan)
-		.map_err(|e| CliError::failed(format!("publishing stopped: {e}")))?;
+	let report = if let Some((files, skipped)) = local {
+		if skipped > 0 {
+			io.say(&format!("Skipped {skipped} links or non-regular inputs."));
+		}
+		let inputs = crate::local::read(&files, &plan);
+		publish_inputs(gh, run, &env.server, &plan, &inputs)
+	} else {
+		publish(gh, run, &env.server, &plan)
+			.map_err(|e| CliError::failed(format!("publishing stopped: {e}")))?
+	};
 	let lines = report.log_lines();
 	for line in &lines {
 		io.say(line);
@@ -467,9 +545,16 @@ fn inferred_sections<H: Host>(
 	let artifacts = gh
 		.artifacts(run.id)
 		.map_err(|e| CliError::failed(format!("publishing stopped: listing artefacts: {e}")))?;
+	inferred_names(artifacts.iter().map(|a| a.name.as_str()), title, io)
+}
+
+fn inferred_names<'a>(
+	names: impl Iterator<Item = &'a str>,
+	title: &str,
+	io: &mut Streams<'_>,
+) -> Result<Vec<SectionPlan>, CliError> {
 	let mut stems = BTreeSet::new();
-	for artifact in &artifacts {
-		let name = artifact.name.as_str();
+	for name in names {
 		let plain = !name.is_empty()
 			&& name.len() <= 100
 			&& name

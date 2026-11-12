@@ -110,7 +110,7 @@ runs:
         config=()
         case "$PR_RESULTS_COMMAND" in
           publish | render)
-            if [ "$PR_RESULTS_CONFIG" != ".github/pr-results.toml" ] || [ -f "$PR_RESULTS_CONFIG" ]; then
+            if [ "$PR_RESULTS_CONFIG" != ".github/pr-results.toml" ] || { [ "$PR_RESULTS_COMMAND" = render ] && [ -f "$PR_RESULTS_CONFIG" ]; }; then
               config=(--config "$PR_RESULTS_CONFIG")
             fi
             "$PR_RESULTS_BIN" "$PR_RESULTS_COMMAND" "${config[@]}" "${args[@]}"

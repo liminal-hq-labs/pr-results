@@ -500,14 +500,45 @@ fn on_github_an_api_url_must_be_on_the_servers_host_too() {
 }
 
 #[test]
-fn forgejos_missing_workflow_run_is_explained() {
+fn forgejo_in_job_requires_from() {
 	let dir = scratch("fj-event");
 	let fake = forgejo_world();
 	let mut vars = runner_env(&dir);
 	vars.insert("GITHUB_EVENT_NAME".into(), "pull_request".into());
 	let cfg = write_config(&dir, "forgejo.toml", FORGEJO);
 	let err = refused(&vars, &["publish", "--config", &cfg], &fake, "pull_request");
-	assert!(err.contains("Forgejo has no workflow_run trigger"), "{err}");
+	assert!(err.contains("--from"), "{err}");
+}
+
+#[test]
+fn in_job_publishes_local_results_to_forgejo() {
+	let dir = scratch("fj-in-job");
+	let mut vars = runner_env(&dir);
+	let event = format!(
+		r#"{{"repository":{{"full_name":"{REPO}"}},"number":7,"pull_request":{{"number":7,"head":{{"sha":"{SHA}","ref":"feature","repo":{{"full_name":"{REPO}"}}}},"base":{{"repo":{{"full_name":"{REPO}"}}}}}}}}"#
+	);
+	std::fs::write(dir.join("event.json"), event).unwrap();
+	vars.insert("GITHUB_EVENT_NAME".into(), "pull_request".into());
+	vars.insert("GITHUB_RUN_ID".into(), "5000".into());
+	vars.insert("GITHUB_RUN_NUMBER".into(), "42".into());
+	let input = dir.join("results/rust-test-results");
+	std::fs::create_dir_all(&input).unwrap();
+	std::fs::write(input.join("junit.xml"), fixture("nextest/fail.xml")).unwrap();
+	let fake = forgejo_world();
+	let out = invoke(
+		&[
+			"publish",
+			"--forge",
+			"forgejo",
+			"--from",
+			dir.join("results").to_str().unwrap(),
+		],
+		&vars,
+		&Factory::new(&fake.forge()),
+	);
+	assert_eq!(out.code, 0, "{}", out.err);
+	assert!(out.out.contains("Commit status written"), "{}", out.out);
+	assert!(out.out.contains("Comment on pull request 7"), "{}", out.out);
 }
 
 #[test]

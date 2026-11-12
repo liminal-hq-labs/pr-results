@@ -413,3 +413,7 @@ When everything passes, the comment shrinks to the heading, the table and the fo
 - **Several reporter steps in one publisher workflow**, one per suite, post one comment each. The publisher replaces them all: delete them and keep one comment.
 - **A script that builds its own comment** can be retired once `other_checks = true` (v0.3) lists the commit's other check runs in the same comment.
 - **Check names.** Default check names are `<title> <suite name>`, so they do not collide with job names. The job summary warns when a configured name equals a job name.
+
+## Publishing in the same run
+
+For a same-repository pull request or push, download each job's artefacts into a directory with one subdirectory per artefact, then run `pr-results publish --from results`. The publisher reads the event supplied by the runner, verifies the pull request with the host and skips fork pull requests without a request. It refuses `pull_request_target`; use the separate `workflow_run` publisher above for forks on GitHub. The job's checkout supplies the settings, so use this mode only when the job's code and token are trusted. The collector requires a Unix runner and skips symbolic links.
