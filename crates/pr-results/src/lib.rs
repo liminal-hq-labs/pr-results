@@ -125,6 +125,7 @@ impl CliError {
 /// how to trust its certificate.
 #[derive(Debug, Clone)]
 pub struct ForgeSetup {
+	pub allow_http: bool,
 	pub kind: HostKind,
 	/// An `https://` URL on the runner's own host, checked.
 	pub api_base: String,
@@ -150,6 +151,9 @@ impl ForgeFactory for Network {
 	fn make(&self, setup: &ForgeSetup, token: Token) -> Result<UreqForge, ForgeError> {
 		let forge = match setup.kind {
 			HostKind::GitHub => UreqForge::new(&setup.api_base, token)?,
+			HostKind::Forgejo if setup.allow_http => {
+				UreqForge::forgejo_http(&setup.api_base, token)?
+			}
 			HostKind::Forgejo => UreqForge::forgejo(&setup.api_base, token)?,
 		};
 		let forge = match &setup.ca {

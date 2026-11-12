@@ -65,7 +65,7 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 	let get = |name: &str| vars(name).filter(|v| !v.is_empty());
 	let settings = load_settings(a.config.as_deref())?;
 	let kind = forge_kind(a, &settings.forge, &get)?;
-	let env = environment(&get)?;
+	let env = environment(&get, kind == HostKind::Forgejo && settings.forge.allow_http)?;
 	let setup = forge_setup(kind, &settings.forge, &env)?;
 	let Some(run) = env.event.run.clone() else {
 		io.say("The run's head repository has been deleted, so there is nothing to verify: nothing to publish.");
@@ -191,11 +191,15 @@ fn token(
 
 /// `host:port` of an `https://` URL, lower-cased, with the default port dropped.
 fn authority(url: &str) -> Option<String> {
-	let rest = url.strip_prefix("https://")?;
+	let (rest, default_port) = if let Some(rest) = url.strip_prefix("https://") {
+		(rest, ":443")
+	} else {
+		(url.strip_prefix("http://")?, ":80")
+	};
 	let authority = rest.split(['/', '?', '#']).next()?.to_ascii_lowercase();
 	Some(
 		authority
-			.strip_suffix(":443")
+			.strip_suffix(default_port)
 			.unwrap_or(&authority)
 			.to_owned(),
 	)
@@ -225,7 +229,12 @@ fn forge_setup(
 			))
 		}
 	};
-	if !api_base.starts_with("https://") {
+	if !api_base.starts_with("https://")
+		&& !(kind == HostKind::Forgejo
+			&& f.allow_http
+			&& api_base.starts_with("http://")
+			&& env.server_text.starts_with("http://"))
+	{
 		return Err(CliError::usage(if api_base.starts_with("http://") {
 			"the API address is plain http, which is refused: the token would cross the network in clear"
 		} else {
@@ -235,7 +244,11 @@ fn forge_setup(
 	if kind == HostKind::Forgejo || f.api_url.is_some() {
 		let server = authority(&env.server_text);
 		let api = authority(&api_base);
-		if server.is_none() || server != api {
+		if server.is_none()
+			|| server != api
+			|| (kind == HostKind::Forgejo
+				&& env.server_text.starts_with("https://") != api_base.starts_with("https://"))
+		{
 			return Err(CliError::usage(
 				"the API address is not on the runner's own host (GITHUB_SERVER_URL): the token is sent nowhere else",
 			));
@@ -248,6 +261,7 @@ fn forge_setup(
 	}
 	let ca = f.ca_file.as_deref().map(read_ca).transpose()?;
 	Ok(ForgeSetup {
+		allow_http: kind == HostKind::Forgejo && f.allow_http,
 		kind,
 		api_base,
 		ca,
@@ -285,7 +299,10 @@ fn exit_code(report: &PublishReport, fail_on_failures: bool) -> u8 {
 }
 
 /// The preconditions. Every failure is exit status 2.
-fn environment(get: &dyn Fn(&str) -> Option<String>) -> Result<Environment, CliError> {
+fn environment(
+	get: &dyn Fn(&str) -> Option<String>,
+	allow_http: bool,
+) -> Result<Environment, CliError> {
 	let need = |name: &str| {
 		get(name).ok_or_else(|| {
 			CliError::usage(format!("{name} is not set: this is not a workflow run"))
@@ -308,7 +325,7 @@ fn environment(get: &dyn Fn(&str) -> Option<String>) -> Result<Environment, CliE
 	let git_ref = need("GITHUB_REF")?;
 	let api_env = get("GITHUB_API_URL");
 	let server_text = need("GITHUB_SERVER_URL")?.trim_end_matches('/').to_owned();
-	let server = ServerUrl::parse(&server_text)
+	let server = ServerUrl::parse_with_http(&server_text, allow_http)
 		.ok_or_else(|| CliError::usage("GITHUB_SERVER_URL is not an https:// address"))?;
 	let path = need("GITHUB_EVENT_PATH")?;
 	let bytes = read_event(Path::new(&path))?;

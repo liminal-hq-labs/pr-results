@@ -34,7 +34,6 @@ pub struct UreqForge {
 	/// The hosts a blob may be fetched from: a host name, or `*.suffix` for any name under it.
 	blob_hosts: Vec<String>,
 	/// Tests only: plain `http://` to a loopback address is allowed.
-	#[cfg(test)]
 	allow_loopback_http: bool,
 }
 
@@ -226,6 +225,11 @@ impl UreqForge {
 		Self::build(HostKind::Forgejo, api_base, token, false)
 	}
 
+	/// Allows a Forgejo API over HTTP on an explicitly trusted network.
+	pub fn forgejo_http(api_base: &str, token: Token) -> Result<Self, ForgeError> {
+		Self::build(HostKind::Forgejo, api_base, token, true)
+	}
+
 	/// Trusts the certificates of `ca` and nothing else, for this client's API and blob requests:
 	/// the webpki roots are not consulted. For a forge on a LAN whose certificate a private
 	/// authority signed.
@@ -236,14 +240,7 @@ impl UreqForge {
 	}
 
 	fn https_only(&self) -> bool {
-		#[cfg(test)]
-		{
-			!self.allow_loopback_http
-		}
-		#[cfg(not(test))]
-		{
-			true
-		}
+		!self.allow_loopback_http
 	}
 
 	/// Tests only: allows `http://127.0.0.1` and `http://localhost` bases and blobs.
@@ -260,7 +257,12 @@ impl UreqForge {
 	) -> Result<Self, ForgeError> {
 		let trimmed = api_base.trim_end_matches('/');
 		let valid = if loopback {
-			is_loopback_http(trimmed) || BlobUrl::parse(trimmed).is_some()
+			(kind == HostKind::Forgejo
+				&& trimmed
+					.strip_prefix("http://")
+					.is_some_and(|rest| BlobUrl::parse(&format!("https://{rest}")).is_some()))
+				|| is_loopback_http(trimmed)
+				|| BlobUrl::parse(trimmed).is_some()
 		} else {
 			BlobUrl::parse(trimmed).is_some()
 		};
@@ -279,7 +281,6 @@ impl UreqForge {
 			token,
 			api: agent(Duration::from_secs(60), !loopback, None),
 			blob: agent(Duration::from_secs(180), !loopback, None),
-			#[cfg(test)]
 			allow_loopback_http: loopback,
 		})
 	}
