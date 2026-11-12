@@ -319,7 +319,13 @@ jobs:
   # The release binary, built twice from two copies of the tree at different paths, must give the
   # same bytes. The digest it prints is the one the release pull request writes into `action.yml`
   # and `publish.yml`, and `release.yml` rebuilds and compares at the tag. Each target builds on a
-  # runner of its own architecture.
+  # runner of its own architecture. The job also fails if the digest is not the one pinned in
+  # `action.yml`, so a change that invalidates a pin fails on the pull request.
+  #
+  # Two builds on one runner prove that the bytes do not depend on the checkout path, the target
+  # directory or the run. They cannot prove independence from the time, the state of `apt` or the
+  # hardware: that is why `scripts/check-toolchain.sh` pins the musl packages and why the digest
+  # pinned in the repository is compared again by `release.yml` at the tag.
   reproducible:
     name: Reproducible build (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
@@ -331,9 +337,11 @@ jobs:
           - name: x86_64
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
+            pin: PR_RESULTS_SHA256_X86_64
           - name: aarch64
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
+            pin: PR_RESULTS_SHA256_AARCH64
     container:
       image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
     steps:
@@ -346,6 +354,9 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends musl-tools
+
+      - name: Check the toolchain
+        run: bash scripts/check-toolchain.sh
 
       - name: Build the first time
         env:
@@ -371,6 +382,7 @@ jobs:
       - name: Compare the digests
         env:
           TARGET: ${{ matrix.target }}
+          PIN: ${{ matrix.pin }}
           ONE: ${{ runner.temp }}/one
           TWO: ${{ runner.temp }}/two
         run: |
@@ -389,6 +401,14 @@ jobs:
             echo "::error::The two builds differ, so the binary is not reproducible."
             exit 1
           fi
+          # Strict: the pinned digest must be this tree's digest.
+          for file in action.yml .github/workflows/publish.yml; do
+            pinned="$(sed -n "s/^[[:space:]]*${PIN}:[[:space:]]*//p" "$file")"
+            if [ "$pinned" != "$one" ]; then
+              echo "::error file=$file::$PIN is '$pinned' but this tree builds $one. Rebuild and re-pin (docs/releasing.md)."
+              exit 1
+            fi
+          done
           "$ONE/pr-results-$TARGET" --version
 
       - name: Upload the binary

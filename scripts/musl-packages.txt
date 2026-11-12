@@ -1,0 +1,15 @@
+# The musl packages the release build links `ring`'s C against, per architecture, as installed on the
+# GitHub runners (Ubuntu 24.04) by `apt-get install musl-tools`: architecture, package, version.
+# `scripts/check-toolchain.sh` fails when the installed versions differ, because a different package
+# could change the binary. After a deliberate update, rebuild, compare, re-pin the digests in
+# `action.yml` and `publish.yml` and change this file in the same pull request.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+amd64 musl 1.2.4-2
+amd64 musl-dev 1.2.4-2
+amd64 musl-tools 1.2.4-2
+arm64 musl 1.2.4-2
+arm64 musl-dev 1.2.4-2
+arm64 musl-tools 1.2.4-2
