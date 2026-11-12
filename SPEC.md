@@ -322,8 +322,10 @@ permissions:
 
 A fork controls `event.json`, so a forged file could name someone else's pull request. `pr-results`:
 
-1. Uses `workflow_run.pull_requests[]` when it is non-empty (same-repository pull requests).
-2. Otherwise lists `GET /repos/{o}/{r}/commits/{head_sha}/pulls` and keeps open pull requests whose `head.sha` equals `workflow_run.head_sha` and whose `head.repo.full_name` equals `workflow_run.head_repository.full_name`.
+1. Uses `workflow_run.pull_requests[]` when it is non-empty (same-repository pull requests), but does not trust it blindly: each entry is re-read and must pass the same checks as step 2.
+2. Otherwise lists `GET /repos/{o}/{r}/commits/{head_sha}/pulls` and keeps pull requests that are open, whose `head.sha` equals `workflow_run.head_sha`, whose `head.repo.full_name` equals `workflow_run.head_repository.full_name`, and whose `base.repo` is this repository.
+
+   Pull requests from forks may be missing from both `workflow_run.pull_requests[]` and `commits/{sha}/pulls`. The fallback is `GET /repos/{o}/{r}/pulls?head={owner}:{branch}`, filtered by the same checks. **Not verified:** that the fallback finds fork pull requests where the other two do not.
 3. Uses the event file's `pull_request.number` only as a tie-breaker among those candidates, never on its own.
 4. If no pull request verifies, posts check runs (they are tied to the SHA) and no comment, and says so in the job summary.
 
@@ -339,7 +341,8 @@ Everything from artefacts is untrusted: file names, XML content, artefact names 
 - **One escaping type.** The renderer accepts only `Safe` fragments. `Safe::text(&str)` escapes for inline Markdown inside HTML-capable contexts: the five HTML specials (ampersand, less-than, greater-than, both quotes) become entities, and the Markdown specials (backslash, backtick, asterisk, underscore, braces, brackets, parentheses, hash, plus, minus, full stop, exclamation mark, pipe, tilde, equals) are backslash-escaped wherever they could start syntax, with newlines replaced by a space. `@` is rendered as `&#64;` and `#` before digits as `&#35;`, so names do not mention people or link issues (**Open question Q9**, and to be confirmed in the sandbox). `Safe::code_block(&str)` picks a fence one backtick longer than the longest run in the content (at least four) with the `text` info string. `Safe::link(url, text)` accepts only URLs built from trusted parts (repository, SHA, run id, repository-relative paths that were checked against the tree).
 - **Paths for annotations** are normalized, must be relative, must not contain `..`, and must exist in the commit's tree.
 - **No hostnames, timestamps, properties or environment values** from the inputs are rendered.
-- **Secrets.** `pr-results` reads only `GITHUB_TOKEN` (or `--token-env NAME`), `GITHUB_EVENT_PATH`, `GITHUB_REPOSITORY`, `GITHUB_API_URL`, `GITHUB_SERVER_URL`, `GITHUB_STEP_SUMMARY` and `RUNNER_TEMP`. It sends the token only to `GITHUB_API_URL` and the artefact download redirect host, never logs headers, and masks the token with `::add-mask::` defensively.
+- **Secrets.** `pr-results` reads only `GITHUB_TOKEN` (or `--token-env NAME`), `GITHUB_EVENT_PATH`, `GITHUB_REPOSITORY`, `GITHUB_API_URL`, `GITHUB_SERVER_URL`, `GITHUB_STEP_SUMMARY` and `RUNNER_TEMP`. It sends the token only to `GITHUB_API_URL`, never forwards the `Authorization` header across a cross-host redirect (the artefact download redirects to a presigned blob URL that needs no token), never logs headers, and masks the token with `::add-mask::` defensively.
+- **Workflow commands.** Untrusted names and messages written to a log or to an annotation command such as `::error file=…::` can inject `::` commands. They are escaped through the one `Safe` type: `%`, CR and LF always, and `:` and `,` as well inside annotation properties. Any untrusted log output is wrapped in `::stop-commands::<random token>` and resumed with the same token.
 - **No execution.** Nothing from an artefact is run, sourced or used as a path outside the temporary directory. The reusable workflow never checks out the pull request head.
 - **Network.** HTTPS only, `User-Agent: liminal-hq-pr-results/<version>`, timeouts, retries with backoff on 5xx and secondary rate limits (`retry-after`), and at most two writes a second.
 
