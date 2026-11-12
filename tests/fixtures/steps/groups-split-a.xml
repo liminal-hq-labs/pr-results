@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Desk step results: the first of two group jobs that each upload part of one run.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="check.sh" tests="2" failures="0" skipped="0" time="6.250">
+    <testsuite name="Host tests" tests="2" failures="0" skipped="0" time="6.250">
+        <testcase classname="tools/check.sh:Host tests" name="Format check" time="0.842"/>
+        <testcase classname="tools/check.sh:Host tests" name="shell crates, host tests" time="5.408"/>
+    </testsuite>
+</testsuites>

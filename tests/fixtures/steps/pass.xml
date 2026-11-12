@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Desk step results: the steps flavour, every step passed.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="check.sh" tests="3" failures="0" skipped="0" time="19.402">
+    <testsuite name="Host tests" tests="2" failures="0" skipped="0" time="6.250">
+        <testcase classname="tools/check.sh:Host tests" name="Format check" time="0.842"/>
+        <testcase classname="tools/check.sh:Host tests" name="shell crates, host tests" time="5.408"/>
+    </testsuite>
+    <testsuite name="Targets" tests="1" failures="0" skipped="0" time="13.152">
+        <testcase classname="tools/check.sh:Targets" name="Build for i486-unknown-none" time="13.152"/>
+    </testsuite>
+</testsuites>

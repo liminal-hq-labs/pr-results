@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  nextest [profile.ci] JUnit: one failing test whose panic names a file and line, with captured output.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="nextest-run" tests="2" failures="1" errors="0" uuid="7a0e9d3c-2d2a-4c0e-9a55-5b0d1f3c7a02" timestamp="2026-11-02T14:10:42.118+00:00" time="1.906">
+    <testsuite name="pr-results-core" tests="2" disabled="0" errors="0" failures="1">
+        <testcase name="safe::keeps_text_inert" classname="pr-results-core" timestamp="2026-11-02T14:10:42.118+00:00" time="0.002"/>
+        <testcase name="junit::sums_suite_time" classname="pr-results-core" timestamp="2026-11-02T14:10:42.120+00:00" time="1.904">
+            <failure message="assertion `left == right` failed&#10;  left: 1904&#10; right: 1900" type="test failure">thread 'junit::sums_suite_time' (4121) panicked at crates/pr-results-core/src/junit.rs:341:9:
+assertion `left == right` failed
+  left: 1904
+ right: 1900
+stack backtrace:
+   0: rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::assert_failed_inner
+   3: pr_results_core::junit::tests::sums_suite_time
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+</failure>
+            <system-out><![CDATA[running 1 test
+]]></system-out>
+            <system-err><![CDATA[thread 'junit::sums_suite_time' panicked at crates/pr-results-core/src/junit.rs:341:9:
+]]></system-err>
+        </testcase>
+    </testsuite>
+</testsuites>

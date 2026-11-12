@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  nextest [profile.ci] JUnit with retries: a test that failed twice, then passed (flakyFailure).
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="nextest-run" tests="1" failures="0" errors="0" uuid="0c9a6f5e-61b4-45d8-8a0b-9a3e6a1e2b03" timestamp="2026-11-02T14:20:05.001+00:00" time="3.250">
+    <testsuite name="pr-results-github" tests="1" disabled="0" errors="0" failures="0">
+        <testcase name="forge::retries_on_secondary_rate_limit" classname="pr-results-github" timestamp="2026-11-02T14:20:08.000+00:00" time="0.250">
+            <flakyFailure timestamp="2026-11-02T14:20:05.001+00:00" time="1.500" type="test failure">
+                <stack-trace>thread 'forge::retries_on_secondary_rate_limit' panicked at crates/pr-results-github/src/forge.rs:88:13:
+timed out waiting for the fake server</stack-trace>
+                <system-out>attempt 1
+</system-out>
+            </flakyFailure>
+            <flakyFailure timestamp="2026-11-02T14:20:06.501+00:00" time="1.499" type="test failure">
+                <stack-trace>thread 'forge::retries_on_secondary_rate_limit' panicked at crates/pr-results-github/src/forge.rs:88:13:
+timed out waiting for the fake server</stack-trace>
+            </flakyFailure>
+        </testcase>
+    </testsuite>
+</testsuites>

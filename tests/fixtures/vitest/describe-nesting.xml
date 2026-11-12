@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  vitest JUnit reporter: nested describe blocks, a skipped test and a todo.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="vitest tests" tests="3" failures="0" errors="0" time="0.40">
+    <testsuite name="src/app/panel.test.ts" timestamp="2026-11-02T15:10:00.000Z" hostname="runner-7" tests="3" failures="0" errors="0" skipped="2" time="0.011">
+        <testcase classname="src/app/panel.test.ts" name="Panel &gt; layout &gt; wraps long titles" time="0.005"></testcase>
+        <testcase classname="src/app/panel.test.ts" name="Panel &gt; layout &gt; keeps focus" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="src/app/panel.test.ts" name="Panel &gt; todo: resize" time="0">
+            <skipped/>
+        </testcase>
+    </testsuite>
+</testsuites>

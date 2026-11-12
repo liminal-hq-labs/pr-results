@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Playwright JUnit reporter: a failure with attachment lines in system-out.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites id="" name="" tests="1" failures="1" skipped="0" errors="0" time="4.100">
+<testsuite name="checkout.spec.ts" timestamp="2026-11-02T15:40:00.000Z" hostname="chromium" tests="1" failures="1" skipped="0" time="4.000" errors="0">
+<testcase name="checkout › pays" classname="checkout.spec.ts › checkout › pays" time="4.000">
+<failure message="checkout.spec.ts:9:3 pays" type="FAILURE">
+<![CDATA[    Error: timeout of 3000ms exceeded]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|checkout-pays/test-failed-1.png]]
+[[ATTACHMENT|checkout-pays/trace.zip]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>

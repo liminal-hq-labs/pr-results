@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  nextest [profile.ci] JUnit: two binaries, everything passes, one test ignored.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="nextest-run" tests="4" failures="0" errors="0" uuid="3f1c3a52-8f4e-4f43-b6d4-0d7f0c8f9a11" timestamp="2026-11-02T14:03:11.402+00:00" time="0.412">
+    <testsuite name="pr-results-core" tests="3" disabled="0" errors="0" failures="0">
+        <testcase name="junit::parses_empty_suite" classname="pr-results-core" timestamp="2026-11-02T14:03:11.402+00:00" time="0.003"/>
+        <testcase name="junit::parses_nested_suite" classname="pr-results-core" timestamp="2026-11-02T14:03:11.405+00:00" time="0.004"/>
+        <testcase name="safe::escapes_pipes" classname="pr-results-core" timestamp="2026-11-02T14:03:11.409+00:00" time="0.001"/>
+    </testsuite>
+    <testsuite name="pr-results::bin/pr-results" tests="1" disabled="0" errors="0" failures="0">
+        <testcase name="version_flag_prints_version" classname="pr-results::bin/pr-results" timestamp="2026-11-02T14:03:11.410+00:00" time="0.250">
+            <skipped/>
+        </testcase>
+    </testsuite>
+</testsuites>
