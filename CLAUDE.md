@@ -4,7 +4,7 @@ A summary of [AGENTS.md](AGENTS.md), which is canonical. Keep the two in sync.
 
 ## What this is
 
-{{PROJECT_TITLE}} is a Liminal HQ Labs experiment: {{PROJECT_DESCRIPTION}}. Experimental, so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
+pr-results is a Liminal HQ Labs experiment: Calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental, so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
 
 ## Rules to remember
 

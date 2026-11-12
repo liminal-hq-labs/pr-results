@@ -110,7 +110,7 @@ jobs:
   #     - name: Cache Rust build output
   #       uses: Swatinem/rust-cache@v2
   #       with:
-  #         shared-key: {{PROJECT_NAME}}
+  #         shared-key: pr-results
   #
   #     - name: Run clippy
   #       run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -130,7 +130,7 @@ jobs:
   #     - name: Cache Rust build output
   #       uses: Swatinem/rust-cache@v2
   #       with:
-  #         shared-key: {{PROJECT_NAME}}
+  #         shared-key: pr-results
   #
   #     - name: Run the tests
   #       run: cargo nextest run --workspace --locked

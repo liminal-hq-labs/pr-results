@@ -18,7 +18,7 @@
 
 ## Project status
 
-{{PROJECT_TITLE}} is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: {{PROJECT_DESCRIPTION}}. It is **experimental**, so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
+pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: Calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental**, so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
 
 ## Spelling and writing
 

@@ -1,10 +1,10 @@
-# {{PROJECT_TITLE}} specification
+# pr-results specification
 
 <!-- The source of truth for behaviour. A change that alters behaviour updates this file in the same change. Delete the guidance comments as sections fill in. -->
 
 ## Purpose
 
-{{PROJECT_DESCRIPTION}}.
+Calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports.
 
 <!-- One paragraph: the problem, who has it and what this does about it. -->
 
