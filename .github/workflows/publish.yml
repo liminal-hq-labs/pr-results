@@ -56,8 +56,8 @@ jobs:
         id: install
         env:
           PR_RESULTS_TAG: v0.2.0
-          PR_RESULTS_SHA256_X86_64: PLACEHOLDER
-          PR_RESULTS_SHA256_AARCH64: PLACEHOLDER
+          PR_RESULTS_SHA256_X86_64: 28804213ac52e7c2116a3a1d60a3944751eed1b332071f10072f2b5c67cc0271
+          PR_RESULTS_SHA256_AARCH64: ec29af621e14adc48043b0f8b5a4689440ae4c461a33fbd079de5e0b0c715a15
         run: |
           set -euo pipefail
           case "$(uname -m)" in
