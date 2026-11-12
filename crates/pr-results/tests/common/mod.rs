@@ -11,7 +11,7 @@
 	clippy::indexing_slicing
 )]
 
-#[path = "../../../pr-results-github/tests/common/zip.rs"]
+#[path = "../../../pr-results-forge/tests/common/zip.rs"]
 pub mod zip;
 
 use std::cell::RefCell;
@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use pr_results::{run, ForgeFactory, Streams};
-use pr_results_github::{FakeForge, FakePull, ForgeError, Token};
+use pr_results_forge::{FakeForge, FakePull, ForgeError, Token};
 
 pub const REPO: &str = "example/app";
 pub const SHA: &str = "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334";

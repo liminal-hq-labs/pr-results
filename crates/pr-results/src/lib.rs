@@ -24,7 +24,7 @@ mod render_cmd;
 use std::io::Write;
 
 use pr_results_core::Safe;
-use pr_results_github::{Forge, ForgeError, Token, UreqForge};
+use pr_results_forge::{Forge, ForgeError, Token, UreqForge};
 
 use args::Command;
 

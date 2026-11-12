@@ -199,6 +199,20 @@ impl TrustedUrl {
 		Self(format!("{}/{}/actions/runs/{}", server.0, repo, id.0))
 	}
 
+	/// A Forgejo run's page, which is named by the run's number (the number the runner exports
+	/// as `GITHUB_RUN_NUMBER`), where GitHub's is named by its id.
+	pub fn forgejo_run(server: &ServerUrl, repo: &RepoSlug, number: u64) -> Self {
+		Self(format!("{}/{}/actions/runs/{}", server.0, repo, number))
+	}
+
+	/// A comment on a Forgejo pull request, by its anchor on the pull request's page.
+	pub fn comment_anchor(server: &ServerUrl, repo: &RepoSlug, pr: u64, comment: u64) -> Self {
+		Self(format!(
+			"{}/{}/pulls/{}#issuecomment-{}",
+			server.0, repo, pr, comment
+		))
+	}
+
 	/// The artefacts section at the foot of a run's page.
 	pub fn run_artifacts(server: &ServerUrl, repo: &RepoSlug, id: RunId) -> Self {
 		Self(format!("{}#artifacts", Self::run(server, repo, id).0))
@@ -317,5 +331,21 @@ impl Safe {
 				.map(|(_, rest)| rest.to_owned())
 				.unwrap_or_default(),
 		)
+	}
+
+	/// The first `n` lines, each with the line break that ends it (the last one only if the text
+	/// has one there). A cut at a line boundary, so no escape sequence is split.
+	pub fn first_lines(&self, n: usize) -> Safe {
+		Safe::from_checked(self.as_str().split_inclusive('\n').take(n).collect())
+	}
+
+	/// A run of `n` tildes, at most 65 536: the line that closes a tilde code fence of that length.
+	pub fn tildes(n: usize) -> Safe {
+		Safe::from_checked("~".repeat(n.min(65_536)))
+	}
+
+	/// A run of `n` backticks, at most 65 536: the line that closes a code fence of that length.
+	pub fn backticks(n: usize) -> Safe {
+		Safe::from_checked("`".repeat(n.min(65_536)))
 	}
 }

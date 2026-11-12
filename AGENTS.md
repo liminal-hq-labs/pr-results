@@ -90,8 +90,9 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 ## Architecture rules
 
 - **Untrusted input is escaped only through `Safe`.** Everything from an artefact (names, messages, paths, the event file) is untrusted. The renderer accepts only `Safe` fragments, so no raw string reaches Markdown or HTML. Do not add a second escaping path.
-- **No network outside `pr-results-github`.** The core and render crates are pure and tested offline. Anything that talks to GitHub sits behind the `Forge` trait, with an in-memory fake for tests.
+- **No network outside `pr-results-forge`.** The core and render crates are pure and tested offline. Anything that talks to a forge sits behind the `Forge` trait, and the publisher asks a forge only through the `Host` trait, with an in-memory fake for tests. The token is added only in `UreqForge::send`. Every host passes the comment conformance suite (`crates/pr-results-forge/tests/common/conformance.rs`).
 - **No pull request code in privileged workflows.** A workflow that holds a write token never checks out or runs code from a pull request head, and takes no secret beyond `GITHUB_TOKEN`. The publisher uses the latest release pinned by SHA, never the pull request's own build.
+- **Words that differ by forge live in one place.** The renderer takes a `Target`; a fixed sentence that names check runs or GitHub's limits exists only in `wording.rs` and `check.rs`, chosen by a `match`, and a Forgejo comment never says either. GitHub's output stays byte-identical when a target is added.
 - **Deterministic output.** The same inputs give byte-identical Markdown: stable ordering, no clocks beyond the run times in the inputs.
 - **No unsafe code.** Each crate has `#![forbid(unsafe_code)]`.
 - **SPEC first.** A change to behaviour, interfaces, settings or defaults updates `SPEC.md` in the same change.
@@ -112,7 +113,7 @@ Once the crates exist, add:
 
 - `cargo nextest run --workspace --locked` — tests
 - `cargo deny check` — dependency policy
-- `PR_RESULTS_BLESS=1 cargo nextest run` — rewrite the goldens in `tests/golden/`, then review the diff as Markdown. CI fails on any difference. The goldens are exact output, so markdownlint and lychee skip them. The same variable rewrites the request goldens (`crates/pr-results-github/tests/golden/*.json`), the sequence of API calls the publisher makes against the in-memory GitHub.
+- `PR_RESULTS_BLESS=1 cargo nextest run` — rewrite the goldens in `tests/golden/`, then review the diff as Markdown. CI fails on any difference. The goldens are exact output, so markdownlint and lychee skip them. The same variable rewrites the request goldens (`crates/pr-results-forge/tests/golden/*.json`), the sequence of API calls the publisher makes against the in-memory GitHub.
 
 State exactly what was and was not run when reporting results.
 
@@ -128,9 +129,9 @@ State exactly what was and was not run when reporting results.
 README.md SPEC.md AGENTS.md CLAUDE.md CHANGELOG.md LICENSE-APACHE LICENSE-MIT
 .editorconfig .markdownlint.jsonc .lychee.toml .gitignore rustfmt.toml
 assets/        animated hero banner
-docs/          decisions, adopting, inputs, security and releasing
+docs/          decisions, adopting, inputs, security and releasing, and the sandbox probe workflow
 scripts/       header check, banner check and its Chromium text-fit harness
 .github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
 
-Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, and the `mention_probe` example), `crates/pr-results-github/` (the `Forge` trait, its real, fake and dry-run forges, the zip reader and the publish flow, with request goldens in its `tests/golden/`), `crates/pr-results/` (the command line: `publish`, `render` and `validate-config`, and the settings file), `action.yml` (the composite action), `.github/workflows/` (CI, the reusable `publish.yml`, the dogfood `publish-test-results.yml`), `.github/pr-results.toml`, `tests/fixtures/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. `scripts/build-release.sh` (the reproducible musl build), `.github/workflows/release.yml` (the tag workflow) and `docs/releasing.md` carry the release.
+Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, commit statuses for Forgejo, and the `mention_probe` example), `crates/pr-results-forge/` (the `Forge` trait, its real, fake and dry-run forges, `Client`, the `Host` trait with its GitHub implementation, the zip reader and the publish flow, with request goldens in its `tests/golden/`), `crates/pr-results/` (the command line: `publish`, `render` and `validate-config`, and the settings file), `action.yml` (the composite action), `.github/workflows/` (CI, the reusable `publish.yml`, the dogfood `publish-test-results.yml`), `.github/pr-results.toml`, `tests/fixtures/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. `scripts/build-release.sh` (the reproducible musl build), `.github/workflows/release.yml` (the tag workflow) and `docs/releasing.md` carry the release.

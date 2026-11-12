@@ -25,16 +25,29 @@ mod check;
 mod comment;
 mod text;
 mod view;
+mod wording;
 
 use pr_results_core::{CommentKey, RepoPath, RepoSlug, RunId, Safe, ServerUrl, Sha, Suite};
+
+/// The forge the output is for. It chooses the fixed words (a check run on GitHub, a commit
+/// status on Forgejo), the footer's links, whether failures carry their `path:line` (GitHub puts
+/// them in annotations, Forgejo has none) and the rules for the heading's title.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+	GitHub,
+	Forgejo,
+}
 
 /// Where a run happened. Every field is a checked value, so the links built from them are safe.
 #[derive(Debug, Clone)]
 pub struct RunContext {
+	pub target: Target,
 	pub server: ServerUrl,
 	pub repo: RepoSlug,
 	pub head_sha: Sha,
 	pub run_id: RunId,
+	/// The run's number, which names its page on Forgejo. Without it the footer links the id.
+	pub run_number: Option<u64>,
 	pub key: CommentKey,
 	/// Written in the footer. A literal, so it cannot carry text from a report.
 	pub tool_version: &'static str,
@@ -189,9 +202,44 @@ pub fn comment(i: &Input<'_>) -> Comment {
 	comment::comment(i)
 }
 
-/// The check run for `section`, or nothing if there is no such section.
+/// The check run for `section`, or nothing if there is no such section or the target has no check
+/// runs (Forgejo: see [`status`]).
 pub fn check(i: &Input<'_>, section: usize) -> Option<CheckOutput> {
 	check::check(i, section, &|_| true)
+}
+
+/// Whether a commit status is a pass or a failure. Forgejo is not known to count `skipped` or
+/// `warning` as satisfying a protected branch, so a neutral section is a `Success`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusState {
+	Success,
+	Failure,
+}
+
+/// A commit status for a section, for a forge with no check runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusOutput {
+	pub state: StatusState,
+	/// The check's title as plain text, at most [`STATUS_DESCRIPTION_CHARS`] characters, the
+	/// marker of a cut included.
+	pub description: Safe,
+}
+
+/// The longest status description, in characters: well under what a forge stores, and short
+/// enough to read in a list of statuses.
+pub const STATUS_DESCRIPTION_CHARS: usize = 140;
+
+/// The commit status for `section`, or nothing if there is no such section.
+pub fn status(i: &Input<'_>, section: usize) -> Option<StatusOutput> {
+	check::status(i, section)
+}
+
+/// Whether `title` can stand in the heading as ordinary text on Forgejo, which links more than
+/// GitHub does outside code: a bare commit hash (seven or more hexadecimal digits), `!` and a
+/// number (a pull request), `$` (mathematics) and `:word:` (an emoji). A title that cannot is
+/// shown in a code span instead, and a settings loader may refuse it.
+pub fn forgejo_inert_title(title: &str) -> bool {
+	text::forgejo_inert(title)
 }
 
 /// Like [`check`], but an annotation is made only for a path that `keep` accepts, so a publisher
@@ -210,9 +258,20 @@ pub fn no_results(ctx: &RunContext, title: &str) -> Comment {
 	comment::no_results(ctx, title)
 }
 
-/// The comment without its marker, for the workflow run's own page.
+/// The most a job summary may hold, in bytes: under the 1 MiB a step may write.
+pub const JOB_SUMMARY_CAP_BYTES: usize = 900 * 1024;
+
+/// The comment without its marker, for the workflow run's own page, within
+/// [`JOB_SUMMARY_CAP_BYTES`].
 pub fn job_summary(c: &Comment) -> Safe {
-	comment::job_summary(c)
+	comment::job_summary(c, JOB_SUMMARY_CAP_BYTES)
+}
+
+/// Like [`job_summary`] for a given cap in bytes. A body over the cap is cut after a whole line,
+/// any code fence or `<details>` left open is closed, and a line says how many lines are not
+/// shown. A cap too small for even that line gives nothing.
+pub fn job_summary_within(c: &Comment, cap_bytes: usize) -> Safe {
+	comment::job_summary(c, cap_bytes)
 }
 
 /// How big `text` is for the limits: its characters, or its UTF-16 code units if that is more,

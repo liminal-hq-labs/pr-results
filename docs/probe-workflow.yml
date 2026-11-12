@@ -1,0 +1,207 @@
+# The owner's gate for decision Q9: posts the mention probe as github-actions[bot] from a sandbox
+# repository, reads it back and posts a check run with annotations.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+#
+# It is not a workflow of this repository: copy it to `.github/workflows/mention-probe.yml` in the
+# sandbox (a throwaway private repository) and start it from the Actions tab. See
+# docs/security.md, "Not yet verified".
+#
+# The sandbox needs: an issue number 1; a README.md; a team (the `team` input) in the owning
+# organization with a member who is not the person who starts the run; a second repository
+# (the `other_repo` input) with an issue number 1; an autolink reference with the prefix `GH-`
+# that points at `https://example.invalid/<num>`; and a second account that watches the sandbox,
+# for its notifications.
+#
+# The workflow posts the comment and the check run, reads back what the API can give (the rendered
+# HTML of the comment, the timeline of the issues, the check run and its annotations) and fails if
+# an anchor appears outside the raw control rows. What no API gives is read by hand, and the job
+# summary lists it: the check run's summary and text as rendered on its page, and the second
+# account's notifications.
+#
+# Every action is pinned by full commit SHA with its version in a comment.
+
+name: Mention probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      probe_ref:
+        description: The full commit SHA of liminal-hq-labs/pr-results to build the probe from
+        required: true
+        type: string
+      team:
+        description: The slug of a real team in the owning organization
+        required: true
+        type: string
+      other_repo:
+        description: A second repository, as owner/name, with an issue number 1
+        required: true
+        type: string
+      issue:
+        description: The number of the issue the comment is posted on
+        required: true
+        default: '1'
+        type: string
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  probe:
+    name: Post the probe and read it back
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      checks: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      HEAD_SHA: ${{ github.sha }}
+      TEAM: ${{ inputs.team }}
+      OTHER_REPO: ${{ inputs.other_repo }}
+      ISSUE: ${{ inputs.issue }}
+    steps:
+      - name: Check out the probe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: liminal-hq-labs/pr-results
+          ref: ${{ inputs.probe_ref }}
+          persist-credentials: false
+
+      - name: Build the comment and the check run
+        run: |
+          set -euo pipefail
+          repo_name="${REPOSITORY#*/}"
+          cargo run --locked --quiet -p pr-results-render --example mention_probe -- \
+            "$OWNER" "$repo_name" "$TEAM" "$OTHER_REPO" > probe.md
+          cargo run --locked --quiet -p pr-results-render --example mention_probe -- \
+            --check-run --head-sha "$HEAD_SHA" \
+            "$OWNER" "$repo_name" "$TEAM" "$OTHER_REPO" > check-run.json
+          jq -Rs '{body: .}' probe.md > comment.json
+
+      - name: Post the comment as github-actions[bot]
+        id: comment
+        run: |
+          set -euo pipefail
+          id="$(gh api --method POST "repos/$REPOSITORY/issues/$ISSUE/comments" \
+            --input comment.json --jq .id)"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          gh api "repos/$REPOSITORY/issues/comments/$id" \
+            --jq '"Posted by \(.user.login) (\(.user.type)): \(.html_url)"' | tee -a posted.txt
+
+      - name: Read the rendered comment back
+        env:
+          COMMENT_ID: ${{ steps.comment.outputs.id }}
+        run: |
+          set -euo pipefail
+          gh api -H 'Accept: application/vnd.github.full+json' \
+            "repos/$REPOSITORY/issues/comments/$COMMENT_ID" --jq .body_html > body.html
+          # After the raw control rows the only anchors may be a heading's own and the footer's
+          # links to this commit and run: any other is a leak. An empty read-back fails.
+          set +e
+          bash scripts/check-probe-anchors.sh "$REPOSITORY" body.html . 2> check-anchors.txt
+          status=$?
+          set -e
+          {
+            echo '### Anchors outside the raw control rows'
+            echo
+            echo "Unexpected anchors: $(wc -l < unexpected-anchors.txt 2>/dev/null || echo unknown)."
+            echo
+            echo '```text'
+            cat check-anchors.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Read the timelines back
+        if: always()
+        run: |
+          set -euo pipefail
+          timeline() {
+            gh api --paginate "repos/$1/issues/1/timeline" \
+              --jq '.[] | select(.event == "cross-referenced" or .event == "mentioned" or .event == "subscribed") | {event, actor: .actor.login, source: .source.issue.html_url}' \
+              2>&1 || echo "unreadable with this token"
+          }
+          {
+            echo '### Timeline of issue 1 in the sandbox'
+            echo
+            echo '```json'
+            timeline "$REPOSITORY"
+            echo '```'
+            echo
+            echo "### Timeline of issue 1 in $OTHER_REPO"
+            echo
+            echo '```json'
+            timeline "$OTHER_REPO"
+            echo '```'
+            echo
+            echo 'Only the raw control rows may cross-reference issue 1.'
+          } | tee timelines.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post the check run with its annotations
+        id: check
+        run: |
+          set -euo pipefail
+          id="$(gh api --method POST "repos/$REPOSITORY/check-runs" \
+            --input check-run.json --jq .id)"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Read the check run and its annotations back
+        env:
+          CHECK_RUN_ID: ${{ steps.check.outputs.id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/check-runs/$CHECK_RUN_ID" > check-run-read.json
+          gh api --paginate "repos/$REPOSITORY/check-runs/$CHECK_RUN_ID/annotations" \
+            | jq -s 'add' > annotations-read.json
+          sent="$(jq '.output.annotations | length' check-run.json)"
+          read_back="$(jq 'length' annotations-read.json)"
+          jq -S '[.output.annotations[] | {path, start_line, end_line, title, message}]' \
+            check-run.json > annotations-sent.json
+          jq -S '[.[] | {path, start_line, end_line, title, message}]' \
+            annotations-read.json > annotations-got.json
+          {
+            echo '### Check run'
+            echo
+            echo "Annotations sent: $sent. Read back: $read_back."
+            echo
+            echo "Page: $(jq -r .html_url check-run-read.json)"
+            echo
+            echo 'Read by hand, signed in as the second account (no API gives the rendered text):'
+            echo
+            echo '- the check run page: its summary and text carry no mention, issue link or autolink outside the raw rows of the comment;'
+            echo '- the annotations in the Files changed tab or the check run page show their titles and messages as plain text;'
+            echo '- the notifications of the second account hold only the controls: the user, the team and @everyone.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$sent" = "$read_back"
+          diff annotations-sent.json annotations-got.json
+
+      - name: Keep what was read
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mention-probe
+          path: |
+            probe.md
+            comment.json
+            body.html
+            rendered.html
+            anchors.txt
+            unexpected-anchors.txt
+            check-anchors.txt
+            timelines.md
+            check-run.json
+            check-run-read.json
+            annotations-sent.json
+            annotations-got.json
+            posted.txt
+          if-no-files-found: warn
+          retention-days: 14

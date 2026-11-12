@@ -19,7 +19,8 @@ use std::time::{Duration, Instant};
 use pr_results_core::RepoSlug;
 
 use crate::api::{ApiPath, ApiRequest, BlobUrl, Forge, ForgeError, Method, Token};
-use crate::github::{Artifact, GitHub};
+use crate::github::GitHub;
+use crate::host::{Artifact, Host};
 use crate::ureq_forge::{next_from_link, UreqForge};
 
 const SECRET: &str = "ghs_SECRETTOKENVALUE0123456789";

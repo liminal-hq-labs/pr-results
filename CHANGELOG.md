@@ -4,6 +4,20 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Added
+
+- `Target` (`GitHub` or `Forgejo`) and the run's number in the renderer's `RunContext`. For Forgejo the comment names no check runs and no GitHub limit, shows each failure's `path:line` (there are no annotations), links the commit and the run and not the artefacts, and writes a heading title that Forgejo would link (a bare commit hash, `!12`, `$`, `:emoji:`) in a code span (`forgejo_inert_title` says which). `status` returns a commit status per section: `Success` or `Failure` (a neutral section is `Success`) and the check's title, in plain text, at most 140 characters; `check` returns nothing for Forgejo (decision D64).
+- Goldens `forgejo-all-pass`, `forgejo-failures`, `forgejo-hostile` and `forgejo-truncated-minimal` with a `status-N.txt` for each section, an inert check with Forgejo's extra rules, and budget tests for both targets. Every golden for GitHub is unchanged.
+- The job summary carries the comment: `job_summary` is held to 900 KiB (`JOB_SUMMARY_CAP_BYTES`) by cutting after a whole line, closing any open code fence or `<details>` and saying how many lines were left out, and `PublishReport::job_summary` carries it. `publish` appends it, then its diagnostics, to `GITHUB_STEP_SUMMARY`, else `FORGEJO_STEP_SUMMARY`, both read through the environment it was given (decision D65).
+- The job summary's cut understands indented and `~~~` code fences as well as backtick ones (`Safe::tildes` closes the latter), and a heading title with `://` or `www.` is written in a code span on Forgejo.
+- `TrustedUrl::forgejo_run` and `TrustedUrl::comment_anchor`, and `Safe::first_lines` and `Safe::backticks`.
+- `mention_probe` takes a team and a second repository and, with `--check-run --head-sha SHA`, writes a check run with annotations. `docs/probe-workflow.yml` is the owner's gate for the rest of Q9: it posts the comment as `github-actions[bot]` from a sandbox, reads back the rendered HTML, the timelines, the check run and its annotations (decision D66). It has not been run.
+
+### Changed
+
+- The `pr-results-github` crate is now `pr-results-forge`. The transport's spacing, retries, retry budget and paging moved into a host-neutral `Client<F>`, the publisher asks a forge only through a new `Host` trait, and the GitHub behaviour is `Host` implemented for `GitHub<F>`. `publish` and the command line are generic over `Host`. The output, the request goldens and the behaviour are unchanged.
+- The `Reproducible build` job compares the digest it builds with the one pinned in `action.yml` and `publish.yml` only on a release pull request and on a tag; on any other pull request it proves that two builds agree and prints the digest, since the pins are the last release's.
+
 ### Fixed
 
 - The tag check of `release.yml` marks the checkout as a safe directory for git, which the pinned `ci-rust` container needs because its user does not own the checkout, and reports a comparison git could not make apart from a commit that is not on the default branch. The first run on `v0.1.0` failed closed on this and published nothing. `scripts/test-release-checks.sh` runs the check in that container as another user, and the `Release pins` job runs it.

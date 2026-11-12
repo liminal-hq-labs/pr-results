@@ -10,7 +10,7 @@
 	clippy::indexing_slicing
 )]
 
-use pr_results_github::{
+use pr_results_forge::{
 	percent_decode, percent_encode, ApiPath, ApiRequest, BlobUrl, ForgeError, Method, Token,
 };
 
