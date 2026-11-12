@@ -222,6 +222,122 @@ fn a_forged_event_file_cannot_pick_a_pull_request() {
 		.contains("2 pull requests match this run and the event file chose none"));
 }
 
+/// Two pull requests on one head, so the event file is consulted.
+fn two_candidates(fake: &FakeForge) {
+	fake.add_pull(FakePull::same_repo(9, REPO, SHA, "feature"));
+	// Open in this repository, but not at the run's head: it can never be a candidate.
+	fake.add_pull(FakePull::same_repo(
+		1,
+		REPO,
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"other",
+	));
+}
+
+fn no_pr_list_event() -> String {
+	fixture("events/workflow_run-fork.json").replace("forker/app", REPO)
+}
+
+#[test]
+fn a_forged_event_file_naming_an_unrelated_open_pull_request_is_ignored() {
+	let dir = scratch("forged-other");
+	let fake = github_with_pr();
+	two_candidates(&fake);
+	artifact(&fake, "rust-test-results", &[("junit.xml", &failing_xml())]);
+	artifact(
+		&fake,
+		"event-file",
+		&[("event.json", &fixture("events/uploaded-event-forged.json"))],
+	);
+
+	let o = invoke(
+		&["publish"],
+		&publisher_env(&dir, &no_pr_list_event()),
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert!(
+		fake.comments(1).is_empty(),
+		"the forged number redirected the comment"
+	);
+	assert_eq!(fake.comments(7).len() + fake.comments(9).len(), 2);
+}
+
+#[test]
+fn the_event_file_chooses_only_among_pull_requests_that_matched() {
+	let dir = scratch("hint-chooses");
+	let fake = github_with_pr();
+	two_candidates(&fake);
+	artifact(&fake, "rust-test-results", &[("junit.xml", &failing_xml())]);
+	artifact(
+		&fake,
+		"event-file",
+		&[("event.json", "{\"pull_request\":{\"number\":9}}")],
+	);
+
+	let o = invoke(
+		&["publish"],
+		&publisher_env(&dir, &no_pr_list_event()),
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert_eq!(fake.comments(9).len(), 1);
+	assert!(fake.comments(7).is_empty());
+	assert!(fake.comments(1).is_empty());
+}
+
+#[test]
+fn an_oversize_event_file_is_ignored() {
+	let dir = scratch("hint-big");
+	let fake = github_with_pr();
+	two_candidates(&fake);
+	artifact(&fake, "rust-test-results", &[("junit.xml", &failing_xml())]);
+	let big = format!(
+		"{{\"pull_request\":{{\"number\":9}},\"pad\":\"{}\"}}",
+		"x".repeat(1024 * 1024 + 1)
+	);
+	artifact(&fake, "event-file", &[("event.json", &big)]);
+
+	let o = invoke(
+		&["publish"],
+		&publisher_env(&dir, &no_pr_list_event()),
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	// The number would have chosen 9 alone; refused for its size, both get the comment.
+	assert_eq!(fake.comments(7).len(), 1);
+	assert_eq!(fake.comments(9).len(), 1);
+}
+
+#[test]
+fn the_event_file_is_not_even_downloaded_when_one_pull_request_matched() {
+	let dir = scratch("hint-unused");
+	let fake = github_with_pr();
+	artifact(&fake, "rust-test-results", &[("junit.xml", &failing_xml())]);
+	artifact(
+		&fake,
+		"event-file",
+		&[("event.json", &fixture("events/uploaded-event-forged.json"))],
+	);
+
+	let o = invoke(
+		&["publish"],
+		&publisher_env(&dir, &fixture("events/workflow_run-pr.json")),
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert_eq!(fake.comments(7).len(), 1);
+	assert_eq!(
+		fake.blob_fetches().len(),
+		1,
+		"only the results were downloaded"
+	);
+}
+
 #[test]
 fn a_push_gets_check_runs_and_no_comment() {
 	let dir = scratch("push");
