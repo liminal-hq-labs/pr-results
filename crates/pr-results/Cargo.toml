@@ -10,6 +10,13 @@ publish.workspace = true
 
 [dependencies]
 pr-results-core.workspace = true
+pr-results-github.workspace = true
+pr-results-render.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+miniz_oxide.workspace = true
 
 [lints]
 workspace = true

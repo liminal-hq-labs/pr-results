@@ -1,0 +1,17 @@
+{
+  "action": "completed",
+  "workflow": { "id": 1001, "name": "CI", "path": ".github/workflows/ci.yml" },
+  "workflow_run": {
+    "id": 5000,
+    "name": "CI",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "head_branch": "main",
+    "head_sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+    "head_repository": { "full_name": "example/app" },
+    "repository": { "full_name": "example/app" },
+    "pull_requests": []
+  },
+  "repository": { "full_name": "example/app", "default_branch": "main" }
+}
