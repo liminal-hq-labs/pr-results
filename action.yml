@@ -67,8 +67,9 @@ runs:
           echo "::error::This commit of pr-results carries no SHA-256 for $target yet ($want). Pin a release commit, or use build: source."
           exit 1
         fi
-        dir="$RUNNER_TEMP/pr-results"
-        mkdir -p "$dir"
+        # A directory only this step can use (mktemp makes it mode 700), not a name another step could
+        # have made first.
+        dir="$(mktemp -d "$RUNNER_TEMP/pr-results.XXXXXX")"
         curl --proto '=https' --tlsv1.2 -fsSL --retry 3 \
           -o "$dir/pr-results" \
           "https://github.com/liminal-hq-labs/pr-results/releases/download/${PR_RESULTS_TAG}/pr-results-${target}"
