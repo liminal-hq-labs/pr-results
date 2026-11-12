@@ -18,82 +18,88 @@ pub(crate) fn files(root: &Path, plan: &Plan) -> Result<(Vec<LocalFile>, usize),
 	use rustix::fs::{openat, Dir, Mode, OFlags};
 	let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK;
 	let root = open_root(root, flags)?;
-	let mut pending = vec![(root, Vec::<String>::new())];
+	let root_dir =
+		Dir::read_from(&root).map_err(|_| CliError::usage("an input directory cannot be read"))?;
+	let mut pending = vec![(root_dir, Vec::<String>::new())];
 	let mut found = Vec::new();
 	let mut skipped = 0usize;
 	let mut count = 0usize;
 	let mut total = 0u64;
 	let mut directories = 1usize;
 	let mut entries = 0usize;
-	while let Some((fd, parts)) = pending.pop() {
-		let mut dir = Dir::read_from(&fd)
+	while let Some((dir, parts)) = pending.last_mut() {
+		let Some(entry) = dir.read() else {
+			pending.pop();
+			continue;
+		};
+		let entry = entry.map_err(|_| CliError::usage("an input directory cannot be read"))?;
+		let name = entry
+			.file_name()
+			.to_str()
+			.map_err(|_| CliError::usage("an input name is not UTF-8"))?;
+		if name == "." || name == ".." {
+			continue;
+		}
+		entries = entries.saturating_add(1);
+		if entries > plan.archive.max_files.saturating_mul(2).saturating_add(1) {
+			return Err(CliError::usage("too many input entries"));
+		}
+		let fd = dir
+			.fd()
 			.map_err(|_| CliError::usage("an input directory cannot be read"))?;
-		while let Some(entry) = dir.read() {
-			let entry = entry.map_err(|_| CliError::usage("an input directory cannot be read"))?;
-			let name = entry
-				.file_name()
-				.to_str()
-				.map_err(|_| CliError::usage("an input name is not UTF-8"))?;
-			if name == "." || name == ".." {
-				continue;
-			}
-			entries = entries.saturating_add(1);
-			if entries > plan.archive.max_files.saturating_mul(2).saturating_add(1) {
-				return Err(CliError::usage("too many input entries"));
-			}
-			let file = match openat(&fd, entry.file_name(), flags, Mode::empty()) {
-				Ok(fd) => std::fs::File::from(fd),
-				Err(rustix::io::Errno::LOOP) => {
-					skipped += 1;
-					continue;
-				}
-				Err(_) => return Err(CliError::usage("an input entry cannot be opened")),
-			};
-			let meta = file
-				.metadata()
-				.map_err(|_| CliError::usage("an input entry cannot be read"))?;
-			let mut path = parts.clone();
-			path.push(name.to_owned());
-			if meta.is_dir() {
-				directories = directories.saturating_add(1);
-				if directories > plan.archive.max_files.saturating_add(1) || path.len() > 64 {
-					return Err(CliError::usage("too many input directories"));
-				}
-				pending.push((file.into(), path));
-				continue;
-			}
-			if !meta.is_file() {
+		let file = match openat(fd, entry.file_name(), flags, Mode::empty()) {
+			Ok(fd) => std::fs::File::from(fd),
+			Err(rustix::io::Errno::LOOP) => {
 				skipped += 1;
 				continue;
 			}
-			count += 1;
-			total = total.saturating_add(meta.len());
-			if count > plan.archive.max_files
-				|| meta.len() > plan.archive.max_entry_bytes
-				|| total > plan.archive.max_total_bytes
-			{
-				return Err(CliError::usage(
-					"the local inputs exceed the configured file or byte limits",
-				));
+			Err(_) => return Err(CliError::usage("an input entry cannot be opened")),
+		};
+		let meta = file
+			.metadata()
+			.map_err(|_| CliError::usage("an input entry cannot be read"))?;
+		let mut path = parts.clone();
+		path.push(name.to_owned());
+		if meta.is_dir() {
+			directories = directories.saturating_add(1);
+			if directories > plan.archive.max_files.saturating_add(1) || path.len() > 64 {
+				return Err(CliError::usage("too many input directories"));
 			}
-			let mut data = Vec::new();
-			file.take(plan.archive.max_entry_bytes.saturating_add(1))
-				.read_to_end(&mut data)
-				.map_err(|_| CliError::usage("an input file cannot be read"))?;
-			if data.len() as u64 > meta.len() {
-				total = total.saturating_add(data.len() as u64 - meta.len());
-			}
-			if data.len() as u64 > plan.archive.max_entry_bytes
-				|| total > plan.archive.max_total_bytes
-			{
-				return Err(CliError::usage(
-					"the local inputs exceed the configured byte limits",
-				));
-			}
-			if let [artifact, rest @ ..] = path.as_slice() {
-				if !rest.is_empty() {
-					found.push((artifact.clone(), rest.join("/"), data));
-				}
+			let dir =
+				Dir::new(file).map_err(|_| CliError::usage("an input directory cannot be read"))?;
+			pending.push((dir, path));
+			continue;
+		}
+		if !meta.is_file() {
+			skipped += 1;
+			continue;
+		}
+		count += 1;
+		total = total.saturating_add(meta.len());
+		if count > plan.archive.max_files
+			|| meta.len() > plan.archive.max_entry_bytes
+			|| total > plan.archive.max_total_bytes
+		{
+			return Err(CliError::usage(
+				"the local inputs exceed the configured file or byte limits",
+			));
+		}
+		let mut data = Vec::new();
+		file.take(plan.archive.max_entry_bytes.saturating_add(1))
+			.read_to_end(&mut data)
+			.map_err(|_| CliError::usage("an input file cannot be read"))?;
+		if data.len() as u64 > meta.len() {
+			total = total.saturating_add(data.len() as u64 - meta.len());
+		}
+		if data.len() as u64 > plan.archive.max_entry_bytes || total > plan.archive.max_total_bytes
+		{
+			return Err(CliError::usage(
+				"the local inputs exceed the configured byte limits",
+			));
+		}
+		if let [artifact, rest @ ..] = path.as_slice() {
+			if !rest.is_empty() {
+				found.push((artifact.clone(), rest.join("/"), data));
 			}
 		}
 	}
@@ -258,5 +264,42 @@ mod tests {
 		let result = files(&root, &plan);
 		std::fs::remove_dir_all(root).unwrap();
 		assert_eq!(result.unwrap_err().message, "too many input entries");
+	}
+	#[cfg(target_os = "linux")]
+	#[test]
+	fn wide_valid_tree_fits_a_low_fd_limit() {
+		const CHILD: &str = "PR_RESULTS_WIDE_TREE_TEST";
+		if std::env::var_os(CHILD).is_none() {
+			let output = std::process::Command::new("prlimit")
+				.args(["--nofile=32", "--"])
+				.arg(std::env::current_exe().unwrap())
+				.args([
+					"--exact",
+					"local::tests::wide_valid_tree_fits_a_low_fd_limit",
+					"--nocapture",
+				])
+				.env(CHILD, "1")
+				.output()
+				.unwrap();
+			assert!(
+				output.status.success(),
+				"{} {}",
+				String::from_utf8_lossy(&output.stdout),
+				String::from_utf8_lossy(&output.stderr)
+			);
+			return;
+		}
+		let root =
+			std::env::temp_dir().join(format!("pr-results-wide-test-{}", std::process::id()));
+		for i in 0..80 {
+			let dir = root.join(format!("suite-{i}"));
+			std::fs::create_dir_all(&dir).unwrap();
+			std::fs::write(dir.join("test.xml"), b"<testsuite/>").unwrap();
+		}
+		let mut plan = Plan::new("App", CommentKey::parse("ci").unwrap(), vec![], "test");
+		plan.archive.max_files = 100;
+		let result = files(&root, &plan);
+		std::fs::remove_dir_all(root).unwrap();
+		assert_eq!(result.unwrap().0.len(), 80);
 	}
 }
