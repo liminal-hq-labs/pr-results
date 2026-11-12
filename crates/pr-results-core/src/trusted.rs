@@ -219,9 +219,12 @@ pub struct Marker {
 }
 
 impl Marker {
-	/// Reads the first line of `body`. The line must be exactly what [`Marker::render`] writes.
+	/// Reads the first line of `body`. The line must be exactly what [`Marker::render`] writes,
+	/// except that a line ending of `\r\n` is accepted, because a comment edited in a browser may
+	/// come back with one.
 	pub fn parse(body: &str) -> Option<Self> {
 		let line = body.split('\n').next()?;
+		let line = line.strip_suffix('\r').unwrap_or(line);
 		let rest = line.strip_prefix(MARKER_PREFIX)?;
 		let (key, rest) = rest.split_once(" sha=")?;
 		let (sha, rest) = rest.split_once(" run=")?;
