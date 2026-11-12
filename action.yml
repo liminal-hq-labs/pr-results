@@ -1,0 +1,123 @@
+# Runs pr-results: the release binary this commit carries the SHA-256 of, or a build from source.
+#
+# Pinning this action by commit SHA pins the exact binary, because the digests below are part of
+# the pinned commit. Inputs reach the shell only through `env`, never through `${{ }}` in a script.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+name: pr-results
+description: Calm test and check results for pull requests, from JUnit and step reports.
+author: Liminal HQ
+
+inputs:
+  command:
+    description: publish, render or validate-config
+    default: publish
+  args:
+    description: Further arguments, split on whitespace, such as `--dry-run out` or the files for render
+    default: ''
+  config:
+    description: The settings file. For publish and render it is left out when it is the default path and does not exist
+    default: .github/pr-results.toml
+  build:
+    description: release (download the binary and check its SHA-256) or source (build it with cargo)
+    default: release
+  token:
+    description: The token publish uses. Only GITHUB_TOKEN, with the four permissions of the publisher workflow
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the build input
+      if: inputs.build != 'release' && inputs.build != 'source'
+      shell: bash
+      run: |
+        echo "::error::build must be release or source."
+        exit 1
+
+    # The digest check cannot be skipped: it is the only way this step gets a binary. Until a
+    # release fills in the digests below, it fails and says why.
+    - name: Install the release binary
+      id: release
+      if: inputs.build == 'release'
+      shell: bash
+      env:
+        PR_RESULTS_TAG: v0.1.0
+        PR_RESULTS_SHA256_X86_64: PLACEHOLDER
+        PR_RESULTS_SHA256_AARCH64: PLACEHOLDER
+      run: |
+        set -euo pipefail
+        case "$(uname -m)" in
+          x86_64)
+            target=x86_64-unknown-linux-musl
+            want="$PR_RESULTS_SHA256_X86_64"
+            ;;
+          aarch64 | arm64)
+            target=aarch64-unknown-linux-musl
+            want="$PR_RESULTS_SHA256_AARCH64"
+            ;;
+          *)
+            echo "::error::pr-results has no release binary for $(uname -m). Use build: source."
+            exit 1
+            ;;
+        esac
+        if ! [[ "$want" =~ ^[0-9a-f]{64}$ ]]; then
+          echo "::error::This commit of pr-results carries no SHA-256 for $target yet ($want). Pin a release commit, or use build: source."
+          exit 1
+        fi
+        dir="$RUNNER_TEMP/pr-results"
+        mkdir -p "$dir"
+        curl --proto '=https' --tlsv1.2 -fsSL --retry 3 \
+          -o "$dir/pr-results" \
+          "https://github.com/liminal-hq-labs/pr-results/releases/download/${PR_RESULTS_TAG}/pr-results-${target}"
+        echo "${want}  ${dir}/pr-results" | sha256sum -c -
+        chmod 0755 "$dir/pr-results"
+        echo "bin=$dir/pr-results" >> "$GITHUB_OUTPUT"
+
+    - name: Build from source
+      id: source
+      if: inputs.build == 'source'
+      shell: bash
+      env:
+        PR_RESULTS_RUST: 1.98.0
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$PR_RESULTS_RUST" --profile minimal --no-self-update
+        export CARGO_TARGET_DIR="$RUNNER_TEMP/pr-results-target"
+        cargo "+$PR_RESULTS_RUST" build --locked --release -p pr-results \
+          --manifest-path "$ACTION_PATH/Cargo.toml"
+        echo "bin=$CARGO_TARGET_DIR/release/pr-results" >> "$GITHUB_OUTPUT"
+
+    - name: Run pr-results
+      shell: bash
+      env:
+        PR_RESULTS_BIN: ${{ steps.release.outputs.bin || steps.source.outputs.bin }}
+        PR_RESULTS_COMMAND: ${{ inputs.command }}
+        PR_RESULTS_ARGS: ${{ inputs.args }}
+        PR_RESULTS_CONFIG: ${{ inputs.config }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        args=()
+        if [ -n "$PR_RESULTS_ARGS" ]; then
+          read -r -a args <<< "$PR_RESULTS_ARGS"
+        fi
+        config=()
+        case "$PR_RESULTS_COMMAND" in
+          publish | render)
+            if [ "$PR_RESULTS_CONFIG" != ".github/pr-results.toml" ] || [ -f "$PR_RESULTS_CONFIG" ]; then
+              config=(--config "$PR_RESULTS_CONFIG")
+            fi
+            "$PR_RESULTS_BIN" "$PR_RESULTS_COMMAND" "${config[@]}" "${args[@]}"
+            ;;
+          validate-config)
+            "$PR_RESULTS_BIN" validate-config "$PR_RESULTS_CONFIG" "${args[@]}"
+            ;;
+          *)
+            echo "::error::command must be publish, render or validate-config."
+            exit 1
+            ;;
+        esac
