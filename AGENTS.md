@@ -42,7 +42,7 @@ pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment
 
 ## Commit messages
 
-**Format:** Conventional Commits (`feat`, `fix`, `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf`, `style`), with an optional scope.
+**Format:** Conventional Commits (`feat`, `fix`, `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf`, `style`), with an optional scope. The one exception is the repository's first commit, GitHub's `Initial commit`, which records the plumbing the repository started with.
 
 - The body explains what and why, not how. Use markdown with **bold labels** and no headings. Hard-wrap.
 - Backtick every code-level reference (identifiers, paths, config keys, flags, crate names). User-facing strings use quotes.
@@ -51,7 +51,7 @@ pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment
 
 ## Pull requests
 
-- **Title:** capitalized, imperative, about 70 characters, no Conventional Commit prefix, outcome-focused.
+- **Title:** capitalized, imperative, about 70 characters, outcome-focused. **Never a Conventional Commit prefix** (no `feat:` or `docs:`): the prefix belongs to commit messages only.
 - **Body:** `## Summary` with flat bullets that open with a **bold lead-in**, then `## Test plan` with `- [x]` or `- [ ]` items naming the commands run. Finish with what was not verified.
 - **Labels:** one of `enhancement`, `bug`, `documentation`, `testing`, `ci`, `build`, `chore`, plus scope labels where useful.
 - Fix a bug with a test that fails before the fix, and state exactly what was and was not run.
@@ -100,7 +100,7 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 
 - `bash scripts/check-headers.sh` — SPDX headers
 - `bash scripts/check-banner.sh` — hero banner rules and text fit (needs `xmllint`, `rsvg-convert`, `python3` and Chromium; `--shots DIR` writes frames to look at)
-- `docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.17.2 "**/*.md"` — markdown
+- `docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.24.0 "**/*.md"` — markdown
 - `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/*.sh` — shell scripts
 - `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint` — workflows
 - `docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor --offline .github` — workflow audit
@@ -126,7 +126,7 @@ State exactly what was and was not run when reporting results.
 README.md SPEC.md AGENTS.md CLAUDE.md CHANGELOG.md LICENSE-APACHE LICENSE-MIT
 .editorconfig .markdownlint.jsonc .lychee.toml .gitignore rustfmt.toml
 assets/        animated hero banner
-docs/          decisions, adopting, inputs, security, and the template's new-project checklist
+docs/          decisions, adopting, inputs and security
 scripts/       header check, banner check and its Chromium text-fit harness
 .github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
