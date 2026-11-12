@@ -250,7 +250,7 @@ fn a_redirect_to_another_host_name_reaches_it_without_the_token() {
 	assert!(api_seen[0].starts_with("GET /repos/o/r/actions/artifacts/77/zip HTTP/1.1"));
 	assert!(
 		has_header(&api_seen[0], "authorization"),
-		"the API call is authorised"
+		"the API call is authorized"
 	);
 	let blob_seen = blob.finish();
 	assert_eq!(blob_seen.len(), 1);
