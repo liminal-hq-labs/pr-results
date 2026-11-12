@@ -125,3 +125,5 @@ GitHub's limits for check runs: `output.summary` and `output.text` are each at m
 - **Comment edit history** keeps every previous version visible to anyone, including content that was later escaped better, so escaping must be right from the first release.
 - **Rate limits** on large monorepos with many annotations, mitigated by batching and the per-suite cap.
 - **Scope creep** towards a dashboard. The non-goals hold the line.
+
+| D67 | Forgejo host and trust | The Forgejo host writes commit statuses and checks the sticky comment’s marker and author. The automatic identity is `forgejo-actions` with id −2; a named bot is verified against the token account. `[forge]` selects the host, a same-host HTTPS API URL and an optional PEM CA bundle; blob host overrides are restricted to GitHub. The host is tested against a fake and loopback TLS, while in-job publishing and a live Forgejo gate remain to be built | Identity checks protect other authors’ comments, and keeping the API on the runner’s host confines the token |

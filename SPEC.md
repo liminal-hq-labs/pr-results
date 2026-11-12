@@ -220,6 +220,12 @@ Forgejo has no check runs and no annotations. With `Target::Forgejo` (decision D
 - **The footer** links the commit and the run (by its number when known, which `publish` does not yet pass: until in-job publishing reads the run number from the environment it links the run id), with no artefacts link.
 - **Inertness.** Outside code Forgejo also links a bare commit hash (7 to 64 hexadecimal digits), `!12`, `$…$` and `:emoji:`. Names, messages and paths are in code, where it links nothing; the only ordinary text is fixed words and the heading's title. A title that holds `$`, `!` before a digit, seven hexadecimal digits in a row, `:word:`, `://` or `www.` (checked with the colon and space that follow it) is written in a code span; `forgejo_inert_title` tells a loader which.
 
+### Forge settings and host
+
+The Forgejo host writes one commit status per section and maintains the sticky comment by its marker and author. The automatic token is identified by both `forgejo-actions` and account id −2; a configured bot login is verified against the token’s account before writing. A status uses the section name as its context and links to the comment when available. The host and its fake are implemented and tested offline; publishing from a Forgejo job is not yet available.
+
+The optional `[forge]` table accepts `kind` (`github` or `forgejo`), `api_url`, `ca_file`, `blob_hosts` and `bot_login`. `--forge` and `--bot-login` override the corresponding settings. A configured API URL must use HTTPS and the runner’s server host; a Forgejo API URL must also match that host. A PEM CA file replaces the default trust roots and is limited to 1 MiB. `blob_hosts` is for GitHub Enterprise Server and is refused for Forgejo. Forgejo uses `GITHUB_TOKEN`, falling back to `FORGEJO_TOKEN`, unless `--token-env` names a variable. A Forgejo runner configured as GitHub is refused.
+
 ### Size budget and degradation
 
 Every renderer works to a limit (comment 60 000, summary 60 000, text 60 000). A size is the larger of the text's characters and its UTF-16 units, because GitHub may count either; the 5 000-character headroom covers the marker and the footer. Rendering degrades in this order until it fits, each step adds one line saying what was left out and where to find it, and a step that would change nothing is not taken and not recorded (`Comment::steps_taken` lists the ones that were):
