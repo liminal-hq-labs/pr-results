@@ -20,7 +20,7 @@ use common::{
 	SHA,
 };
 use pr_results_core::{Marker, RunId};
-use pr_results_github::{
+use pr_results_forge::{
 	publish, ApiRequest, CommentAction, Failure, FakePull, Fault, ForgeError, Method, Note,
 	PublishReport,
 };
@@ -544,7 +544,7 @@ fn a_check_from_another_app_with_our_external_id_is_not_ours() {
 		Some("pr-results:1:ci:Example Rust tests"),
 		"my-app",
 	);
-	let gh = pr_results_github::GitHub::new(env.fake.clone(), env.run.head_repo.clone(), BOT)
+	let gh = pr_results_forge::GitHub::new(env.fake.clone(), env.run.head_repo.clone(), BOT)
 		.with_check_app("my-app");
 	let report = publish(&gh, &env.run, &env.server, &env.plan).unwrap();
 	assert_eq!(report.checks[0].id, mine);
@@ -554,7 +554,7 @@ fn a_check_from_another_app_with_our_external_id_is_not_ours() {
 #[test]
 fn retries_stop_when_the_time_allowed_for_waiting_is_used_up() {
 	let env = env_with_results();
-	let gh = pr_results_github::GitHub::new(env.fake.clone(), env.run.head_repo.clone(), BOT)
+	let gh = pr_results_forge::GitHub::new(env.fake.clone(), env.run.head_repo.clone(), BOT)
 		.with_retry_budget(10);
 	// Each wait is 8 s: the first is inside the budget, the second would pass it.
 	env.fake.fail(
@@ -581,7 +581,7 @@ fn retries_stop_when_the_time_allowed_for_waiting_is_used_up() {
 
 	// The budget belongs to one publish: the next starts afresh.
 	let env2 = env_with_results();
-	let gh2 = pr_results_github::GitHub::new(env2.fake.clone(), env2.run.head_repo.clone(), BOT)
+	let gh2 = pr_results_forge::GitHub::new(env2.fake.clone(), env2.run.head_repo.clone(), BOT)
 		.with_retry_budget(10);
 	env2.fake
 		.fail(Method::Get, "/artifacts", 1, Fault::retry_after(429, 8));
@@ -597,8 +597,8 @@ fn retries_stop_when_the_time_allowed_for_waiting_is_used_up() {
 
 #[test]
 fn the_default_budget_is_ten_minutes() {
-	assert_eq!(pr_results_github::RETRY_BUDGET_S, 600);
-	assert_eq!(pr_results_github::DEFAULT_CHECK_APP, "github-actions");
+	assert_eq!(pr_results_forge::RETRY_BUDGET_S, 600);
+	assert_eq!(pr_results_forge::DEFAULT_CHECK_APP, "github-actions");
 }
 
 #[test]
@@ -878,6 +878,18 @@ fn a_push_gets_check_runs_and_no_comment() {
 }
 
 #[test]
+fn the_report_carries_the_comment_for_the_job_summary_even_when_nothing_is_posted() {
+	let mut env = env_with_results();
+	env.run.event = "push".to_owned();
+	env.run.pull_requests = Vec::new();
+	let report = env.publish();
+	let summary = report.job_summary.unwrap();
+	assert!(summary.starts_with("### "), "{summary}");
+	assert!(!summary.contains("<!--"));
+	assert!(summary.contains("All 3 passed"));
+}
+
+#[test]
 fn a_cancelled_or_skipped_run_publishes_nothing() {
 	for conclusion in ["cancelled", "skipped"] {
 		let mut env = env_with_results();
@@ -967,7 +979,7 @@ fn an_expired_a_refused_and_an_unreadable_artefact_are_noted_not_fatal() {
 	let report = env.publish();
 	assert!(report.notes.contains(&Note::ArtifactRefused {
 		section: 0,
-		why: pr_results_github::ArchiveError::BadPath
+		why: pr_results_forge::ArchiveError::BadPath
 	}));
 
 	let env = Env::new();
@@ -1251,8 +1263,8 @@ fn log_lines_cannot_carry_a_workflow_command() {
 #[test]
 fn a_dry_run_writes_nothing_and_keeps_what_it_would_have_sent() {
 	let env = env_with_results();
-	let dry = pr_results_github::DryRun::new(env.fake.clone());
-	let gh = pr_results_github::GitHub::new(dry.clone(), env.run.head_repo.clone(), BOT);
+	let dry = pr_results_forge::DryRun::new(env.fake.clone());
+	let gh = pr_results_forge::GitHub::new(dry.clone(), env.run.head_repo.clone(), BOT);
 	let report = publish(&gh, &env.run, &env.server, &env.plan).unwrap();
 	assert!(!report.failed());
 	assert!(
@@ -1438,7 +1450,7 @@ fn paging_comments_keeps_only_a_prefix_of_each_body() {
 	env.fake.add_comment(7, "accented", &accents);
 	let listed = env.gh.comments(7).unwrap();
 	assert_eq!(listed.len(), 100);
-	let limit = pr_results_github::BODY_PREFIX_BYTES;
+	let limit = pr_results_forge::BODY_PREFIX_BYTES;
 	assert!(listed.iter().all(|c| c.body.len() <= limit));
 	let held: usize = listed.iter().map(|c| c.body.len()).sum();
 	assert!(held <= 100 * limit, "{held} bytes held");
@@ -1472,6 +1484,6 @@ fn a_hundred_and_first_page_is_an_error() {
 	}
 	assert!(matches!(
 		env.gh.comments(7),
-		Err(pr_results_github::ForgeError::Decode(_))
+		Err(pr_results_forge::ForgeError::Decode(_))
 	));
 }

@@ -10,8 +10,8 @@
 use pr_results_core::{Case, Marker, Safe, Status, Suite, TrustedUrl};
 
 use crate::text::{big, cat, count, join, noun, num, t};
-use crate::view::{excerpt, group_of, suite_label, Counts, Entry, Verdict};
-use crate::{RunContext, Symbols};
+use crate::view::{excerpt, group_of, location_piece, suite_label, Counts, Entry, Verdict};
+use crate::{RunContext, Symbols, Target};
 
 /// Budgets for the names shown on a line, in characters after escaping.
 const SUITE_CHARS: usize = 120;
@@ -35,22 +35,40 @@ pub(crate) fn marker_line(ctx: &RunContext) -> Safe {
 }
 
 /// `Commit abc · workflow run · artefacts · pr-results 0.1.0`, all links built from the context.
+/// Forgejo has no artefacts section on a run's page, and names the page by the run's number.
 pub(crate) fn footer(ctx: &RunContext) -> Safe {
 	let commit = TrustedUrl::commit(&ctx.server, &ctx.repo, &ctx.head_sha);
-	let run = TrustedUrl::run(&ctx.server, &ctx.repo, ctx.run_id);
-	let artefacts = TrustedUrl::run_artifacts(&ctx.server, &ctx.repo, ctx.run_id);
-	join(
-		&t(" \u{b7} "),
-		&[
-			cat(&[
-				t("Commit "),
-				Safe::link(&commit, &Safe::sha_short(&ctx.head_sha)),
-			]),
-			Safe::link(&run, &t("workflow run")),
-			Safe::link(&artefacts, &t("artefacts")),
-			cat(&[t("pr-results "), Safe::trusted(ctx.tool_version)]),
-		],
-	)
+	let commit = cat(&[
+		t("Commit "),
+		Safe::link(&commit, &Safe::sha_short(&ctx.head_sha)),
+	]);
+	let version = cat(&[t("pr-results "), Safe::trusted(ctx.tool_version)]);
+	let separator = t(" \u{b7} ");
+	match ctx.target {
+		Target::GitHub => {
+			let run = TrustedUrl::run(&ctx.server, &ctx.repo, ctx.run_id);
+			let artefacts = TrustedUrl::run_artifacts(&ctx.server, &ctx.repo, ctx.run_id);
+			join(
+				&separator,
+				&[
+					commit,
+					Safe::link(&run, &t("workflow run")),
+					Safe::link(&artefacts, &t("artefacts")),
+					version,
+				],
+			)
+		}
+		Target::Forgejo => {
+			let run = match ctx.run_number {
+				Some(number) => TrustedUrl::forgejo_run(&ctx.server, &ctx.repo, number),
+				None => TrustedUrl::run(&ctx.server, &ctx.repo, ctx.run_id),
+			};
+			join(
+				&separator,
+				&[commit, Safe::link(&run, &t("workflow run")), version],
+			)
+		}
+	}
 }
 
 fn glyph(symbols: Symbols, mark: &'static str) -> Safe {
@@ -117,7 +135,14 @@ pub(crate) fn path_line(e: &Entry<'_>, section_title: Option<&str>) -> Safe {
 	join(&t(" \u{203a} "), &parts)
 }
 
-pub(crate) fn message_line(case: &Case) -> Safe {
+/// ``at `path:line` ``, for a case that reports a whole repository path. Forgejo has no
+/// annotations to carry it, so the comment does.
+fn location(case: &Case) -> Option<Safe> {
+	let piece = location_piece(case)?;
+	Some(cat(&[t("at "), Safe::code_span(&piece, MESSAGE_CHARS)]))
+}
+
+pub(crate) fn message_line(case: &Case, target: Target) -> Safe {
 	let kind = match case.status {
 		Status::Errored => t("Errored: "),
 		_ => Safe::default(),
@@ -126,10 +151,12 @@ pub(crate) fn message_line(case: &Case) -> Safe {
 		.message
 		.as_ref()
 		.map_or_else(|| t("no message"), |m| Safe::code_span(m, MESSAGE_CHARS));
-	join(
-		&t(" \u{b7} "),
-		&[cat(&[kind, message]), Safe::duration_ms(case.time_ms)],
-	)
+	let mut parts = vec![cat(&[kind, message])];
+	if target == Target::Forgejo {
+		parts.extend(location(case));
+	}
+	parts.push(Safe::duration_ms(case.time_ms));
+	join(&t(" \u{b7} "), &parts)
 }
 
 /// How many earlier attempts there were, and how many of them the report could not keep.
@@ -155,6 +182,7 @@ pub(crate) fn failure_lines(
 	e: &Entry<'_>,
 	section_title: Option<&str>,
 	excerpt_lines: usize,
+	target: Target,
 ) -> (Vec<Safe>, usize) {
 	let blank = Safe::default;
 	let mut lines = vec![
@@ -169,7 +197,7 @@ pub(crate) fn failure_lines(
 		blank(),
 		path_line(e, section_title),
 		blank(),
-		message_line(e.case),
+		message_line(e.case, target),
 	];
 	if let Some(attempts) = attempts_line(e.case) {
 		lines.push(blank());

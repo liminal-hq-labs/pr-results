@@ -14,19 +14,40 @@ use pr_results_core::{
 	parse_junit, CommentKey, Flavour, Limits, RepoSlug, RunId, ServerUrl, Sha, Suite,
 };
 use pr_results_render::{
-	check, comment, measure, Comment, Conclusion, Degradation, Input, Level, Options, RunContext,
-	Section, Symbols,
+	check, comment, measure, status, Comment, Conclusion, Degradation, Input, Level, Options,
+	RunContext, Section, StatusState, Symbols, Target,
 };
 
 pub const SHA: &str = "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334";
 pub const LINK_PREFIX: &str = "https://github.com/example/app/";
+pub const FORGEJO_LINK_PREFIX: &str = "https://forgejo.example.invalid/example/app/";
+
+pub fn link_prefix(target: Target) -> &'static str {
+	match target {
+		Target::GitHub => LINK_PREFIX,
+		Target::Forgejo => FORGEJO_LINK_PREFIX,
+	}
+}
 
 pub fn ctx() -> RunContext {
+	ctx_for(Target::GitHub)
+}
+
+pub fn ctx_for(target: Target) -> RunContext {
 	RunContext {
-		server: ServerUrl::parse("https://github.com").unwrap(),
+		target,
+		server: ServerUrl::parse(match target {
+			Target::GitHub => "https://github.com",
+			Target::Forgejo => "https://forgejo.example.invalid",
+		})
+		.unwrap(),
 		repo: RepoSlug::parse("example/app").unwrap(),
 		head_sha: Sha::parse(SHA).unwrap(),
 		run_id: RunId(19_283_746),
+		run_number: match target {
+			Target::GitHub => None,
+			Target::Forgejo => Some(412),
+		},
 		key: CommentKey::parse("ci").unwrap(),
 		tool_version: "0.1.0",
 	}
@@ -85,6 +106,7 @@ pub struct Scenario {
 	pub options: Options,
 	/// Whether the check runs and annotations are written too.
 	pub checks: bool,
+	pub target: Target,
 }
 
 impl Scenario {
@@ -95,7 +117,14 @@ impl Scenario {
 			sections,
 			options: Options::default(),
 			checks: true,
+			target: Target::GitHub,
 		}
+	}
+
+	/// The scenario for Forgejo: a comment and a commit status per section.
+	pub fn forgejo(mut self) -> Self {
+		self.target = Target::Forgejo;
+		self
 	}
 
 	pub fn with_options(mut self, options: Options) -> Self {
@@ -109,7 +138,7 @@ impl Scenario {
 	}
 
 	pub fn with_ctx<R>(&self, f: impl FnOnce(&Input<'_>) -> R) -> R {
-		let ctx = ctx();
+		let ctx = ctx_for(self.target);
 		let sections: Vec<Section<'_>> = self
 			.sections
 			.iter()
@@ -134,9 +163,25 @@ impl Scenario {
 		self.with_ctx(comment)
 	}
 
+	/// `state` and `description` of a section's commit status.
+	pub fn status_file(&self, index: usize) -> String {
+		let out = self.with_ctx(|i| status(i, index)).unwrap();
+		let state = match out.state {
+			StatusState::Success => "success",
+			StatusState::Failure => "failure",
+		};
+		format!("state: {state}\ndescription: {}\n", out.description)
+	}
+
 	/// The files of the scenario's golden directory, in order.
 	pub fn outputs(&self) -> Vec<(String, String)> {
 		let mut files = vec![("comment.md".to_owned(), self.comment().body.to_string())];
+		if self.target == Target::Forgejo {
+			for index in 0..self.sections.len() {
+				files.push((format!("status-{index}.txt"), self.status_file(index)));
+			}
+			return files;
+		}
 		if !self.checks {
 			return files;
 		}
@@ -241,6 +286,10 @@ pub fn synthetic_nextest(
 /// The base of the `truncated-*` scenarios: enough failures, flaky tests and passing suites that
 /// every step of the budget has something to cut.
 pub fn truncation_base() -> Scenario {
+	truncation_base_for(Target::GitHub)
+}
+
+pub fn truncation_base_for(target: Target) -> Scenario {
 	let mut sections = vec![section(
 		"Rust tests",
 		false,
@@ -257,15 +306,21 @@ pub fn truncation_base() -> Scenario {
 		max_failures: 30,
 		..Options::default()
 	};
-	Scenario::new("truncation-base", "Example checks", sections)
+	let mut sc = Scenario::new("truncation-base", "Example checks", sections)
 		.with_options(options)
-		.comment_only()
+		.comment_only();
+	sc.target = target;
+	sc
 }
 
 /// For each step the base reaches, the comment limit at which it is the last one taken: the size
 /// of the comment right after that step.
 pub fn truncation_limits() -> Vec<(Degradation, usize)> {
-	let base = truncation_base();
+	truncation_limits_for(Target::GitHub)
+}
+
+pub fn truncation_limits_for(target: Target) -> Vec<(Degradation, usize)> {
+	let base = truncation_base_for(target);
 	let mut found: Vec<(Degradation, usize)> = Vec::new();
 	let mut limit = usize::MAX;
 	for _ in 0..24 {
@@ -522,6 +577,60 @@ pub fn scenarios() -> Vec<Scenario> {
 		.with_options(glyph_options),
 	);
 
+	all.extend(forgejo_scenarios());
+	all
+}
+
+/// The hostile title for Forgejo: everything it links outside code, and what GitHub does too.
+pub const FORGEJO_HOSTILE_TITLE: &str =
+	"@everyone GH-123 !12 $x$ deadbeef0 :smile: x:wink [x](https://example.invalid)";
+
+pub fn forgejo_scenarios() -> Vec<Scenario> {
+	let rust = |files: &[&str]| load(files, Flavour::Nextest);
+	let mut all = vec![
+		Scenario::new(
+			"forgejo-all-pass",
+			"Example checks",
+			vec![section("Rust tests", false, rust(&["nextest/pass.xml"]))],
+		)
+		.forgejo(),
+		Scenario::new(
+			"forgejo-failures",
+			"Example checks",
+			vec![
+				section(
+					"Rust tests",
+					false,
+					rust(&["nextest/fail.xml", "nextest/retries-exhausted.xml"]),
+				),
+				section(
+					"Frontend tests",
+					false,
+					load(&["vitest/fail-with-stack.xml"], Flavour::Vitest),
+				),
+				section("Desk steps", true, Vec::new()),
+				section("Playwright", false, Vec::new()),
+			],
+		)
+		.forgejo(),
+		Scenario::new(
+			"forgejo-hostile",
+			FORGEJO_HOSTILE_TITLE,
+			vec![
+				section(
+					"@owner/team #1 !12 $x$ | pipe",
+					false,
+					load(&["hostile/strings.xml"], Flavour::Generic),
+				),
+				section("GH", false, Vec::new()),
+			],
+		)
+		.forgejo(),
+	];
+	let mut minimal = truncation_base();
+	minimal.options.comment_limit = 700;
+	minimal.name = "forgejo-truncated-minimal".to_owned();
+	all.push(minimal.forgejo());
 	all
 }
 
@@ -529,7 +638,12 @@ pub fn scenarios() -> Vec<Scenario> {
 pub fn assert_inert_all(sc: &Scenario) {
 	for (file, text) in sc.outputs() {
 		if file.ends_with(".md") {
-			inert::assert_inert(&format!("{}/{file}", sc.name), &text, LINK_PREFIX);
+			inert::assert_inert_for(
+				sc.target,
+				&format!("{}/{file}", sc.name),
+				&text,
+				link_prefix(sc.target),
+			);
 		}
 	}
 }

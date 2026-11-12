@@ -124,6 +124,46 @@ pub(crate) fn join(separator: &Safe, parts: &[Safe]) -> Safe {
 	cat(&all)
 }
 
+/// Whether the heading may write `title` as ordinary text on Forgejo. The heading puts `: `
+/// after the title, so that is checked with it: `x:smile` would become `:smile:`.
+pub(crate) fn forgejo_inert(title: &str) -> bool {
+	let chars: Vec<char> = title.chars().chain([':', ' ']).collect();
+	if chars.contains(&'$') {
+		return false;
+	}
+	// `Safe::text` writes the colon of `://` as an entity, which decodes before Forgejo looks for
+	// a link, so a scheme or a `www.` start would autolink.
+	let lower: String = chars.iter().collect::<String>().to_ascii_lowercase();
+	if lower.contains("://") || lower.contains("www.") {
+		return false;
+	}
+	if chars
+		.iter()
+		.zip(chars.iter().skip(1))
+		.any(|(a, b)| *a == '!' && b.is_ascii_digit())
+	{
+		return false;
+	}
+	let mut run = 0usize;
+	for c in &chars {
+		run = if c.is_ascii_hexdigit() { run + 1 } else { 0 };
+		if run >= 7 {
+			return false;
+		}
+	}
+	let word = |c: &char| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-');
+	for (at, c) in chars.iter().enumerate() {
+		if *c != ':' {
+			continue;
+		}
+		let inner = chars.iter().skip(at + 1).take_while(|c| word(c)).count();
+		if inner > 0 && chars.get(at + 1 + inner) == Some(&':') {
+			return false;
+		}
+	}
+	true
+}
+
 /// Lines of Markdown with at most one blank line between blocks.
 #[derive(Default)]
 pub(crate) struct Doc {

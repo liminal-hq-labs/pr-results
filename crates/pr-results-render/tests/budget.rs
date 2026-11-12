@@ -14,7 +14,7 @@ mod common;
 
 use common::{assert_inert_all, parse_text, section, synthetic_nextest, Scenario};
 use pr_results_core::Flavour;
-use pr_results_render::{measure, Degradation, Options};
+use pr_results_render::{measure, Degradation, Options, Target};
 
 /// GitHub's own limit on a comment body, in UTF-16 units.
 const GITHUB_COMMENT: usize = 65_536;
@@ -206,6 +206,63 @@ fn a_limit_above_githubs_is_held_to_it() {
 			let out = sc.with_ctx(|i| pr_results_render::check(i, index)).unwrap();
 			assert!(utf16(out.summary.as_str()) <= GITHUB_CHECK);
 			assert!(utf16(out.text.as_str()) <= GITHUB_CHECK);
+		}
+	}
+}
+
+#[test]
+fn forgejo_outputs_fit_at_every_limit_and_say_what_they_left_out() {
+	for limit in [2_000, 10_000, 60_000] {
+		for sc in [big(), astral()] {
+			let mut sc = with_limits(sc, limit);
+			sc.target = Target::Forgejo;
+			let c = sc.comment();
+			assert!(measure(&c.body) <= limit, "{}: {limit}", sc.name);
+			assert!(utf16(c.body.as_str()) <= GITHUB_COMMENT.min(limit));
+			for index in 0..sc.sections.len() {
+				let out = sc
+					.with_ctx(|i| pr_results_render::status(i, index))
+					.unwrap();
+				assert!(measure(&out.description) <= pr_results_render::STATUS_DESCRIPTION_CHARS);
+			}
+			common::assert_inert_all(&sc);
+		}
+	}
+	let base = common::truncation_base_for(Target::Forgejo);
+	let limits = common::truncation_limits_for(Target::Forgejo);
+	assert_eq!(limits.len(), 8);
+	for (step, limit) in limits {
+		let mut sc = base.clone();
+		sc.options.comment_limit = limit;
+		let body = sc.comment().body.to_string();
+		let said = match step {
+			Degradation::ExtrasToCounts => "The list of 8 flaky tests was left out",
+			Degradation::Excerpt8 => "shortened to 8 lines",
+			Degradation::Excerpt3 => "shortened to 3 lines",
+			Degradation::Failures20 | Degradation::Failures5 => "more failures, not listed here",
+			Degradation::NoFailures => "failures are not listed here",
+			Degradation::PassingCollapsed => "combined into one row",
+			Degradation::Minimal => "Most of this comment was left out",
+		};
+		assert!(body.contains(said), "{step:?}: {said:?} is not in\n{body}");
+		for word in ["check run", "GitHub"] {
+			assert!(!body.contains(word), "{step:?}: {word:?} in\n{body}");
+		}
+	}
+}
+
+#[test]
+fn a_forgejo_budget_takes_the_same_steps_as_github_at_the_same_limit() {
+	let at = |target, limit| {
+		let mut sc = with_limits(big(), limit);
+		sc.target = target;
+		sc.comment().steps_taken
+	};
+	// The wording differs by a few words, so only the order is the same.
+	for limit in [2_000, 10_000, 60_000] {
+		let steps = at(Target::Forgejo, limit);
+		for pair in steps.windows(2) {
+			assert!(pair[0] < pair[1], "{limit}: {steps:?}");
 		}
 	}
 }

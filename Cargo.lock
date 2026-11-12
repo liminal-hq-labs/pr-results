@@ -120,7 +120,7 @@ version = "0.1.0"
 dependencies = [
  "miniz_oxide",
  "pr-results-core",
- "pr-results-github",
+ "pr-results-forge",
  "pr-results-render",
  "serde_json",
  "toml",
@@ -134,7 +134,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pr-results-github"
+name = "pr-results-forge"
 version = "0.1.0"
 dependencies = [
  "miniz_oxide",

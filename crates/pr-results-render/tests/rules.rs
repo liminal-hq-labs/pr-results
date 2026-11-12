@@ -148,7 +148,7 @@ fn the_spelling_is_canadian_in_the_source() {
 fn the_spelling_is_canadian_in_every_output() {
 	for sc in scenarios() {
 		// The hostile scenario's text is the attacker's; every other word is ours.
-		if sc.name == "hostile" || sc.name == "js-hostile" {
+		if ["hostile", "js-hostile", "forgejo-hostile"].contains(&sc.name.as_str()) {
 			continue;
 		}
 		for (file, text) in sc.outputs() {

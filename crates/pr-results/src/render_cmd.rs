@@ -15,7 +15,7 @@ use pr_results_core::{
 	parse_junit_in, Flavour, Glob, Limits as ParseLimits, RepoSlug, Report, RunId, ServerUrl, Sha,
 	Suite,
 };
-use pr_results_render::{check, comment, Conclusion, Input, RunContext, Section};
+use pr_results_render::{check, comment, Conclusion, Input, RunContext, Section, Target};
 
 use crate::args::RenderArgs;
 use crate::config::{self, Settings};
@@ -131,6 +131,8 @@ fn placeholder_context(settings: &Settings) -> Result<RunContext, CliError> {
 		repo: RepoSlug::parse(PLACEHOLDER_REPO).ok_or_else(bad)?,
 		head_sha: Sha::parse(PLACEHOLDER_SHA).ok_or_else(bad)?,
 		run_id: RunId(PLACEHOLDER_RUN),
+		run_number: None,
+		target: Target::GitHub,
 		key: settings.key.clone(),
 		tool_version: VERSION,
 	})

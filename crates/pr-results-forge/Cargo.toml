@@ -1,6 +1,6 @@
 [package]
-name = "pr-results-github"
-description = "The GitHub client behind a Forge trait, the artefact reader and the publish flow"
+name = "pr-results-forge"
+description = "The forge transport and the hosts behind it (GitHub), the artefact reader and the publish flow"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

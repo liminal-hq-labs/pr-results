@@ -3,7 +3,7 @@
 // (c) Copyright 2026 Liminal HQ, Scott Morris
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use pr_results_core::{Case, Flavour, Status, Suite, Untrusted};
+use pr_results_core::{Case, Flavour, RepoPath, Status, Suite, Untrusted};
 
 use crate::text::Piece;
 use crate::Section;
@@ -208,4 +208,15 @@ pub(crate) fn excerpt(detail: &Untrusted, cap: usize, from_end: bool) -> Option<
 		shown_lines: cap,
 		from_end,
 	})
+}
+
+/// `path:line` of a case that reports a whole repository path, or `path` when the line is
+/// unknown.
+pub(crate) fn location_piece(case: &Case) -> Option<Piece> {
+	let path = RepoPath::from_case(case.file.as_ref()?)?;
+	let text = match case.line.filter(|l| *l > 0) {
+		Some(line) => format!("{}:{line}", path.as_str()),
+		None => path.as_str().to_owned(),
+	};
+	Some(Piece { text, omitted: 0 })
 }
