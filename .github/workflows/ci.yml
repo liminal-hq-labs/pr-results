@@ -1,6 +1,9 @@
 # One job per check, so a pull request's checks list names exactly what passed or failed.
-# Language-neutral checks run as they are; uncomment the Rust block below (or add the
-# equivalent for the project's language) once there is code to check.
+# The language-neutral checks run now. The Rust block at the end is commented until the first
+# crate lands: the change that adds `Cargo.toml` uncomments and adapts it, and adds the goldens,
+# reproducible-build and action-smoke jobs the specification lists.
+#
+# Every action is pinned by full commit SHA with its version in a comment, and images by digest.
 #
 # (c) Copyright 2026 Liminal HQ, Scott Morris
 # SPDX-License-Identifier: Apache-2.0 OR MIT
@@ -34,14 +37,31 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Run markdownlint-cli2
-        uses: DavidAnson/markdownlint-cli2-action@v24
+        uses: DavidAnson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34 # v25.0.0
         with:
           globs: '**/*.md'
+
+  links:
+    name: Link check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check links in markdown
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --config .lychee.toml '**/*.md'
+          token: ${{ github.token }}
+          fail: true
 
   headers:
     name: Licence headers
@@ -49,7 +69,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -62,7 +82,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -77,18 +97,51 @@ jobs:
           BANNER_REQUIRE_RENDER: '1'
         run: bash scripts/check-banner.sh
 
+  actionlint:
+    name: Workflow lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # actionlint 1.7.12
+      - name: Run actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+  zizmor:
+    name: Workflow audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Blocking from the first run. Findings stay in the job log rather than the code-scanning
+      # tab, so the job needs no `security-events` permission.
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          advanced-security: false
+
   # Rust: one job per check in the shared ci-rust image. Take the current digest from
   # https://github.com/liminal-hq/.github/blob/main/docs/reference/recommended-image-pins.md
+  # and check that the image carries `cargo-nextest` before relying on it (its notes list Rust and
+  # `cargo-deny`).
   #
   # fmt:
   #   name: Format
   #   runs-on: ubuntu-24.04
   #   timeout-minutes: 15
   #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:f12097be8cc22eb5145a46bc9f75b38a67fedd5833add4392e11ce85023e64df
+  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v6
+  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   #       with:
   #         persist-credentials: false
   #
@@ -100,15 +153,15 @@ jobs:
   #   runs-on: ubuntu-24.04
   #   timeout-minutes: 30
   #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:f12097be8cc22eb5145a46bc9f75b38a67fedd5833add4392e11ce85023e64df
+  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v6
+  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   #       with:
   #         persist-credentials: false
   #
   #     - name: Cache Rust build output
-  #       uses: Swatinem/rust-cache@v2
+  #       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
   #       with:
   #         shared-key: pr-results
   #
@@ -120,17 +173,41 @@ jobs:
   #   runs-on: ubuntu-24.04
   #   timeout-minutes: 30
   #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:f12097be8cc22eb5145a46bc9f75b38a67fedd5833add4392e11ce85023e64df
+  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v6
+  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   #       with:
   #         persist-credentials: false
   #
   #     - name: Cache Rust build output
-  #       uses: Swatinem/rust-cache@v2
+  #       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
   #       with:
   #         shared-key: pr-results
   #
   #     - name: Run the tests
-  #       run: cargo nextest run --workspace --locked
+  #       run: cargo nextest run --workspace --locked --profile ci
+  #
+  #     # Uploaded for the publisher the repository's own CI will use once it is released.
+  #     - name: Upload Rust test results
+  #       if: always()
+  #       uses: actions/upload-artifact@<full commit sha> # vX.Y.Z
+  #       with:
+  #         name: rust-test-results
+  #         path: target/nextest/ci/junit.xml
+  #         if-no-files-found: ignore
+  #
+  # deny:
+  #   name: Dependency policy
+  #   runs-on: ubuntu-24.04
+  #   timeout-minutes: 15
+  #   container:
+  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  #       with:
+  #         persist-credentials: false
+  #
+  #     - name: Check dependencies
+  #       run: cargo deny check

@@ -1,0 +1,29 @@
+# Weekly dependency updates: GitHub Actions now, Cargo once there is a manifest (decision D12).
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    labels:
+      - 'ci'
+
+  # Enable with the change that adds Cargo.toml; Dependabot reports a failed run when it finds no
+  # manifest to update.
+  #
+  # - package-ecosystem: 'cargo'
+  #   directory: '/'
+  #   schedule:
+  #     interval: 'weekly'
+  #   open-pull-requests-limit: 5
+  #   cooldown:
+  #     default-days: 7
+  #   labels:
+  #     - 'build'

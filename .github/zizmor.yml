@@ -1,0 +1,10 @@
+# zizmor settings: require every `uses:` to be pinned by full commit SHA.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        '*': hash-pin
