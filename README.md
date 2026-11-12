@@ -8,9 +8,9 @@
   <img src="https://img.shields.io/badge/licence-Apache--2.0%20OR%20MIT-3fb950" alt="Licence: Apache-2.0 OR MIT">
 </p>
 
-pr-results will read the test and check results your CI produces and post them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It is planned to understand JUnit from nextest, vitest, bun, jest and Playwright as well as step reports from shell-script projects, and to be safe on pull requests from forks by design.
+pr-results reads the test and check results your CI produces and posts them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It reads JUnit from nextest (tuned) and step reports from shell-script projects (tuned), and from vitest, bun, jest and Playwright (parsed, tuned in v0.2), and it is safe on pull requests from forks by design.
 
-> **Status:** experimental and **not built yet**. Today this repository holds the specification, the design decisions and the project's own checks. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
+> **Status:** experimental. v0.1.0 is the first release: Linux `x86_64` and `aarch64` binaries built reproducibly, with the nextest and step JUnit readers tuned and the vitest, bun, jest and Playwright readers parsed but untuned. It is tested against an in-memory GitHub and loopback servers, and a sandbox repository showed that the comment's text forms make no mentions or links. **Not verified:** the first run of the workflows on GitHub Actions, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), and real team mentions and notifications. Interfaces and formats may change between any two minor versions, and [CHANGELOG.md](CHANGELOG.md) says what.
 
 ## What it's for
 
@@ -22,34 +22,36 @@ pr-results will read the test and check results your CI produces and post them t
 
 ## What the comment will look like
 
-This is a **mock** of the comment, written by hand to show the intended layout. It is not output from the tool, which does not exist yet.
+This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The renderer and the command line exist; nothing has posted it to a real pull request yet.
 
 > ### Example checks: 1 failure in 2 suites
 >
-> | Suite | Result | Passed | Failed | Skipped | Flaky | Time | Against `main` |
-> | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-> | `check.sh` steps | **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s | 1 new failure · 41 s slower |
-> | Rust tests | Passed | 672 | 0 | 0 | 1 | 47 s | no change |
+> | Suite | Result | Passed | Failed | Skipped | Flaky | Time |
+> | --- | --- | ---: | ---: | ---: | ---: | ---: |
+> | `Desk steps` | **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s |
+> | `Rust tests` | Passed | 672 | 0 | 0 | 1 | 47.0 s |
 >
 > #### Failures
 >
-> <details open><summary><code>dos</code> › Example binary in a headless emulator</summary>
+> Failure 1 of 1
 >
-> exit status 1 · `tools/check.sh` · 18.2 s
+> `Desk steps` › `check (dos)` › `Emulator` › `Example binary in a headless emulator`
 >
-> </details>
+> `exit status 1` · 18.2 s
 >
-> <details><summary>Flaky: passed after a retry (1)</summary>
+> Flaky: passed after a retry (1)
 >
-> - `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
->
-> </details>
+> - `Rust tests` › `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
+
+In the real comment each failure is a `<details open>` block and the flaky list is a collapsed `<details>`.
 
 The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks-like).
 
 ## Install and run
 
-**Planned, not yet available.** The intended setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. The SHA below is a placeholder, because there is no release to pin yet:
+The setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. Look the SHA of the release up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.1.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation. The publisher runs on Linux, `x86_64` and `aarch64`, as a static musl binary. On other platforms build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results pr-results --locked`. macOS and Windows binaries are not shipped in v0.1, and Windows path handling in the zip reader and the file checks is untested.
+
+The workflow:
 
 ```yaml
 # .github/workflows/publish-test-results.yml
@@ -66,14 +68,14 @@ jobs:
   publish:
     if: github.event.workflow_run.conclusion != 'skipped' && github.event.workflow_run.conclusion != 'cancelled'
     permissions:
-      actions: read
-      checks: write
-      pull-requests: write
-      contents: read
+      actions: read # list and download the run's artefacts
+      checks: write # create and update check runs and annotations
+      pull-requests: write # create and update the sticky comment
+      contents: read # check out .github/ from the default branch
     uses: liminal-hq-labs/pr-results/.github/workflows/publish.yml@<full commit sha> # v0.1.0
 ```
 
-Your CI uploads its results as artefacts (`rust-test-results`, `frontend-test-results`, `event-file` and so on), and the publisher does the rest. See [docs/adopting.md](docs/adopting.md) for the steps and the optional `.github/pr-results.toml`.
+Your CI uploads its results as artefacts (`rust-test-results`, `frontend-test-results`, `event-file` and so on), and the publisher does the rest. See [docs/adopting.md](docs/adopting.md) for the steps, a recipe for each test runner (nextest, vitest, Playwright shards, bun and Desk) and the optional `.github/pr-results.toml`.
 
 ## Documentation
 
@@ -81,6 +83,7 @@ Your CI uploads its results as artefacts (`rust-test-results`, `frontend-test-re
 - [docs/adopting.md](docs/adopting.md) — setting it up in a repository
 - [docs/inputs.md](docs/inputs.md) — the formats it reads
 - [docs/security.md](docs/security.md) — how it treats untrusted input
+- [docs/releasing.md](docs/releasing.md) — cutting and verifying a release
 - [docs/decisions.md](docs/decisions.md) — decisions and why
 - [CHANGELOG.md](CHANGELOG.md) — what changed
 - [AGENTS.md](AGENTS.md) — contributor and agent rules

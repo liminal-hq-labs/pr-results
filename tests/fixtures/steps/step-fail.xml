@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Desk step results: a failing step with a log tail, and the steps after it skipped.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="check.sh" tests="4" failures="1" skipped="2" time="7.119">
+    <testsuite name="Host tests" tests="4" failures="1" skipped="2" time="7.119">
+        <testcase classname="tools/check.sh:Host tests" name="Format check" time="0.842"/>
+        <testcase classname="tools/check.sh:Host tests" name="shell crates, host tests" time="6.277">
+            <failure message="exit status 101">test gfx::fills_rect ... FAILED
+
+failures:
+
+---- gfx::fills_rect stdout ----
+thread 'gfx::fills_rect' panicked at shell/desk-gfx/src/fill.rs:33:9:
+assertion failed: pixel == 0x0f
+
+test result: FAILED. 41 passed; 1 failed; 0 ignored
+</failure>
+        </testcase>
+        <testcase classname="tools/check.sh:Host tests" name="Build for i486-unknown-none" time="0.000">
+            <skipped message="not run: an earlier step failed"/>
+        </testcase>
+        <testcase classname="tools/check.sh:Host tests" name="Build for i586-unknown-none" time="0.000">
+            <skipped message="not run: an earlier step failed"/>
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Desk step results: the second of two group jobs; it adds to the Host tests suite and starts its own.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="check.sh" tests="2" failures="0" skipped="0" time="14.000">
+    <testsuite name="Host tests" tests="1" failures="0" skipped="0" time="0.900">
+        <testcase classname="tools/check.sh:Host tests" name="Header check" time="0.900"/>
+    </testsuite>
+    <testsuite name="Targets" tests="1" failures="0" skipped="0" time="13.100">
+        <testcase classname="tools/check.sh:Targets" name="Build for i486-unknown-none" time="13.100"/>
+    </testsuite>
+</testsuites>

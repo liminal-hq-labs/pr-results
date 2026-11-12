@@ -1,0 +1,53 @@
+[
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/runs/5000/artifacts?per_page=100"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/artifacts/1001/zip"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/commits/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334/check-runs?check_name=Example%20Rust%20tests&filter=latest&per_page=100"
+  },
+  {
+    "body": {
+      "conclusion": "success",
+      "external_id": "pr-results:1:ci:Example Rust tests",
+      "output": {
+        "summary": "| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | Passed | 3 | 0 | 0 | 0 | 0.3 s |\n\n| Group | Passed | Failed | Skipped | Flaky | Time |\n| --- | ---: | ---: | ---: | ---: | ---: |\n| `suite` | 3 | 0 | 0 | 0 | 0.3 s |\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n",
+        "text": "#### Slowest tests\n\n| Test | Time |\n| --- | ---: |\n| `suite` › `c` › `t0` | 0.1 s |\n| `suite` › `c` › `t1` | 0.1 s |\n| `suite` › `c` › `t2` | 0.1 s |\n",
+        "title": "3 passed"
+      },
+      "status": "completed"
+    },
+    "method": "PATCH",
+    "target": "/repos/example/app/check-runs/1002"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/7/comments?per_page=100"
+  },
+  {
+    "body": {
+      "body": "<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=5000 -->\n### Example checks: All 3 passed\n\n| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | Passed | 3 | 0 | 0 | 0 | 0.3 s |\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n"
+    },
+    "method": "PATCH",
+    "target": "/repos/example/app/issues/comments/1003"
+  }
+]

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Playwright JUnit reporter: shard 2 of 2, one file with a failure.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites id="" name="" tests="2" failures="1" skipped="0" errors="0" time="9.002">
+<testsuite name="settings.spec.ts" timestamp="2026-11-02T15:30:01.000Z" hostname="chromium" tests="2" failures="1" skipped="0" time="8.400" errors="0">
+<testcase name="settings › saves the theme" classname="settings.spec.ts › settings › saves the theme" time="3.000">
+</testcase>
+<testcase name="settings › saves the language" classname="settings.spec.ts › settings › saves the language" time="5.400">
+<failure message="settings.spec.ts:21:5 saves the language" type="FAILURE">
+<![CDATA[  [chromium] › settings.spec.ts:21:5 › settings › saves the language ─────
+
+    Error: expect(locator).toHaveText(expected)
+
+    Expected string: "Français"
+    Received string: "English"
+]]>
+</failure>
+</testcase>
+</testsuite>
+</testsuites>

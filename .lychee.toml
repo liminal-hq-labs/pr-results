@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 
 no_progress = true
+# Goldens are renderer output with example links; the tests compare them, not a link checker.
+exclude_path = ['tests/golden']
 max_concurrency = 8
 max_retries = 3
 accept = ["200..=299", "429"]

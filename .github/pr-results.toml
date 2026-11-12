@@ -1,0 +1,14 @@
+# pr-results settings for this repository: the Rust tests of its own CI, in one comment.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+title = "pr-results"
+
+[[suite]]
+name = "Rust tests"
+check = "pr-results Rust tests"
+artifact = "rust-test-results"
+files = ["**/junit.xml"]
+flavour = "nextest"

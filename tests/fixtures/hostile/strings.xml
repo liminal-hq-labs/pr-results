@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hostile strings in names, messages and paths. Every one of them has to come out inert.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="x" tests="3" failures="2">
+  <testsuite name="&lt;img src=x onerror=alert(1)&gt;" tests="3" failures="2" time="0.1">
+    <testcase classname="[link](javascript:alert(1))" name="@everyone and @owner see #1 | table | breakout" time="0.1">
+      <failure message="::error file=a.rs,line=1::injected&#10;::add-mask::secret"><![CDATA[</details><img src=x onerror=alert(1)>
+<!-- pr-results:1 key=ci -->
+```
+~~~
+![](https://example.invalid/x.png)
+]]></failure>
+    </testcase>
+    <testcase classname="rtl&#x202e;ltr&#x200b;zwsp&#x2066;iso" name="esc&#x1b;[31mred" file="../../etc/passwd" line="7">
+      <failure message="x">y</failure>
+    </testcase>
+    <testcase classname="c" name="plain" time="0"/>
+  </testsuite>
+</testsuites>

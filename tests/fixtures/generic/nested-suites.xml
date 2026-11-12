@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Generic JUnit: a testsuites root with nested testsuite elements and an error.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="all" tests="3" failures="1" errors="1" time="3.5">
+  <testsuite name="outer" tests="3" failures="1" errors="1" time="3.5">
+    <testsuite name="inner" tests="2" time="1.0">
+      <testcase classname="inner.A" name="works" time="0.5"/>
+      <testcase classname="inner.A" name="breaks" time="0.5"><failure message="nope">details here</failure></testcase>
+    </testsuite>
+    <testcase classname="outer.B" name="errors" time="2.5"><error message="exploded" type="RuntimeError">trace</error></testcase>
+  </testsuite>
+</testsuites>

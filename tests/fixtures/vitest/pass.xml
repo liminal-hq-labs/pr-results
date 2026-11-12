@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  vitest JUnit reporter: two files, everything passes.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="vitest tests" tests="3" failures="0" errors="0" time="1.84">
+    <testsuite name="src/lib/format.test.ts" timestamp="2026-11-02T15:00:00.000Z" hostname="runner-7" tests="2" failures="0" errors="0" skipped="0" time="0.012">
+        <testcase classname="src/lib/format.test.ts" name="formatDuration &gt; writes minutes and seconds" time="0.004"></testcase>
+        <testcase classname="src/lib/format.test.ts" name="formatDuration &gt; writes sub-second times" time="0.003"></testcase>
+    </testsuite>
+    <testsuite name="src/lib/path.test.ts" timestamp="2026-11-02T15:00:00.100Z" hostname="runner-7" tests="1" failures="0" errors="0" skipped="0" time="0.005">
+        <testcase classname="src/lib/path.test.ts" name="joins segments" time="0.002"></testcase>
+    </testsuite>
+</testsuites>

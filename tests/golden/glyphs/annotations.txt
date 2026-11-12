@@ -1,0 +1,19 @@
+check 0: 1 annotations, 0 not shown
+- failure crates/pr-results-core/src/junit.rs:341-341
+  title: junit::sums_suite_time
+  message: assertion `left == right` failed
+      left: 1904
+     right: 1900
+    thread 'junit::sums_suite_time' (4121) panicked at crates/pr-results-core/src/junit.rs:341:9:
+    assertion `left == right` failed
+      left: 1904
+     right: 1900
+    stack backtrace:
+       0: rust_begin_unwind
+       1: core::panicking::panic_fmt
+       2: core::panicking::assert_failed_inner
+       3: pr_results_core::junit::tests::sums_suite_time
+    note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+check 1: 0 annotations, 0 not shown
+check 2: 0 annotations, 0 not shown
+check 3: 0 annotations, 0 not shown

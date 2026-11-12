@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  bun test JUnit reporter: one file, assertions counted, everything passes.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="bun test" tests="2" assertions="5" failures="0" skipped="0" time="0.031">
+    <testsuite name="test/add.test.ts" file="test/add.test.ts" tests="2" assertions="5" failures="0" skipped="0" time="0.012" hostname="build-2">
+        <testcase name="adds numbers" classname="test/add.test.ts" time="0.004" file="test/add.test.ts" line="3" assertions="3" />
+        <testcase name="adds negatives" classname="test/add.test.ts" time="0.002" file="test/add.test.ts" line="9" assertions="2" />
+    </testsuite>
+</testsuites>

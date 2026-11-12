@@ -1,0 +1,5 @@
+{
+  // Goldens are the renderer's exact output, hostile text included. They are compared byte for
+  // byte by the tests, so they are not linted as prose.
+  "ignores": ["tests/golden/**"]
+}

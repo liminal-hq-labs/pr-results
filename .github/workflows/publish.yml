@@ -1,0 +1,102 @@
+# Posts the results of a finished CI run to its pull request: one comment and a check run per suite.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+#
+# Call it from a `workflow_run` workflow on the default branch, with the four permissions below.
+# It checks out only `.github/` of the default branch, never the pull request, downloads the
+# release binary this commit carries the SHA-256 of, and runs `pr-results publish`.
+#
+# A reusable workflow cannot name its own commit, so it cannot call the composite action at the
+# same revision. It verifies the binary inline instead, with the same tag and digests as
+# `action.yml`; `scripts/check-pins.sh` keeps the two equal.
+
+
+name: Publish test results
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: The settings file, read from the default branch's checkout
+        type: string
+        default: .github/pr-results.toml
+
+permissions: {}
+
+concurrency:
+  group: pr-results-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read # list and download the run's artefacts
+      checks: write # create and update check runs and annotations
+      pull-requests: write # create and update the sticky comment
+      contents: read # check out .github/ from the default branch (needed in private repositories)
+    steps:
+      # The default branch, and only its `.github/` directory: no pull request code, and no
+      # credentials left in the checkout.
+      - name: Checkout the settings
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github
+          persist-credentials: false
+
+      - name: Install the release binary
+        id: install
+        env:
+          PR_RESULTS_TAG: v0.1.0
+          PR_RESULTS_SHA256_X86_64: 9ecb200c50c68e93e06a7cf906867fd045a59dfdb0f0f0c0fa89c3cdb05909f7
+          PR_RESULTS_SHA256_AARCH64: 73d43820740196b90ce463e84473423de8af356ccd93c27d3e6620117bbcda1c
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64)
+              target=x86_64-unknown-linux-musl
+              want="$PR_RESULTS_SHA256_X86_64"
+              ;;
+            aarch64 | arm64)
+              target=aarch64-unknown-linux-musl
+              want="$PR_RESULTS_SHA256_AARCH64"
+              ;;
+            *)
+              echo "::error::pr-results has no release binary for $(uname -m)."
+              exit 1
+              ;;
+          esac
+          if ! [[ "$want" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::This commit of pr-results carries no SHA-256 for $target yet ($want). Pin a release commit."
+            exit 1
+          fi
+          # A directory only this step can use (mktemp makes it mode 700), not a name another step could
+          # have made first.
+          dir="$(mktemp -d "$RUNNER_TEMP/pr-results.XXXXXX")"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 \
+            -o "$dir/pr-results" \
+            "https://github.com/liminal-hq-labs/pr-results/releases/download/${PR_RESULTS_TAG}/pr-results-${target}"
+          echo "${want}  ${dir}/pr-results" | sha256sum -c -
+          chmod 0755 "$dir/pr-results"
+          echo "bin=$dir/pr-results" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        env:
+          PR_RESULTS_BIN: ${{ steps.install.outputs.bin }}
+          PR_RESULTS_CONFIG: ${{ inputs.config }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          config=()
+          if [ "$PR_RESULTS_CONFIG" != ".github/pr-results.toml" ] || [ -f "$PR_RESULTS_CONFIG" ]; then
+            config=(--config "$PR_RESULTS_CONFIG")
+          fi
+          "$PR_RESULTS_BIN" publish "${config[@]}"

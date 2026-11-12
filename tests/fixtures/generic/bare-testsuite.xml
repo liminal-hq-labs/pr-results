@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Generic JUnit: a bare testsuite root.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuite name="bare" tests="1" failures="0" time="0.25">
+  <properties><property name="os" value="irrelevant"/></properties>
+  <testcase classname="bare.C" name="runs" time="0.25"/>
+</testsuite>

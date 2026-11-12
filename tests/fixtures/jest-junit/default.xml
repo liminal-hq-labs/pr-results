@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  jest-junit with its default templates: the root is named "jest tests".
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="jest tests" tests="3" failures="1" errors="0" time="2.116">
+  <testsuite name="Counter increments" errors="0" failures="0" skipped="0" timestamp="2026-11-02T15:20:00" time="0.9" tests="1">
+    <testcase classname="Counter increments by one" name="Counter increments by one" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="Counter resets" errors="0" failures="1" skipped="1" timestamp="2026-11-02T15:20:01" time="1.1" tests="2">
+    <testcase classname="Counter resets to zero" name="Counter resets to zero" time="0.004">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: 0
+Received: 1
+    at Object.&lt;anonymous&gt; (src/counter.test.js:14:21)</failure>
+    </testcase>
+    <testcase classname="Counter resets later" name="Counter resets later" time="0">
+      <skipped/>
+    </testcase>
+  </testsuite>
+</testsuites>

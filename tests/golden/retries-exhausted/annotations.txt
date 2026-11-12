@@ -1,0 +1,5 @@
+check 0: 1 annotations, 0 not shown
+- failure crates/pr-results-core/src/parse.rs:17-17
+  title: parse::always_fails
+  message: called `Option::unwrap()` on a `None` value
+    thread 'parse::always_fails' panicked at 'called `Option::unwrap()` on a `None` value', crates/pr-results-core/src/parse.rs:17:5

@@ -18,7 +18,7 @@
 
 ## Project status
 
-pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental** and not built yet, so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
+pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental**; v0.1.0 is the first release (the model, `Safe`, the JUnit parsers, the renderer, the GitHub client with the publish flow, the command line, the action and the workflows are built and tested against an in-memory GitHub; none has run on GitHub before the first release), so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
 
 ## Spelling and writing
 
@@ -90,7 +90,7 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 ## Architecture rules
 
 - **Untrusted input is escaped only through `Safe`.** Everything from an artefact (names, messages, paths, the event file) is untrusted. The renderer accepts only `Safe` fragments, so no raw string reaches Markdown or HTML. Do not add a second escaping path.
-- **No network outside `pr-results-github`.** The model, parse and render crates are pure and tested offline. Anything that talks to GitHub sits behind the `Forge` trait, with an in-memory fake for tests.
+- **No network outside `pr-results-github`.** The core and render crates are pure and tested offline. Anything that talks to GitHub sits behind the `Forge` trait, with an in-memory fake for tests.
 - **No pull request code in privileged workflows.** A workflow that holds a write token never checks out or runs code from a pull request head, and takes no secret beyond `GITHUB_TOKEN`. The publisher uses the latest release pinned by SHA, never the pull request's own build.
 - **Deterministic output.** The same inputs give byte-identical Markdown: stable ordering, no clocks beyond the run times in the inputs.
 - **No unsafe code.** Each crate has `#![forbid(unsafe_code)]`.
@@ -99,6 +99,8 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 ## Testing
 
 - `bash scripts/check-headers.sh` — SPDX headers
+- `bash scripts/check-pins.sh` — the release tag and binary digests agree between `action.yml` and `publish.yml`, and every action and image is pinned
+- `bash scripts/check-doc-yaml.sh` — actionlint over the workflows and steps the documents show
 - `bash scripts/check-banner.sh` — hero banner rules and text fit (needs `xmllint`, `rsvg-convert`, `python3` and Chromium; `--shots DIR` writes frames to look at)
 - `docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.24.0 "**/*.md"` — markdown
 - `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/*.sh` — shell scripts
@@ -110,7 +112,7 @@ Once the crates exist, add:
 
 - `cargo nextest run --workspace --locked` — tests
 - `cargo deny check` — dependency policy
-- `PR_RESULTS_BLESS=1 cargo nextest run` — rewrite the goldens in `tests/golden/`, then review the diff as Markdown. CI fails on any difference.
+- `PR_RESULTS_BLESS=1 cargo nextest run` — rewrite the goldens in `tests/golden/`, then review the diff as Markdown. CI fails on any difference. The goldens are exact output, so markdownlint and lychee skip them. The same variable rewrites the request goldens (`crates/pr-results-github/tests/golden/*.json`), the sequence of API calls the publisher makes against the in-memory GitHub.
 
 State exactly what was and was not run when reporting results.
 
@@ -126,9 +128,9 @@ State exactly what was and was not run when reporting results.
 README.md SPEC.md AGENTS.md CLAUDE.md CHANGELOG.md LICENSE-APACHE LICENSE-MIT
 .editorconfig .markdownlint.jsonc .lychee.toml .gitignore rustfmt.toml
 assets/        animated hero banner
-docs/          decisions, adopting, inputs and security
+docs/          decisions, adopting, inputs, security and releasing
 scripts/       header check, banner check and its Chromium text-fit harness
 .github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
 
-Still to come with the code that needs them: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-{model,parse,render,github}/`, `src/` (the command line), `tests/fixtures/` and `tests/golden/`, `deny.toml`, `action.yml`, and the reusable, publishing and release workflows.
+Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, and the `mention_probe` example), `crates/pr-results-github/` (the `Forge` trait, its real, fake and dry-run forges, the zip reader and the publish flow, with request goldens in its `tests/golden/`), `crates/pr-results/` (the command line: `publish`, `render` and `validate-config`, and the settings file), `action.yml` (the composite action), `.github/workflows/` (CI, the reusable `publish.yml`, the dogfood `publish-test-results.yml`), `.github/pr-results.toml`, `tests/fixtures/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. `scripts/build-release.sh` (the reproducible musl build), `.github/workflows/release.yml` (the tag workflow) and `docs/releasing.md` carry the release.

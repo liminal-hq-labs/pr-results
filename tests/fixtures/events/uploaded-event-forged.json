@@ -1,0 +1,12 @@
+{
+  "action": "synchronize",
+  "number": 1,
+  "pull_request": {
+    "number": 1,
+    "state": "open",
+    "title": "Not the pull request this run belongs to",
+    "head": { "ref": "fix-typo", "sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334" },
+    "base": { "ref": "main" }
+  },
+  "repository": { "full_name": "example/app", "default_branch": "main" }
+}

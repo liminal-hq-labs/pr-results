@@ -1,0 +1,86 @@
+[
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/runs/5000/artifacts?per_page=100"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/artifacts/1001/zip"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/commits/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334/check-runs?check_name=Example%20Rust%20tests&filter=latest&per_page=100"
+  },
+  {
+    "body": {
+      "conclusion": "success",
+      "external_id": "pr-results:1:ci:Example Rust tests",
+      "head_sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+      "name": "Example Rust tests",
+      "output": {
+        "summary": "| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | Passed | 4 | 0 | 0 | 0 | 0.4 s |\n\n| Group | Passed | Failed | Skipped | Flaky | Time |\n| --- | ---: | ---: | ---: | ---: | ---: |\n| `suite` | 4 | 0 | 0 | 0 | 0.4 s |\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n",
+        "text": "#### Slowest tests\n\n| Test | Time |\n| --- | ---: |\n| `suite` › `c` › `t0` | 0.1 s |\n| `suite` › `c` › `t1` | 0.1 s |\n| `suite` › `c` › `t2` | 0.1 s |\n| `suite` › `c` › `t3` | 0.1 s |\n",
+        "title": "4 passed"
+      },
+      "status": "completed"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/check-runs"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/commits/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334/check-runs?check_name=Example%20E2E&filter=latest&per_page=100"
+  },
+  {
+    "body": {
+      "conclusion": "failure",
+      "external_id": "pr-results:1:ci:Example E2E",
+      "head_sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+      "name": "Example E2E",
+      "output": {
+        "summary": "| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `E2E` | **No results** | 0 | 0 | 0 | 0 | 0.0 s |\n\nNo results were uploaded for this run, and this suite is required.\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n",
+        "text": "",
+        "title": "No results were uploaded"
+      },
+      "status": "completed"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/check-runs"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/commits/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334/pulls?per_page=100"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls?head=forkuser%3Apatch-1&state=open&per_page=100"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/9"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/9/comments?per_page=100"
+  },
+  {
+    "body": {
+      "body": "<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=5000 -->\n### Example checks: No results from 1 required suite\n\n| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | Passed | 4 | 0 | 0 | 0 | 0.4 s |\n| `E2E` | **No results** | 0 | 0 | 0 | 0 | 0.0 s |\n\nNo results were uploaded for `E2E`.\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/issues/9/comments"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/9/comments?per_page=100"
+  }
+]

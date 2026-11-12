@@ -1,7 +1,5 @@
 # One job per check, so a pull request's checks list names exactly what passed or failed.
-# The language-neutral checks run now. The Rust block at the end is commented until the first
-# crate lands: the change that adds `Cargo.toml` uncomments and adapts it, and adds the goldens,
-# reproducible-build and action-smoke jobs the specification lists.
+# The Rust jobs run in the shared ci-rust image.
 #
 # Every action is pinned by full commit SHA with its version in a comment, and images by digest.
 #
@@ -111,6 +109,11 @@ jobs:
       - name: Run actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
 
+      # The workflows and steps the documents show are copied into repositories, so they get the
+      # same linting as the ones here.
+      - name: Run actionlint over the documents' YAML
+        run: bash scripts/check-doc-yaml.sh
+
   zizmor:
     name: Workflow audit
     runs-on: ubuntu-24.04
@@ -128,86 +131,294 @@ jobs:
         with:
           advanced-security: false
 
-  # Rust: one job per check in the shared ci-rust image. Take the current digest from
+  # Rust: one job per check in the shared ci-rust image, whose digest comes from
   # https://github.com/liminal-hq/.github/blob/main/docs/reference/recommended-image-pins.md
-  # and check that the image carries `cargo-nextest` before relying on it (its notes list Rust and
-  # `cargo-deny`).
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pr-results
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pr-results
+
+      - name: Run the tests
+        run: cargo nextest run --workspace --locked --profile ci
+
+      # The publisher of this repository's own results reads these two artefacts.
+      - name: Upload the test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rust-test-results
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload the event file
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: event-file
+          path: ${{ github.event_path }}
+          retention-days: 14
+
+  goldens:
+    name: Goldens
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pr-results
+
+      # Every test that compares output with a file under a `golden` directory: the renderer's
+      # scenarios, the publisher's request sequences and the command line's `render`. `CI` is
+      # set, which makes `PR_RESULTS_BLESS` an error, so a golden cannot be rewritten here.
+      - name: Compare the goldens
+        run: cargo nextest run --workspace --locked --no-tests=fail -E 'binary(golden) | test(golden)'
+
+  deny:
+    name: Dependency policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the dependencies
+        run: cargo deny check
+
+  action-smoke:
+    name: Action smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Runs this checkout's own action, built from source: a pull request cannot pin a release
+      # that does not exist yet, and render needs no token.
+      - name: Validate this repository's settings
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: validate-config
+          build: source
+
+      # The smoke settings name the fixtures it renders, so a file that matches no suite fails the
+      # step instead of being skipped. The action gives `render` no token.
+      - name: Validate the smoke settings
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: validate-config
+          config: tests/fixtures/smoke.toml
+          build: source
+
+      - name: Render the fixtures
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: render
+          config: tests/fixtures/smoke.toml
+          build: source
+          args: --out ${{ runner.temp }}/smoke tests/fixtures/nextest/pass.xml tests/fixtures/nextest/fail.xml
+
+      - name: Check what it wrote
+        env:
+          SMOKE: ${{ runner.temp }}/smoke
+        run: |
+          test -s "$SMOKE/comment.md"
+          test -s "$SMOKE/checks/0.md"
+          grep -q '^<!-- pr-results:1 key=ci ' "$SMOKE/comment.md"
+          grep -qF '### Smoke: 1 failure in 1 suite' "$SMOKE/comment.md"
+          grep -qF "| \`Smoke tests\` | **Failed** | 4 | 1 | 1 | 0 | 2.2 s |" "$SMOKE/comment.md"
+          grep -qF "\`junit::sums_suite_time\`" "$SMOKE/comment.md"
+          grep -qF 'conclusion: failure' "$SMOKE/checks/0.md"
+          grep -qF 'title: 1 failed, 4 passed, 1 skipped' "$SMOKE/checks/0.md"
+
+  pins:
+    name: Release pins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Proves the check itself rejects each way of weakening the install step or the pins.
+      - name: Test the pin check
+        run: bash scripts/test-check-pins.sh
+
+      # Proves the toolchain guard of the release builds rejects drift and every override.
+      - name: Test the toolchain check
+        run: bash scripts/test-check-toolchain.sh
+
+      # Online: asks GitHub (read access to public repositories, with the workflow's
+      # `contents: read` token) whether every `# vX` comment names the pinned commit.
+      - name: Check the pins
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/check-pins.sh
+
+  # The release binary, built twice from two copies of the tree at different paths, must give the
+  # same bytes. The digest it prints is the one the release pull request writes into `action.yml`
+  # and `publish.yml`, and `release.yml` rebuilds and compares at the tag. Each target builds on a
+  # runner of its own architecture. The job also fails if the digest is not the one pinned in
+  # `action.yml`, so a change that invalidates a pin fails on the pull request.
   #
-  # fmt:
-  #   name: Format
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 15
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Check formatting
-  #       run: cargo fmt --all -- --check
-  #
-  # clippy:
-  #   name: Clippy
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 30
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Cache Rust build output
-  #       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-  #       with:
-  #         shared-key: pr-results
-  #
-  #     - name: Run clippy
-  #       run: cargo clippy --workspace --all-targets --locked -- -D warnings
-  #
-  # test:
-  #   name: Tests
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 30
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Cache Rust build output
-  #       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-  #       with:
-  #         shared-key: pr-results
-  #
-  #     - name: Run the tests
-  #       run: cargo nextest run --workspace --locked --profile ci
-  #
-  #     # Uploaded for the publisher the repository's own CI will use once it is released.
-  #     - name: Upload Rust test results
-  #       if: always()
-  #       uses: actions/upload-artifact@<full commit sha> # vX.Y.Z
-  #       with:
-  #         name: rust-test-results
-  #         path: target/nextest/ci/junit.xml
-  #         if-no-files-found: ignore
-  #
-  # deny:
-  #   name: Dependency policy
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 15
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Check dependencies
-  #       run: cargo deny check
+  # Two builds on one runner prove that the bytes do not depend on the checkout path, the target
+  # directory or the run. They cannot prove independence from the time, the state of `apt` or the
+  # hardware: that is why `scripts/check-toolchain.sh` pins the musl packages and why the digest
+  # pinned in the repository is compared again by `release.yml` at the tag.
+  reproducible:
+    name: Reproducible build (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            pin: PR_RESULTS_SHA256_X86_64
+          - name: aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            pin: PR_RESULTS_SHA256_AARCH64
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the musl C compiler
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends musl-tools
+
+      - name: Check the toolchain
+        run: bash scripts/check-toolchain.sh
+
+      - name: Build the first time
+        env:
+          TARGET: ${{ matrix.target }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-one
+          OUT_DIR: ${{ runner.temp }}/one
+        run: bash scripts/build-release.sh "$TARGET" "$OUT_DIR"
+
+      # A copy at another path, so a path leaking into the binary shows up as a different digest.
+      - name: Build the second time, from a copy
+        env:
+          TARGET: ${{ matrix.target }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-two
+          OUT_DIR: ${{ runner.temp }}/two
+          COPY: ${{ runner.temp }}/copy/pr-results
+        run: |
+          set -euo pipefail
+          mkdir -p "$COPY"
+          tar --exclude=.git -cf - . | tar -xf - -C "$COPY"
+          cd "$COPY"
+          bash scripts/build-release.sh "$TARGET" "$OUT_DIR"
+
+      - name: Compare the digests
+        env:
+          TARGET: ${{ matrix.target }}
+          PIN: ${{ matrix.pin }}
+          ONE: ${{ runner.temp }}/one
+          TWO: ${{ runner.temp }}/two
+        run: |
+          set -euo pipefail
+          one="$(sha256sum "$ONE/pr-results-$TARGET" | cut -d ' ' -f 1)"
+          two="$(sha256sum "$TWO/pr-results-$TARGET" | cut -d ' ' -f 1)"
+          size="$(stat -c %s "$ONE/pr-results-$TARGET")"
+          {
+            echo "### Reproducible build: $TARGET"
+            echo
+            echo "- First build: \`$one\`"
+            echo "- Second build: \`$two\`"
+            echo "- Size: $size bytes"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$one" != "$two" ]; then
+            echo "::error::The two builds differ, so the binary is not reproducible."
+            exit 1
+          fi
+          # Strict: the pinned digest must be this tree's digest.
+          for file in action.yml .github/workflows/publish.yml; do
+            pinned="$(sed -n "s/^[[:space:]]*${PIN}:[[:space:]]*//p" "$file")"
+            if [ "$pinned" != "$one" ]; then
+              echo "::error file=$file::$PIN is '$pinned' but this tree builds $one. Rebuild and re-pin (docs/releasing.md)."
+              exit 1
+            fi
+          done
+          "$ONE/pr-results-$TARGET" --version
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-results-${{ matrix.target }}
+          path: ${{ runner.temp }}/one/pr-results-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 14

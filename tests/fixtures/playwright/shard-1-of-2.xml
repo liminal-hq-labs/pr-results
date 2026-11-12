@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Playwright JUnit reporter: shard 1 of 2, one file, passes.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites id="" name="" tests="2" failures="0" skipped="0" errors="0" time="6.321">
+<testsuite name="login.spec.ts" timestamp="2026-11-02T15:30:00.000Z" hostname="chromium" tests="2" failures="0" skipped="0" time="5.100" errors="0">
+<testcase name="login › signs in" classname="login.spec.ts › login › signs in" time="2.500">
+</testcase>
+<testcase name="login › signs out" classname="login.spec.ts › login › signs out" time="2.600">
+</testcase>
+</testsuite>
+</testsuites>
