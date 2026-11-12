@@ -43,8 +43,8 @@ Usage:
   pr-results --version
   pr-results --help
 
-publish   Post the results of a finished CI run, from a workflow_run workflow on the default
-          branch: one check run for each suite and one sticky comment on the pull request.
+publish   Post results from a workflow_run on the default branch, or use --from DIR to read
+          downloaded artefacts in a same-repository pull_request or push job. Forks are skipped.
           --dry-run DIR writes requests.json, comment.md and checks/ instead of posting.
           --forge forgejo writes a commit status for each suite instead of a check run
           (overrides [forge] kind).
