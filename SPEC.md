@@ -155,7 +155,7 @@ Every input becomes the normalized model, which is also the format of `pr-result
 
 With `flavour = "auto"`, detection picks by the root's `name` attribute (`nextest-run`, `vitest tests`, `bun test`), by `assertions` attributes (bun) and by `[[ATTACHMENT|` (Playwright), and falls back to `generic`.
 
-The `workflow_run` event is trusted. The uploaded pull request event file (`event-file` artefact, `event.json`) is **untrusted**: a fork controls it, and it is used only as a hint for the pull request number, always verified. Base-branch results are trusted only when the run's `event` is `push`, its `head_repository` is the base repository and its branch is the base branch. Configuration is trusted and is never read from the pull request head.
+The `workflow_run` event is trusted. The uploaded pull request event file (`event-file` artefact, `event.json`) is **untrusted**: a fork controls it, and it is used only as a tie-breaker for the pull request number. It is read only when more than one pull request has already passed the checks of the trusted event and the API (open, at the run's head commit, from the run's head repository, into this one), and only its `pull_request.number` (a whole number) is used, from an `event.json` of at most 1 MiB in an artefact of at most 2 MiB. If that number is one of the pull requests that passed, it chooses it; if not, it is ignored and up to five get the comment. It never adds a pull request, and is never checked for being true, only for being one of the candidates. Base-branch results are trusted only when the run's `event` is `push`, its `head_repository` is the base repository and its branch is the base branch. Configuration is trusted and is never read from the pull request head.
 
 ### The normalized model
 

@@ -14,7 +14,7 @@ In each job that produces results, upload them with `if: always()`, so a failing
 | `frontend-test-results` or `js-test-results` | vitest or bun JUnit |
 | `e2e-test-results-1`, `e2e-test-results-2` | Playwright JUnit, one artefact per shard, read as one suite |
 | `steps-test-results` | step-results JUnit from a shell-step project |
-| `event-file` | `${{ github.event_path }}`, a hint for finding the pull request (verified, never trusted on its own) |
+| `event-file` | `${{ github.event_path }}`, a tie-breaker only: its pull request number chooses among pull requests that GitHub's own data already matched to the run, and is ignored otherwise |
 
 Any artefact named `<name>-test-results` or `<name>-test-results-<more>` becomes a suite called "<Name> tests", with its check run named "<Title> <Name> tests". Names with anything but letters, digits, `.`, `_` and `-` are ignored, because a fork chooses its artefact names. Name your suites in a settings file (below) when you want something else.
 
