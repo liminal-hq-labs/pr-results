@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use pr_results_core::Flavour;
+use pr_results_forge::HostKind;
 
 /// The environment variable that holds the token unless `--token-env` names another.
 pub const DEFAULT_TOKEN_ENV: &str = "GITHUB_TOKEN";
@@ -22,9 +23,12 @@ pub enum Command {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishArgs {
 	pub config: Option<PathBuf>,
+	pub from: Option<PathBuf>,
 	pub dry_run: Option<PathBuf>,
 	pub token_env: String,
 	pub bot_login: Option<String>,
+	/// `--forge KIND`: overrides `[forge] kind`.
+	pub forge: Option<HostKind>,
 	pub fail_on_failures: bool,
 }
 
@@ -97,14 +101,24 @@ pub fn parse(args: &[String]) -> Result<Command, UsageError> {
 fn publish(c: &mut Cursor<'_>) -> Result<Command, UsageError> {
 	let mut a = PublishArgs {
 		config: None,
+		from: None,
 		dry_run: None,
 		token_env: DEFAULT_TOKEN_ENV.to_owned(),
 		bot_login: None,
+		forge: None,
 		fail_on_failures: false,
 	};
 	while let Some(arg) = c.take() {
 		let (flag, inline) = split_flag(arg);
 		match flag {
+			"--forge" => {
+				let name = c.value(flag, inline)?;
+				a.forge =
+					Some(HostKind::from_name(name).ok_or_else(|| {
+						usage(format!("unknown forge: {name} (github or forgejo)"))
+					})?);
+			}
+			"--from" => a.from = Some(PathBuf::from(c.value(flag, inline)?)),
 			"--config" => a.config = Some(PathBuf::from(c.value(flag, inline)?)),
 			"--dry-run" => a.dry_run = Some(PathBuf::from(c.value(flag, inline)?)),
 			"--token-env" => a.token_env = c.value(flag, inline)?.to_owned(),
@@ -203,6 +217,24 @@ mod tests {
 		assert_eq!(p.dry_run, Some(PathBuf::from("out")));
 		assert_eq!(p.token_env, "GITHUB_TOKEN");
 		assert!(!p.fail_on_failures);
+	}
+
+	#[test]
+	fn the_forge_is_github_or_forgejo() {
+		let Command::Publish(p) = parse(&args(&["publish", "--forge", "forgejo"])).unwrap() else {
+			panic!("publish")
+		};
+		assert_eq!(p.forge, Some(HostKind::Forgejo));
+		let Command::Publish(p) = parse(&args(&["publish", "--forge=github"])).unwrap() else {
+			panic!("publish")
+		};
+		assert_eq!(p.forge, Some(HostKind::GitHub));
+		let Command::Publish(p) = parse(&args(&["publish"])).unwrap() else {
+			panic!("publish")
+		};
+		assert_eq!(p.forge, None);
+		assert!(parse(&args(&["publish", "--forge", "gitea"])).is_err());
+		assert!(parse(&args(&["publish", "--forge"])).is_err());
 	}
 
 	#[test]

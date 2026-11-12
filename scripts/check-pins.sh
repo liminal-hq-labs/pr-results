@@ -98,6 +98,13 @@ if [[ -n "$x86_digest" && "$x86_digest" == "$arm_digest" && "$x86_digest" != PLA
 	bad "PR_RESULTS_SHA256_X86_64 and PR_RESULTS_SHA256_AARCH64 are the same digest"
 fi
 
+# The direct Forgejo installation example is a consumer pin too.
+example=docs/adopting-forgejo.md
+example_tag="$(sed -n "s/^[[:space:]]*PR_RESULTS_TAG: '\([^']*\)'$/\1/p" "$example")"
+example_digest="$(sed -n "s/^[[:space:]]*PR_RESULTS_SHA256: '\([^']*\)'$/\1/p" "$example")"
+[[ "$example_tag" == "$expected_tag" ]] || bad "$example tag differs from the release tag"
+[[ "$example_digest" == "$x86_digest" ]] || bad "$example digest differs from the x86_64 pin"
+
 # ---- the verification step -----------------------------------------------------------------
 
 # The `run:` body of the step with id $2 in file $1, unindented.

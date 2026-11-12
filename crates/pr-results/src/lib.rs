@@ -18,13 +18,14 @@
 pub mod args;
 pub mod config;
 pub mod event;
+mod local;
 mod publish_cmd;
 mod render_cmd;
 
 use std::io::Write;
 
 use pr_results_core::Safe;
-use pr_results_forge::{Forge, ForgeError, Token, UreqForge};
+use pr_results_forge::{CaBundle, Forge, ForgeError, HostKind, Token, UreqForge};
 
 use args::Command;
 
@@ -35,16 +36,18 @@ const HELP: &str = "\
 pr-results: calm test and check results for pull requests
 
 Usage:
-  pr-results publish [--config PATH] [--dry-run DIR] [--token-env NAME]
-                     [--bot-login LOGIN] [--fail-on-failures]
+  pr-results publish [--from DIR] [--config PATH] [--dry-run DIR] [--token-env NAME]
+                     [--bot-login LOGIN] [--forge github|forgejo] [--fail-on-failures]
   pr-results render [--config PATH] [--title TEXT] [--flavour NAME] FILE... [--out DIR]
   pr-results validate-config PATH
   pr-results --version
   pr-results --help
 
-publish   Post the results of a finished CI run, from a workflow_run workflow on the default
-          branch: one check run for each suite and one sticky comment on the pull request.
+publish   Post results from a workflow_run on the default branch, or use --from DIR to read
+          downloaded artefacts in a same-repository pull_request or push job. Forks are skipped.
           --dry-run DIR writes requests.json, comment.md and checks/ instead of posting.
+          --forge forgejo writes a commit status for each suite instead of a check run
+          (overrides [forge] kind).
           Exit status: 0 published or nothing to do, 1 publishing failed, 2 usage,
           settings or environment, 4 tests failed (with --fail-on-failures).
 render    Turn local JUnit files into the comment and check Markdown, with no network.
@@ -119,12 +122,25 @@ impl CliError {
 	}
 }
 
-/// How `publish` gets a forge: the network in `main`, an in-memory GitHub in tests.
+/// What `publish` decided about the forge before any request: which one, where its API is, and
+/// how to trust its certificate.
+#[derive(Debug, Clone)]
+pub struct ForgeSetup {
+	pub allow_http: bool,
+	pub kind: HostKind,
+	/// An `https://` URL on the runner's own host, checked.
+	pub api_base: String,
+	/// The roots to trust instead of the webpki roots, from `[forge] ca_file`.
+	pub ca: Option<CaBundle>,
+	/// The hosts a GitHub artefact may be fetched from, from `[forge] blob_hosts`.
+	pub blob_hosts: Option<Vec<String>>,
+}
+
+/// How `publish` gets a forge: the network in `main`, an in-memory forge in tests.
 pub trait ForgeFactory {
 	type Forge: Forge;
 
-	/// `api_base` is `GITHUB_API_URL`, already checked to be an `https://` URL.
-	fn make(&self, api_base: &str, token: Token) -> Result<Self::Forge, ForgeError>;
+	fn make(&self, setup: &ForgeSetup, token: Token) -> Result<Self::Forge, ForgeError>;
 }
 
 /// The real client.
@@ -133,8 +149,25 @@ pub struct Network;
 impl ForgeFactory for Network {
 	type Forge = UreqForge;
 
-	fn make(&self, api_base: &str, token: Token) -> Result<UreqForge, ForgeError> {
-		UreqForge::new(api_base, token)
+	fn make(&self, setup: &ForgeSetup, token: Token) -> Result<UreqForge, ForgeError> {
+		let forge = match setup.kind {
+			HostKind::GitHub => UreqForge::new(&setup.api_base, token)?,
+			HostKind::Forgejo if setup.allow_http => {
+				UreqForge::forgejo_http(&setup.api_base, token)?
+			}
+			HostKind::Forgejo => UreqForge::forgejo(&setup.api_base, token)?,
+		};
+		let forge = match &setup.ca {
+			Some(ca) => forge.with_ca(ca),
+			None => forge,
+		};
+		Ok(match &setup.blob_hosts {
+			Some(hosts) => {
+				let hosts: Vec<&str> = hosts.iter().map(String::as_str).collect();
+				forge.with_blob_hosts(&hosts)
+			}
+			None => forge,
+		})
 	}
 }
 

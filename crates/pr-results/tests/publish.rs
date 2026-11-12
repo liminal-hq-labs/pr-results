@@ -778,3 +778,80 @@ fn a_cancelled_run_writes_no_job_summary() {
 	assert_eq!(o.code, 0, "{}", o.err);
 	assert!(!file.exists());
 }
+
+fn in_job_event(head: &str) -> String {
+	format!(
+		r#"{{"repository":{{"full_name":"{REPO}"}},"number":7,"pull_request":{{"number":7,"head":{{"sha":"{SHA}","ref":"feature","repo":{{"full_name":"{head}"}}}},"base":{{"repo":{{"full_name":"{REPO}"}}}}}}}}"#
+	)
+}
+
+#[test]
+fn in_job_reads_local_artefacts_and_verifies_the_pull_request() {
+	let dir = scratch("in-job");
+	let input = dir.join("results/rust-test-results");
+	std::fs::create_dir_all(&input).unwrap();
+	std::fs::write(input.join("junit.xml"), failing_xml()).unwrap();
+	let mut vars = publisher_env(&dir, &in_job_event(REPO));
+	vars.insert("GITHUB_EVENT_NAME".into(), "pull_request".into());
+	vars.insert("GITHUB_RUN_ID".into(), "5000".into());
+	vars.insert("GITHUB_RUN_NUMBER".into(), "42".into());
+	let fake = github_with_pr();
+	let out = invoke(
+		&["publish", "--from", dir.join("results").to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+	assert_eq!(out.code, 0, "{}", out.err);
+	assert_eq!(fake.check_runs().len(), 1);
+	assert_eq!(fake.comments(7).len(), 1);
+}
+
+#[test]
+fn in_job_refuses_privileged_events_and_skips_forks_before_network() {
+	let dir = scratch("in-job-refuse");
+	let mut vars = publisher_env(&dir, &in_job_event("another/fork"));
+	vars.insert("GITHUB_RUN_ID".into(), "5000".into());
+	let fake = github_with_pr();
+	let factory = Factory::new(&fake);
+	for event in ["workflow_run", "pull_request_target", "issues"] {
+		vars.insert("GITHUB_EVENT_NAME".into(), event.into());
+		let out = invoke(
+			&["publish", "--from", dir.to_str().unwrap()],
+			&vars,
+			&factory,
+		);
+		assert_eq!(out.code, 2, "{event}: {}", out.err);
+	}
+	vars.insert("GITHUB_EVENT_NAME".into(), "pull_request".into());
+	let out = invoke(
+		&["publish", "--from", dir.to_str().unwrap()],
+		&vars,
+		&factory,
+	);
+	assert_eq!(out.code, 0, "{}", out.err);
+	assert!(out.out.contains("fork"));
+	assert!(factory.asked.borrow().is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn in_job_skips_links_and_rejects_oversize_files() {
+	use std::os::unix::fs::symlink;
+	let dir = scratch("in-job-links");
+	let input = dir.join("results/rust-test-results");
+	std::fs::create_dir_all(&input).unwrap();
+	std::fs::write(input.join("junit.xml"), failing_xml()).unwrap();
+	symlink(input.join("junit.xml"), input.join("link.xml")).unwrap();
+	let mut vars = publisher_env(&dir, &in_job_event(REPO));
+	vars.insert("GITHUB_EVENT_NAME".into(), "pull_request".into());
+	vars.insert("GITHUB_RUN_ID".into(), "5000".into());
+	let fake = github_with_pr();
+	let results = dir.join("results");
+	let args = ["publish", "--from", results.to_str().unwrap()];
+	let out = invoke(&args, &vars, &Factory::new(&fake));
+	assert_eq!(out.code, 0, "{}", out.err);
+	assert!(out.out.contains("Skipped 1 links"));
+	std::fs::write(input.join("huge.xml"), vec![0; 51 * 1024 * 1024]).unwrap();
+	let out = invoke(&args, &vars, &Factory::new(&fake));
+	assert_eq!(out.code, 2, "{}", out.err);
+}

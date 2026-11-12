@@ -10,7 +10,7 @@
 
 pr-results reads the test and check results your CI produces and posts them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It reads JUnit from nextest (tuned) and step reports from shell-script projects (tuned), and from vitest, bun, jest and Playwright (tuned against real output), and it is safe on pull requests from forks by design.
 
-> **Status:** experimental. v0.1.0 is the first release: Linux `x86_64` and `aarch64` binaries built reproducibly, with the nextest and step JUnit readers tuned and the vitest, bun, jest and Playwright readers parsed but untuned (the next release tunes them). It is tested against an in-memory GitHub and loopback servers, and a sandbox repository showed that the comment's text forms make no mentions or links. **Not verified:** the first run of the workflows on GitHub Actions, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), and real team mentions and notifications. Interfaces and formats may change between any two minor versions, and [CHANGELOG.md](CHANGELOG.md) says what.
+> **Status:** experimental. v0.2.0 adds in-job publishing and Forgejo support, and tunes the JavaScript JUnit readers against real reports. GitHub Actions and a disposable Forgejo runner have exercised publishing; real team mentions and notifications remain unverified. Interfaces and formats may change between minor versions; see [CHANGELOG.md](CHANGELOG.md).
 
 ## What it's for
 
@@ -22,7 +22,7 @@ pr-results reads the test and check results your CI produces and posts them to t
 
 ## What the comment will look like
 
-This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The renderer and the command line exist; nothing has posted it to a real pull request yet.
+This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The example illustrates the layout; the publisher has also run on real pull requests.
 
 > ### Example checks: 1 failure in 2 suites
 >

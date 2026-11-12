@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use pr_results::{run, ForgeFactory, Streams};
+use pr_results::{run, ForgeFactory, ForgeSetup, Streams};
 use pr_results_forge::{FakeForge, FakePull, ForgeError, Token};
 
 pub const REPO: &str = "example/app";
@@ -45,6 +45,8 @@ pub fn scratch(name: &str) -> PathBuf {
 pub struct Factory {
 	pub fake: FakeForge,
 	pub asked: RefCell<Vec<String>>,
+	/// What the command decided about the forge each time it was asked for one.
+	pub setups: RefCell<Vec<ForgeSetup>>,
 }
 
 impl Factory {
@@ -52,6 +54,7 @@ impl Factory {
 		Self {
 			fake: fake.clone(),
 			asked: RefCell::new(Vec::new()),
+			setups: RefCell::new(Vec::new()),
 		}
 	}
 }
@@ -59,8 +62,9 @@ impl Factory {
 impl ForgeFactory for Factory {
 	type Forge = FakeForge;
 
-	fn make(&self, api_base: &str, _token: Token) -> Result<FakeForge, ForgeError> {
-		self.asked.borrow_mut().push(api_base.to_owned());
+	fn make(&self, setup: &ForgeSetup, _token: Token) -> Result<FakeForge, ForgeError> {
+		self.asked.borrow_mut().push(setup.api_base.clone());
+		self.setups.borrow_mut().push(setup.clone());
 		Ok(self.fake.clone())
 	}
 }

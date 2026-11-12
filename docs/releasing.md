@@ -15,7 +15,7 @@ To build the same binary on a workstation of the same architecture, run the `Rep
 
 ### When the toolchain drifts
 
-`scripts/check-toolchain.sh` runs before every release build. It compares the installed `musl`, `musl-dev` and `musl-tools` with `scripts/musl-packages.txt` and fails with "toolchain drift: expected X, found Y; rebuild and re-pin" when they differ, because a different package could change the C objects of `ring` and so the binary. It also fails if a cargo configuration file exists in the tree or in the cargo home, or if a variable such as `CARGO_ENCODED_RUSTFLAGS` or `CARGO_BUILD_RUSTFLAGS` is set, since they can override the flags the build script sets. On a package drift:
+`scripts/check-toolchain.sh` runs before every release build. It compares `rustc -V` and `cargo -V` with `scripts/rust-toolchain.txt`, and the installed `musl`, `musl-dev` and `musl-tools` with `scripts/musl-packages.txt` and fails with "toolchain drift: expected X, found Y; rebuild and re-pin" when they differ, because a different package could change the C objects of `ring` and so the binary. It also fails if a cargo configuration file exists in the tree or in the cargo home, or if a variable such as `CARGO_ENCODED_RUSTFLAGS` or `CARGO_BUILD_RUSTFLAGS` is set, since they can override the flags the build script sets. On a package drift:
 
 1. Read the new versions from the failed job's step summary.
 2. Rebuild on both architectures and check that each pair of builds agrees (the job does this once the file is updated).

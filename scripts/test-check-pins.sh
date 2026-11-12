@@ -15,6 +15,8 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/check-pins-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 failures=0
+real=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+arm=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
 
 # The flags for the mutations below. A tree whose digest is still PLACEHOLDER (the release pull
 # request before its reproducible build) is judged with --unreleased, so the mutations test what
@@ -27,7 +29,9 @@ fi
 fresh() {
 	rm -rf "$work/repo"
 	mkdir -p "$work/repo"
-	cp -r Cargo.toml action.yml scripts .github "$work/repo/"
+	cp -r Cargo.toml action.yml scripts .github docs "$work/repo/"
+	sed -i "s/PR_RESULTS_SHA256_X86_64: .*/PR_RESULTS_SHA256_X86_64: $real/; s/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: $arm/" "$work/repo/action.yml" "$work/repo/.github/workflows/publish.yml"
+	sed -i "s/PR_RESULTS_SHA256: '.*'/PR_RESULTS_SHA256: '$real'/" "$work/repo/docs/adopting-forgejo.md"
 }
 
 # mutation NAME FILE SED-EXPRESSION...: the script must fail after the edit.
@@ -35,8 +39,9 @@ mutation() {
 	local name="$1" file="$2"
 	shift 2
 	fresh
+	cp "$work/repo/$file" "$work/before"
 	sed -i "$@" "$work/repo/$file"
-	if cmp -s "$file" "$work/repo/$file"; then
+	if cmp -s "$work/before" "$work/repo/$file"; then
 		echo "test-check-pins: '$name' changed nothing: the test is stale" >&2
 		failures=$((failures + 1))
 		return
@@ -61,7 +66,7 @@ mutation 'sha256sum -c replaced by true (workflow)' .github/workflows/publish.ym
 mutation 'x86_64 pin deleted from the action' action.yml '/PR_RESULTS_SHA256_X86_64:/d'
 mutation 'aarch64 pin deleted from the action' action.yml '/PR_RESULTS_SHA256_AARCH64:/d'
 mutation 'aarch64 pin deleted from the workflow' .github/workflows/publish.yml '/PR_RESULTS_SHA256_AARCH64:/d'
-mutation 'aarch64 digest differs between the copies' .github/workflows/publish.yml 's/\(PR_RESULTS_SHA256_AARCH64: .\{63\}\)./\10/'
+mutation 'aarch64 digest differs between the copies' .github/workflows/publish.yml 's/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: wrong/'
 mutation 'tag pin deleted from the workflow' .github/workflows/publish.yml '/PR_RESULTS_TAG:/d'
 mutation 'digest regex check removed' action.yml 's/\^\[0-9a-f\]{64}\$/^.*$/'
 mutation 'https-only removed from curl' .github/workflows/publish.yml "s/--proto '=https' //"
@@ -71,21 +76,25 @@ mutation 'drift in one copy only' .github/workflows/publish.yml 's/chmod 0755/ch
 mutation 'fixed download directory' action.yml 's|mktemp -d "$RUNNER_TEMP/pr-results.XXXXXX"|echo "$RUNNER_TEMP/pr-results"|'
 mutation 'unpinned action' .github/workflows/ci.yml '0,/actions\/checkout@[0-9a-f]\{40\} # v7.0.1/s//actions\/checkout@v7/'
 mutation 'digest not hex' action.yml 's/PR_RESULTS_SHA256_X86_64: .*/PR_RESULTS_SHA256_X86_64: nothing/'
-mutation 'tag differs between the copies' .github/workflows/publish.yml 's/PR_RESULTS_TAG: v0.1.0/PR_RESULTS_TAG: v0.1.1/'
+mutation 'Forgejo example digest differs' docs/adopting-forgejo.md "s/PR_RESULTS_SHA256: '.*'/PR_RESULTS_SHA256: 'wrong'/"
+mutation 'Forgejo example tag differs' docs/adopting-forgejo.md "s/PR_RESULTS_TAG: '.*'/PR_RESULTS_TAG: 'v9.9.9'/"
+mutation 'tag differs between the copies' .github/workflows/publish.yml 's/PR_RESULTS_TAG: .*/PR_RESULTS_TAG: v9.9.9/'
 
 mutation 'token set before the build step' action.yml 's/^\(        PR_RESULTS_RUST: 1.98.0\)$/\1\n        GITHUB_TOKEN: ${{ inputs.token }}/'
 mutation 'token in the dogfood job environment' .github/workflows/publish-test-results.yml 's/^    timeout-minutes: 30$/    timeout-minutes: 30\n    env:\n      GITHUB_TOKEN: ${{ github.token }}/'
 
-mutation 'tag does not match the version' action.yml 's/PR_RESULTS_TAG: v0.1.0/PR_RESULTS_TAG: v0.9.0/'
+mutation 'tag does not match the version' action.yml 's/PR_RESULTS_TAG: .*/PR_RESULTS_TAG: v9.9.9/'
 
 # The release modes. `verdict NAME WANT FLAGS...` edits both files with $EDIT (a sed expression)
 # and checks that the script accepts (WANT=accept) or rejects (WANT=reject) the result.
-real=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 verdict() {
 	local name="$1" want="$2" edit="$3" got=reject
 	shift 3
 	fresh
 	sed -i "$edit" "$work/repo/action.yml" "$work/repo/.github/workflows/publish.yml"
+	local x86
+	x86="$(sed -n 's/^[[:space:]]*PR_RESULTS_SHA256_X86_64: //p' "$work/repo/action.yml")"
+	sed -i "s/PR_RESULTS_SHA256: '.*'/PR_RESULTS_SHA256: '$x86'/" "$work/repo/docs/adopting-forgejo.md"
 	if (cd "$work/repo" && bash scripts/check-pins.sh --offline "$@") >"$work/out" 2>&1; then
 		got=accept
 	fi
@@ -103,7 +112,7 @@ badtag='s/PR_RESULTS_TAG: .*/PR_RESULTS_TAG: v9.9.9/'
 nothex='s/PR_RESULTS_SHA256_X86_64: .*/PR_RESULTS_SHA256_X86_64: nothing/'
 aplaceholder='s/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: PLACEHOLDER/'
 anothex='s/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: nothing/'
-same='s/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: 9ecb200c50c68e93e06a7cf906867fd045a59dfdb0f0f0c0fa89c3cdb05909f7/'
+same="s/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: $real/"
 swap='s/want="$PR_RESULTS_SHA256_AARCH64"/want="$PR_RESULTS_SHA256_X86_64"/'
 verdict 'an aarch64 digest copied from x86_64 in both files' reject "$same"
 verdict 'the x86_64 digest used for the aarch64 target in both files' reject "$swap"

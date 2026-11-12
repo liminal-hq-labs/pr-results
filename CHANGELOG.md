@@ -4,7 +4,13 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+## 0.2.0 — 2026-11-12
+
 ### Added
+
+- Forgejo publishing with one commit status per suite and an author-verified sticky comment, plus an explicit HTTP opt-in for trusted networks.
+- In-job publishing from bounded local artefacts on GitHub and Forgejo, with fork writes skipped and privileged events refused.
+- Release toolchain checks for the recorded Rust and Cargo versions.
 
 - `Target` (`GitHub` or `Forgejo`) and the run's number in the renderer's `RunContext`. For Forgejo the comment names no check runs and no GitHub limit, shows each failure's `path:line` (there are no annotations), links the commit and the run and not the artefacts, and writes a heading title that Forgejo would link (a bare commit hash, `!12`, `$`, `:emoji:`) in a code span (`forgejo_inert_title` says which). `status` returns a commit status per section: `Success` or `Failure` (a neutral section is `Success`) and the check's title, in plain text, at most 140 characters; `check` returns nothing for Forgejo (decision D64).
 - Goldens `forgejo-all-pass`, `forgejo-failures`, `forgejo-hostile` and `forgejo-truncated-minimal` with a `status-N.txt` for each section, an inert check with Forgejo's extra rules, and budget tests for both targets. Every golden for GitHub is unchanged.

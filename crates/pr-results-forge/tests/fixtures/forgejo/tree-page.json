@@ -1,0 +1,33 @@
+{
+	"page": 1,
+	"sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+	"total_count": 3,
+	"tree": [
+		{
+			"mode": "040000",
+			"path": "src",
+			"sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"size": 0,
+			"type": "tree",
+			"url": "https://forgejo.example.invalid/api/v1/repos/alice/app/git/trees/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		},
+		{
+			"mode": "100644",
+			"path": "src/lib.rs",
+			"sha": "cccccccccccccccccccccccccccccccccccccccc",
+			"size": 120,
+			"type": "blob",
+			"url": "https://forgejo.example.invalid/api/v1/repos/alice/app/git/blobs/cccccccccccccccccccccccccccccccccccccccc"
+		},
+		{
+			"mode": "100644",
+			"path": "README.md",
+			"sha": "dddddddddddddddddddddddddddddddddddddddd",
+			"size": 40,
+			"type": "blob",
+			"url": "https://forgejo.example.invalid/api/v1/repos/alice/app/git/blobs/dddddddddddddddddddddddddddddddddddddddd"
+		}
+	],
+	"truncated": false,
+	"url": "https://forgejo.example.invalid/api/v1/repos/alice/app/git/trees/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334"
+}

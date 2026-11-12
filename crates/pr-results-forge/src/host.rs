@@ -12,7 +12,8 @@
 use std::collections::BTreeSet;
 
 use pr_results_core::{Marker, RunId, Sha};
-use pr_results_render::CheckOutput;
+use pr_results_render::{CheckOutput, StatusState};
+use serde_json::Value;
 
 use crate::api::ForgeError;
 
@@ -23,10 +24,49 @@ pub enum HostKind {
 	Forgejo,
 }
 
-/// What to write for one section's result: a check run on GitHub.
-pub type ResultSpec<'a> = CheckSpec<'a>;
-/// What was written for one section's result.
+impl HostKind {
+	/// The name settings and the command line use: `github` or `forgejo`.
+	pub fn name(self) -> &'static str {
+		match self {
+			Self::GitHub => "github",
+			Self::Forgejo => "forgejo",
+		}
+	}
+
+	pub fn from_name(name: &str) -> Option<Self> {
+		match name {
+			"github" => Some(Self::GitHub),
+			"forgejo" => Some(Self::Forgejo),
+			_ => None,
+		}
+	}
+}
+
+/// What to write for one section's result: a check run on GitHub, a commit status on Forgejo.
+/// A host given the other kind refuses it.
+#[derive(Debug, Clone, Copy)]
+pub enum ResultSpec<'a> {
+	Check(CheckSpec<'a>),
+	Status(StatusSpec<'a>),
+}
+
+/// What was written for one section's result. For a commit status `id` is the status's id,
+/// `created` is true (a status is never edited: a later one supersedes it) and no annotations
+/// were sent.
 pub type ResultWritten = CheckResult;
+
+/// What to write for one commit status. The context is the check name, so there is one per
+/// section, and a later status with the same context supersedes the earlier one.
+#[derive(Debug, Clone, Copy)]
+pub struct StatusSpec<'a> {
+	pub context: &'a str,
+	pub head_sha: &'a Sha,
+	pub state: StatusState,
+	/// Plain text, at most 140 characters.
+	pub description: &'a str,
+	/// A link the tool built: the comment's anchor, else the run's page.
+	pub target_url: &'a str,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Artifact {
@@ -54,7 +94,10 @@ pub struct Pull {
 pub struct Comment {
 	pub id: u64,
 	pub login: String,
-	/// `User`, `Bot` and so on, as GitHub reports the account.
+	/// The account's id when the forge reports one. Forgejo's automatic token acts as
+	/// `forgejo-actions` with id -2, which no person can have.
+	pub user_id: Option<i64>,
+	/// `User`, `Bot` and so on, as GitHub reports the account. Forgejo has no such field.
 	pub user_type: String,
 	pub created_at: String,
 	pub body: String,
@@ -129,4 +172,54 @@ pub trait Host {
 	fn tree_paths(&self, sha: &Sha) -> Result<Tree, ForgeError>;
 	fn upsert_result(&self, spec: &ResultSpec<'_>) -> Result<ResultWritten, ForgeError>;
 	fn upsert_comment(&self, spec: &CommentSpec<'_>) -> Result<CommentResult, ForgeError>;
+}
+
+/// A pull request as both forges report it: `number`, `state`, `head.{sha,ref,repo.full_name}`
+/// and `base.repo.full_name`. A head repository that has been deleted is `null`.
+pub(crate) fn pull_from(v: &Value) -> Option<Pull> {
+	let repo = |side: &str| {
+		v.get(side)?
+			.get("repo")?
+			.get("full_name")?
+			.as_str()
+			.map(str::to_owned)
+	};
+	Some(Pull {
+		number: v.get("number")?.as_u64()?,
+		open: v.get("state")?.as_str()? == "open",
+		head_sha: v.get("head")?.get("sha")?.as_str()?.to_owned(),
+		head_ref: v.get("head")?.get("ref")?.as_str()?.to_owned(),
+		head_repo: repo("head"),
+		base_repo: repo("base"),
+	})
+}
+
+/// The first [`BODY_PREFIX_BYTES`] bytes of `s`, cut at a character boundary.
+pub(crate) fn prefix(s: &str) -> String {
+	let mut end = s.len().min(BODY_PREFIX_BYTES);
+	while !s.is_char_boundary(end) {
+		end -= 1;
+	}
+	s.get(..end).unwrap_or("").to_owned()
+}
+
+/// A listed comment, from either forge's JSON, reduced to what finding ours needs.
+pub(crate) fn comment_from(c: &Value) -> Option<Comment> {
+	let user = c.get("user")?;
+	Some(Comment {
+		id: c.get("id")?.as_u64()?,
+		login: user.get("login")?.as_str()?.to_owned(),
+		user_id: user.get("id").and_then(Value::as_i64),
+		user_type: user
+			.get("type")
+			.and_then(Value::as_str)
+			.unwrap_or("")
+			.to_owned(),
+		created_at: c
+			.get("created_at")
+			.and_then(Value::as_str)
+			.unwrap_or("")
+			.to_owned(),
+		body: prefix(c.get("body").and_then(Value::as_str).unwrap_or("")),
+	})
 }

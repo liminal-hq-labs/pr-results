@@ -1,4 +1,4 @@
-// The real `Forge`: HTTPS to the GitHub API with `ureq`, `rustls` (ring) and the webpki roots.
+// The real `Forge`: HTTPS to a forge's API with `ureq`, `rustls` (ring) and the webpki roots or one private CA.
 //
 // (c) Copyright 2026 Liminal HQ, Scott Morris
 // SPDX-License-Identifier: Apache-2.0 OR MIT
@@ -12,9 +12,11 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ureq::tls::{Certificate, PemItem, RootCerts, TlsConfig};
 use ureq::Agent;
 
 use crate::api::{ApiPath, ApiRequest, ApiResponse, BlobUrl, Forge, ForgeError, Method, Token};
+use crate::host::HostKind;
 
 /// API responses are read to at most this many bytes: a large repository's tree is the biggest.
 const MAX_API_BODY: u64 = 64 * 1024 * 1024;
@@ -23,7 +25,8 @@ const MAX_BLOB_HOPS: usize = 3;
 const USER_AGENT: &str = concat!("liminal-hq-pr-results/", env!("CARGO_PKG_VERSION"));
 
 pub struct UreqForge {
-	/// `https://api.github.com`, with no trailing slash.
+	kind: HostKind,
+	/// `https://api.github.com` or `https://git.example/api/v1`, with no trailing slash.
 	base: String,
 	token: Token,
 	api: Agent,
@@ -31,13 +34,13 @@ pub struct UreqForge {
 	/// The hosts a blob may be fetched from: a host name, or `*.suffix` for any name under it.
 	blob_hosts: Vec<String>,
 	/// Tests only: plain `http://` to a loopback address is allowed.
-	#[cfg(test)]
 	allow_loopback_http: bool,
 }
 
 impl std::fmt::Debug for UreqForge {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("UreqForge")
+			.field("kind", &self.kind)
 			.field("base", &self.base)
 			.field("token", &self.token)
 			.finish_non_exhaustive()
@@ -72,8 +75,133 @@ pub(crate) fn host_allowed(patterns: &[String], host: &str) -> bool {
 	})
 }
 
-fn agent(timeout: Duration, https_only: bool) -> Agent {
-	Agent::config_builder()
+/// A private certificate authority for a forge on a LAN: the PEM certificates a person chose, and
+/// nothing else. A client built with one trusts these roots and not the webpki roots.
+#[derive(Clone)]
+pub struct CaBundle {
+	certs: Vec<Certificate<'static>>,
+}
+
+impl std::fmt::Debug for CaBundle {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("CaBundle")
+			.field("certificates", &self.certs.len())
+			.finish()
+	}
+}
+
+/// Why a CA file cannot be used. Each is a fixed phrase and none quotes the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaError {
+	/// More than [`CaBundle::MAX_BYTES`].
+	TooLarge,
+	/// No PEM certificate in it: empty, or not PEM.
+	NoCertificate,
+	/// A PEM section that is not a certificate, such as a private key.
+	NotOnlyCertificates,
+	/// A certificate section that is not valid base64 or not a DER certificate.
+	Malformed,
+	/// More than [`CaBundle::MAX_CERTS`] certificates.
+	TooMany,
+}
+
+impl std::fmt::Display for CaError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Self::TooLarge => "it is larger than 1 MiB",
+			Self::NoCertificate => "it holds no PEM certificate",
+			Self::NotOnlyCertificates => {
+				"it holds something other than certificates (a private key does not belong in it)"
+			}
+			Self::Malformed => "a certificate in it is damaged",
+			Self::TooMany => "it holds more than 32 certificates",
+		})
+	}
+}
+
+impl std::error::Error for CaError {}
+
+impl CaBundle {
+	pub const MAX_BYTES: usize = 1024 * 1024;
+	pub const MAX_CERTS: usize = 32;
+
+	/// Reads the certificates of a PEM file. Anything but certificates is refused, so a file that
+	/// also holds a private key is an error and not a quiet success.
+	pub fn from_pem(pem: &[u8]) -> Result<Self, CaError> {
+		if pem.len() > Self::MAX_BYTES {
+			return Err(CaError::TooLarge);
+		}
+		let mut certs = Vec::new();
+		for item in ureq::tls::parse_pem(pem) {
+			match item {
+				Ok(PemItem::Certificate(c)) => {
+					if !looks_like_der(c.der()) {
+						return Err(CaError::Malformed);
+					}
+					certs.push(c);
+					if certs.len() > Self::MAX_CERTS {
+						return Err(CaError::TooMany);
+					}
+				}
+				Ok(_) => return Err(CaError::NotOnlyCertificates),
+				Err(_) => return Err(CaError::Malformed),
+			}
+		}
+		if certs.is_empty() {
+			return Err(CaError::NoCertificate);
+		}
+		Ok(Self { certs })
+	}
+
+	/// How many certificates it trusts.
+	pub fn len(&self) -> usize {
+		self.certs.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.certs.is_empty()
+	}
+
+	fn roots(&self) -> RootCerts {
+		RootCerts::new_with_certs(&self.certs)
+	}
+}
+
+/// Whether `der` is one DER SEQUENCE with a definite length that covers it exactly: all that is
+/// checked here. Whether it is a certificate the TLS library decides at the handshake.
+fn looks_like_der(der: &[u8]) -> bool {
+	let [0x30, rest @ ..] = der else {
+		return false;
+	};
+	let Some((&first, tail)) = rest.split_first() else {
+		return false;
+	};
+	let (len, header) = if first < 0x80 {
+		(usize::from(first), 1usize)
+	} else {
+		let n = usize::from(first & 0x7f);
+		if !(1..=4).contains(&n) {
+			return false;
+		}
+		let Some(bytes) = tail.get(..n) else {
+			return false;
+		};
+		(
+			bytes
+				.iter()
+				.fold(0usize, |acc, b| (acc << 8) | usize::from(*b)),
+			1 + n,
+		)
+	};
+	rest.len() == header.saturating_add(len)
+}
+
+fn agent(timeout: Duration, https_only: bool, ca: Option<&CaBundle>) -> Agent {
+	let mut config = Agent::config_builder();
+	if let Some(ca) = ca {
+		config = config.tls_config(TlsConfig::builder().root_certs(ca.roots()).build());
+	}
+	config
 		.max_redirects(0)
 		.http_status_as_error(false)
 		.https_only(https_only)
@@ -88,19 +216,53 @@ impl UreqForge {
 	/// `api_base` is `https://api.github.com`, or a GitHub Enterprise Server's
 	/// `https://host/api/v3`: HTTPS, no user information, no query or fragment.
 	pub fn new(api_base: &str, token: Token) -> Result<Self, ForgeError> {
-		Self::build(api_base, token, false)
+		Self::build(HostKind::GitHub, api_base, token, false)
+	}
+
+	/// The client for a Forgejo whose API is at `api_base`, such as `https://git.example/api/v1`:
+	/// HTTPS only, no user information, no query or fragment.
+	pub fn forgejo(api_base: &str, token: Token) -> Result<Self, ForgeError> {
+		Self::build(HostKind::Forgejo, api_base, token, false)
+	}
+
+	/// Allows a Forgejo API over HTTP on an explicitly trusted network.
+	pub fn forgejo_http(api_base: &str, token: Token) -> Result<Self, ForgeError> {
+		Self::build(HostKind::Forgejo, api_base, token, true)
+	}
+
+	/// Trusts the certificates of `ca` and nothing else, for this client's API and blob requests:
+	/// the webpki roots are not consulted. For a forge on a LAN whose certificate a private
+	/// authority signed.
+	pub fn with_ca(mut self, ca: &CaBundle) -> Self {
+		self.api = agent(Duration::from_secs(60), self.https_only(), Some(ca));
+		self.blob = agent(Duration::from_secs(180), self.https_only(), Some(ca));
+		self
+	}
+
+	fn https_only(&self) -> bool {
+		!self.allow_loopback_http
 	}
 
 	/// Tests only: allows `http://127.0.0.1` and `http://localhost` bases and blobs.
 	#[cfg(test)]
 	pub(crate) fn loopback(api_base: &str, token: Token) -> Result<Self, ForgeError> {
-		Self::build(api_base, token, true)
+		Self::build(HostKind::GitHub, api_base, token, true)
 	}
 
-	fn build(api_base: &str, token: Token, loopback: bool) -> Result<Self, ForgeError> {
+	fn build(
+		kind: HostKind,
+		api_base: &str,
+		token: Token,
+		loopback: bool,
+	) -> Result<Self, ForgeError> {
 		let trimmed = api_base.trim_end_matches('/');
 		let valid = if loopback {
-			is_loopback_http(trimmed) || BlobUrl::parse(trimmed).is_some()
+			(kind == HostKind::Forgejo
+				&& trimmed
+					.strip_prefix("http://")
+					.is_some_and(|rest| BlobUrl::parse(&format!("https://{rest}")).is_some()))
+				|| is_loopback_http(trimmed)
+				|| BlobUrl::parse(trimmed).is_some()
 		} else {
 			BlobUrl::parse(trimmed).is_some()
 		};
@@ -113,12 +275,12 @@ impl UreqForge {
 			default_blob_hosts(&crate::api::host_of(trimmed))
 		};
 		Ok(Self {
+			kind,
 			blob_hosts,
 			base: trimmed.to_owned(),
 			token,
-			api: agent(Duration::from_secs(60), !loopback),
-			blob: agent(Duration::from_secs(180), !loopback),
-			#[cfg(test)]
+			api: agent(Duration::from_secs(60), !loopback, None),
+			blob: agent(Duration::from_secs(180), !loopback, None),
 			allow_loopback_http: loopback,
 		})
 	}
@@ -172,6 +334,12 @@ fn describe(e: &ureq::Error) -> &'static str {
 		ureq::Error::HostNotFound => "host not found",
 		ureq::Error::ConnectionFailed => "could not connect",
 		ureq::Error::Tls(_) | ureq::Error::Rustls(_) => "TLS failed",
+		// `rustls` reports a refused certificate as invalid data wrapped in an I/O error.
+		ureq::Error::Io(e)
+			if e.kind() == std::io::ErrorKind::InvalidData && e.get_ref().is_some() =>
+		{
+			"TLS failed"
+		}
 		ureq::Error::Io(_) => "connection failed",
 		ureq::Error::BodyStalled => "the response stalled",
 		ureq::Error::LargeResponseHeader(..) => "the response headers are too large",
@@ -229,10 +397,14 @@ fn read_limited(
 }
 
 /// The headers every API call carries. The token goes here and nowhere else.
-fn common<B>(b: ureq::RequestBuilder<B>, auth: &str) -> ureq::RequestBuilder<B> {
-	b.header("Authorization", auth)
-		.header("Accept", "application/vnd.github+json")
-		.header("X-GitHub-Api-Version", "2022-11-28")
+fn common<B>(b: ureq::RequestBuilder<B>, auth: &str, kind: HostKind) -> ureq::RequestBuilder<B> {
+	let b = b.header("Authorization", auth);
+	match kind {
+		HostKind::GitHub => b
+			.header("Accept", "application/vnd.github+json")
+			.header("X-GitHub-Api-Version", "2022-11-28"),
+		HostKind::Forgejo => b.header("Accept", "application/json"),
+	}
 }
 
 impl Forge for UreqForge {
@@ -241,12 +413,12 @@ impl Forge for UreqForge {
 		let auth = format!("Bearer {}", self.token.expose());
 		let body = req.body.as_deref();
 		let result = match req.method {
-			Method::Get => common(self.api.get(&url), &auth).call(),
-			Method::Delete => common(self.api.delete(&url), &auth).call(),
-			Method::Post => common(self.api.post(&url), &auth)
+			Method::Get => common(self.api.get(&url), &auth, self.kind).call(),
+			Method::Delete => common(self.api.delete(&url), &auth, self.kind).call(),
+			Method::Post => common(self.api.post(&url), &auth, self.kind)
 				.content_type("application/json")
 				.send(body.unwrap_or(b"")),
-			Method::Patch => common(self.api.patch(&url), &auth)
+			Method::Patch => common(self.api.patch(&url), &auth, self.kind)
 				.content_type("application/json")
 				.send(body.unwrap_or(b"")),
 		};
@@ -264,6 +436,7 @@ impl Forge for UreqForge {
 			retry_after_s: number(&resp, "retry-after"),
 			rate_remaining: number(&resp, "x-ratelimit-remaining"),
 			rate_reset: number(&resp, "x-ratelimit-reset"),
+			total_count: number(&resp, "x-total-count"),
 			location,
 			body: Vec::new(),
 		};
@@ -315,5 +488,31 @@ impl Forge for UreqForge {
 			.duration_since(UNIX_EPOCH)
 			.map(|d| d.as_secs())
 			.unwrap_or(0)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	#![allow(clippy::unwrap_used, clippy::panic)]
+
+	use super::*;
+
+	#[test]
+	fn a_ca_file_replaces_the_webpki_roots_for_the_api_and_for_blobs() {
+		let token = || Token::new("fjt_SECRET").unwrap();
+		let plain = UreqForge::forgejo("https://git.example/api/v1", token()).unwrap();
+		assert!(matches!(
+			plain.api.config().tls_config().root_certs(),
+			RootCerts::WebPki
+		));
+
+		let ca = CaBundle::from_pem(include_bytes!("../tests/fixtures/tls/test-ca.pem")).unwrap();
+		let private = plain.with_ca(&ca);
+		for agent in [&private.api, &private.blob] {
+			match agent.config().tls_config().root_certs() {
+				RootCerts::Specific(certs) => assert_eq!(certs.len(), 1),
+				other => panic!("the roots are {other:?}, not the CA file's"),
+			}
+		}
 	}
 }

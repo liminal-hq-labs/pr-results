@@ -1,0 +1,39 @@
+[
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/7/comments"
+  },
+  {
+    "body": {
+      "body": "<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=5000 -->\n### Example checks: All 3 passed\n\n| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | Passed | 3 | 0 | 0 | 0 | 0.3 s |\n\nCommit [`3f9c2e1`](https://forgejo.example.invalid/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://forgejo.example.invalid/example/app/actions/runs/77) · pr-results 0.2.0\n"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/issues/7/comments"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/7/comments"
+  },
+  {
+    "body": {
+      "context": "Example Rust tests",
+      "description": "3 passed",
+      "state": "success",
+      "target_url": "https://forgejo.example.invalid/example/app/pulls/7#issuecomment-1003"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/statuses/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334"
+  }
+]
