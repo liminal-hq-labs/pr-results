@@ -36,4 +36,4 @@ pub use publish::{
 	publish, CheckReport, CommentReport, Failure, Note, Plan, PublishError, PublishReport,
 	SectionPlan, WorkflowRun,
 };
-pub use ureq_forge::UreqForge;
+pub use ureq_forge::{UreqForge, GITHUB_BLOB_HOSTS};

@@ -581,3 +581,75 @@ fn a_dead_server_is_a_transport_error_with_fixed_words() {
 		"{e:?}"
 	);
 }
+
+#[test]
+fn a_blob_host_must_be_on_the_list() {
+	use crate::ureq_forge::{host_allowed, GITHUB_BLOB_HOSTS};
+	let github: Vec<String> = GITHUB_BLOB_HOSTS.iter().map(|h| (*h).to_owned()).collect();
+	for good in [
+		"productionresultssa1.blob.core.windows.net",
+		"pipelines.actions.githubusercontent.com",
+		"objects.githubusercontent.com",
+		"a.b.githubusercontent.com",
+	] {
+		assert!(host_allowed(&github, good), "{good}");
+	}
+	for bad in [
+		"githubusercontent.com",
+		"blob.core.windows.net",
+		"evilgithubusercontent.com",
+		"githubusercontent.com.evil.example",
+		"evil.example",
+		"blob.core.windows.net.evil.example",
+		"127.0.0.1",
+		"::1",
+		"",
+		".githubusercontent.com",
+	] {
+		assert!(!host_allowed(&github, bad), "{bad:?}");
+	}
+	assert!(host_allowed(&["ghe.example".to_owned()], "ghe.example"));
+	assert!(!host_allowed(&["ghe.example".to_owned()], "x.ghe.example"));
+	assert!(host_allowed(&["10.0.0.5".to_owned()], "10.0.0.5"));
+}
+
+#[test]
+fn the_default_hosts_follow_the_api_base() {
+	let t = || Token::new(SECRET).unwrap();
+	let gh = UreqForge::new("https://api.github.com", t()).unwrap();
+	let url = |s: &str| BlobUrl::parse(s).unwrap();
+	assert!(gh.blob_host_allowed(&url("https://pipelines.actions.githubusercontent.com/x")));
+	assert!(!gh.blob_host_allowed(&url("https://evil.example/x")));
+	let ghes = UreqForge::new("https://ghe.example/api/v3", t()).unwrap();
+	assert!(ghes.blob_host_allowed(&url("https://ghe.example/x")));
+	assert!(!ghes.blob_host_allowed(&url("https://pipelines.actions.githubusercontent.com/x")));
+	let configured = ghes.with_blob_hosts(&["ghe.example", "*.Storage.Example"]);
+	assert!(configured.blob_host_allowed(&url("https://a.storage.example/x")));
+}
+
+#[test]
+fn a_blob_from_an_unexpected_host_is_refused_before_any_request() {
+	// Straight to it.
+	let f = UreqForge::new("https://api.github.com", Token::new(SECRET).unwrap()).unwrap();
+	let url = BlobUrl::parse("https://evil.example/zip").unwrap();
+	assert_eq!(
+		f.fetch_blob(&url, 10).unwrap_err(),
+		ForgeError::Refused("the blob host is not one GitHub uses")
+	);
+	// And by a redirect from an allowed host: the second hop is the one refused, unrequested.
+	let first = serve(
+		"127.0.0.1",
+		vec![response(
+			"302 Found",
+			&[("Location", "https://evil.example/zip")],
+			b"",
+		)],
+	);
+	let f = forge("http://127.0.0.1:1");
+	let url = BlobUrl::parse_http_for_tests(&first.url("127.0.0.1", "/start")).unwrap();
+	assert!(matches!(
+		f.fetch_blob(&url, 10),
+		Err(ForgeError::Refused(_))
+	));
+	assert_eq!(first.finish().len(), 1, "only the allowed host was asked");
+}
