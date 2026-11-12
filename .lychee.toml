@@ -1,0 +1,13 @@
+# Link check settings: markdown only, and tolerant of rate limits and pages that need a sign-in.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+no_progress = true
+max_concurrency = 8
+max_retries = 3
+accept = ["200..=299", "429"]
+exclude = [
+	# Opens the private advisory form, which answers a signed-out request with 404.
+	'^https://github\.com/liminal-hq-labs/pr-results/security/advisories/new$',
+]

@@ -18,7 +18,7 @@
 
 ## Project status
 
-{{PROJECT_TITLE}} is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: {{PROJECT_DESCRIPTION}}. It is **experimental**, so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
+pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental** and not built yet, so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
 
 ## Spelling and writing
 
@@ -42,7 +42,7 @@
 
 ## Commit messages
 
-**Format:** Conventional Commits (`feat`, `fix`, `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf`, `style`), with an optional scope.
+**Format:** Conventional Commits (`feat`, `fix`, `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf`, `style`), with an optional scope. The one exception is the repository's first commit, GitHub's `Initial commit`, which records the plumbing the repository started with.
 
 - The body explains what and why, not how. Use markdown with **bold labels** and no headings. Hard-wrap.
 - Backtick every code-level reference (identifiers, paths, config keys, flags, crate names). User-facing strings use quotes.
@@ -51,7 +51,7 @@
 
 ## Pull requests
 
-- **Title:** capitalized, imperative, about 70 characters, no Conventional Commit prefix, outcome-focused.
+- **Title:** capitalized, imperative, about 70 characters, outcome-focused. **Never a Conventional Commit prefix** (no `feat:` or `docs:`): the prefix belongs to commit messages only.
 - **Body:** `## Summary` with flat bullets that open with a **bold lead-in**, then `## Test plan` with `- [x]` or `- [ ]` items naming the commands run. Finish with what was not verified.
 - **Labels:** one of `enhancement`, `bug`, `documentation`, `testing`, `ci`, `build`, `chore`, plus scope labels where useful.
 - Fix a bug with a test that fails before the fix, and state exactly what was and was not run.
@@ -70,9 +70,9 @@
 - **Editor settings:** `.editorconfig` is authoritative: tabs everywhere except YAML, which uses spaces.
 - **Rust**, if the project uses it, is formatted with rustfmt using hard tabs (`rustfmt.toml`). Strictness comes from CI: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings` and the test suite.
 - **Shared CI images** come from [`liminal-hq/.github`](https://github.com/liminal-hq/.github) (`ci-rust`, `ci-web`, `tauri-ci-desktop` and others). Pick the leanest tier that fits and pin it by digest. A project image belongs here only when no shared tier covers it.
-- **Dependabot** is off. Add `.github/dependabot.yml` only when the project opts in (see `docs/new-project.md`).
-
-<!-- Add the project's toolchain pin, build container and single local gate (for example `make validate`) here. -->
+- **Dependabot** is on for GitHub Actions, and for Cargo from the change that adds `Cargo.toml` (decision D12). The labels are `ci` and `build`.
+- **Pins.** Pin every action by full commit SHA with the version in a comment (`uses: owner/repo@<sha> # v1.2.3`), and every container image by digest. Look the SHA up with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (dereference an annotated tag) and never guess one. The current `ci-rust` digest is in the [recommended image pins](https://github.com/liminal-hq/.github/blob/main/docs/reference/recommended-image-pins.md).
+- **Toolchain.** Rust is built in the shared `ci-rust` image. The local gate, once there is code, is `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo nextest run --workspace --locked` and `cargo deny check`.
 
 ## Licence headers
 
@@ -89,17 +89,28 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 
 ## Architecture rules
 
-<!-- The few rules that keep the design honest, for example "core first: the library has no UI dependency" or "all I/O is async". Delete this comment when the first rule lands. -->
-
+- **Untrusted input is escaped only through `Safe`.** Everything from an artefact (names, messages, paths, the event file) is untrusted. The renderer accepts only `Safe` fragments, so no raw string reaches Markdown or HTML. Do not add a second escaping path.
+- **No network outside `pr-results-github`.** The model, parse and render crates are pure and tested offline. Anything that talks to GitHub sits behind the `Forge` trait, with an in-memory fake for tests.
+- **No pull request code in privileged workflows.** A workflow that holds a write token never checks out or runs code from a pull request head, and takes no secret beyond `GITHUB_TOKEN`. The publisher uses the latest release pinned by SHA, never the pull request's own build.
+- **Deterministic output.** The same inputs give byte-identical Markdown: stable ordering, no clocks beyond the run times in the inputs.
+- **No unsafe code.** Each crate has `#![forbid(unsafe_code)]`.
 - **SPEC first.** A change to behaviour, interfaces, settings or defaults updates `SPEC.md` in the same change.
 
 ## Testing
 
 - `bash scripts/check-headers.sh` — SPDX headers
 - `bash scripts/check-banner.sh` — hero banner rules and text fit (needs `xmllint`, `rsvg-convert`, `python3` and Chromium; `--shots DIR` writes frames to look at)
-- `docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.17.2 "**/*.md"` — markdown
+- `docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.24.0 "**/*.md"` — markdown
 - `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/*.sh` — shell scripts
 - `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint` — workflows
+- `docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor --offline .github` — workflow audit
+- `docker run --rm -v "$PWD:/input" -w /input lycheeverse/lychee --config .lychee.toml '**/*.md'` — links
+
+Once the crates exist, add:
+
+- `cargo nextest run --workspace --locked` — tests
+- `cargo deny check` — dependency policy
+- `PR_RESULTS_BLESS=1 cargo nextest run` — rewrite the goldens in `tests/golden/`, then review the diff as Markdown. CI fails on any difference.
 
 State exactly what was and was not run when reporting results.
 
@@ -112,10 +123,12 @@ State exactly what was and was not run when reporting results.
 ## Repository layout
 
 ```text
-README.md SPEC.md AGENTS.md CLAUDE.md LICENSE-APACHE LICENSE-MIT
-.editorconfig .markdownlint.jsonc .gitignore rustfmt.toml
-assets/        hero banner
-docs/          decisions and project notes
+README.md SPEC.md AGENTS.md CLAUDE.md CHANGELOG.md LICENSE-APACHE LICENSE-MIT
+.editorconfig .markdownlint.jsonc .lychee.toml .gitignore rustfmt.toml
+assets/        animated hero banner
+docs/          decisions, adopting, inputs and security
 scripts/       header check, banner check and its Chromium text-fit harness
-.github/       CI workflow, issue and pull request templates, release notes configuration
+.github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
+
+Still to come with the code that needs them: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-{model,parse,render,github}/`, `src/` (the command line), `tests/fixtures/` and `tests/golden/`, `deny.toml`, `action.yml`, and the reusable, publishing and release workflows.
