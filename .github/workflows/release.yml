@@ -149,7 +149,37 @@ jobs:
           merge-multiple: true
           path: release
 
-      # One checksum file for both binaries. Each was compared with its pin in the build job.
+      # The files about to be attested must still be the pinned ones: compare them again with the
+      # pins in `action.yml` at the tagged commit, so an artefact swapped between the jobs fails here.
+      - name: Checkout the pins
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            action.yml
+            .github/workflows/publish.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          path: pins
+
+      - name: Compare with the pinned digests
+        run: |
+          set -euo pipefail
+          status=0
+          for pair in x86_64:X86_64 aarch64:AARCH64; do
+            arch="${pair%%:*}"
+            key="PR_RESULTS_SHA256_${pair##*:}"
+            got="$(sha256sum "release/pr-results-${arch}-unknown-linux-musl" | cut -d ' ' -f 1)"
+            for file in pins/action.yml pins/.github/workflows/publish.yml; do
+              want="$(sed -n "s/^[[:space:]]*${key}:[[:space:]]*//p" "$file")"
+              if [ "$want" != "$got" ]; then
+                echo "::error::The ${arch} file is $got but ${file#pins/} pins '$want'."
+                status=1
+              fi
+            done
+          done
+          exit "$status"
+
+      # One checksum file for both binaries.
       - name: Write the checksums
         run: |
           set -euo pipefail
