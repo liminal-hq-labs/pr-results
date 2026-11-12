@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod anonymize;
 mod error;
 mod flavour;
 mod glob;
@@ -16,6 +17,7 @@ mod model;
 mod safe;
 mod trusted;
 
+pub use anonymize::anonymize_junit;
 pub use error::ParseError;
 pub use glob::{Glob, GlobError, MAX_GLOB_BYTES};
 pub use junit::{parse_junit, parse_junit_in, Limits};
