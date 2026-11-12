@@ -152,6 +152,21 @@ if [[ -n "$action_body" && -n "$workflow_body" ]]; then
 	fi
 fi
 
+# ---- the token reaches only the last step ---------------------------------------------------
+
+# `build: source` installs a toolchain and runs a build in a job that holds a write token, so the
+# token must not be in the environment of those steps: it appears once, in the final step.
+token_lines="$(grep -nE '^[[:space:]]*GITHUB_TOKEN:' "$action" | cut -d: -f1 || true)"
+source_line="$(grep -nE '^[[:space:]]*id: source$' "$action" | cut -d: -f1 || true)"
+if [[ "$(wc -w <<<"$token_lines")" != 1 ]]; then
+	bad "$action must set GITHUB_TOKEN exactly once, in the step that runs pr-results"
+elif [[ -z "$source_line" || "$token_lines" -lt "$source_line" ]]; then
+	bad "$action sets GITHUB_TOKEN before the toolchain install and build steps"
+fi
+if grep -nE '^[[:space:]]*(GITHUB_TOKEN|GH_TOKEN):' .github/workflows/publish-test-results.yml >&2; then
+	bad "publish-test-results.yml must not put a token in the environment: only the action's last step gets one"
+fi
+
 # ---- every action and image is pinned ------------------------------------------------------
 
 mapfile -t files < <(find .github "$action" -name '*.yml' -not -name dependabot.yml -not -name zizmor.yml -not -name config.yml)

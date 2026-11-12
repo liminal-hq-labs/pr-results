@@ -5,6 +5,8 @@
 # (c) Copyright 2026 Liminal HQ, Scott Morris
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 
+# The sed expressions hold literal `$` and `${{ }}`, so no expansion is wanted.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -55,11 +57,13 @@ mutation 'https-only removed from curl' .github/workflows/publish.yml "s/--proto
 mutation 'tls floor removed from curl' action.yml 's/ --tlsv1.2//'
 mutation 'placeholder refusal message removed' action.yml 's/carries no SHA-256 for/has nothing for/'
 mutation 'drift in one copy only' .github/workflows/publish.yml 's/chmod 0755/chmod 0777/'
-# shellcheck disable=SC2016
 mutation 'fixed download directory' action.yml 's|mktemp -d "$RUNNER_TEMP/pr-results.XXXXXX"|echo "$RUNNER_TEMP/pr-results"|'
 mutation 'unpinned action' .github/workflows/ci.yml '0,/actions\/checkout@[0-9a-f]\{40\} # v7.0.1/s//actions\/checkout@v7/'
 mutation 'digest not hex' action.yml '0,/PR_RESULTS_SHA256_X86_64: PLACEHOLDER/s//PR_RESULTS_SHA256_X86_64: nothing/'
 mutation 'tag differs between the copies' .github/workflows/publish.yml 's/PR_RESULTS_TAG: v0.1.0/PR_RESULTS_TAG: v0.1.1/'
+
+mutation 'token set before the build step' action.yml 's/^\(        PR_RESULTS_RUST: 1.98.0\)$/\1\n        GITHUB_TOKEN: ${{ inputs.token }}/'
+mutation 'token in the dogfood job environment' .github/workflows/publish-test-results.yml 's/^    timeout-minutes: 30$/    timeout-minutes: 30\n    env:\n      GITHUB_TOKEN: ${{ github.token }}/'
 
 if [[ "$failures" != 0 ]]; then
 	exit 1
