@@ -1,0 +1,13 @@
+suite "retries" project=- flavour=jest 145ms
+  passed      0ms class="" name="retries passes on the second try" at -
+  failed      0ms class="" name="retries never passes" at - message="Error: always broken"
+  failed      0ms class="" name="retries throws from the source" at - message="RangeError: division by zero"
+suite "math" project=- flavour=jest 156ms
+  passed      2ms class="" name="math adds" at -
+  passed      0ms class="" name="math division divides" at -
+  passed      1ms class="" name="math division rejects zero" at -
+  passed      1ms class="" name="math division rounding rounds down" at -
+  failed      1ms class="" name="math division rounding fails with a stack" at - message="Error: expect(received).toBe(expected) // Object.is equality"
+  skipped     0ms class="" name="math is skipped" at -
+  passed      0ms class="" name="math is still to do" at -
+  passed      0ms class="" name="works outside any describe" at -

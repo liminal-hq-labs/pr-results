@@ -219,8 +219,19 @@ fn bun_flavour() {
 
 	let r = parse("bun/fail-file-line.xml", Flavour::Bun);
 	let case = &r.suites[0].cases[1];
-	assert_eq!((case.status, case.line), (Status::Failed, Some(10)));
-	assert!(case.message.is_none(), "bun writes no message attribute");
+	assert_eq!(
+		(case.status, case.line),
+		(Status::Failed, Some(11)),
+		"the failing line in the stack wins over the line the test starts on (10)"
+	);
+	assert!(
+		case.message
+			.as_ref()
+			.unwrap()
+			.as_str()
+			.contains("expect(received)"),
+		"bun writes no message attribute, so the first line of the text is the message"
+	);
 	assert!(case
 		.detail
 		.as_ref()
@@ -250,7 +261,12 @@ fn jest_flavour() {
 	assert!(r.suites.iter().all(|s| s.flavour == Flavour::Jest));
 	assert_eq!(counts(&r.suites[1]), (0, 1, 0, 1, 0));
 	let case = &r.suites[1].cases[0];
-	assert!(case.message.is_none());
+	assert!(case
+		.message
+		.as_ref()
+		.unwrap()
+		.as_str()
+		.contains("toBe(expected)"));
 	assert!(case
 		.detail
 		.as_ref()

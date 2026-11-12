@@ -260,6 +260,7 @@ fn configured_sections(settings: &Settings, title: &str) -> Result<Vec<SectionPl
 			artifact: s.artifact.clone(),
 			files: s.files.clone(),
 			flavour: s.flavour,
+			path_prefix: s.path_prefix.clone(),
 		});
 	}
 	Ok(out)
@@ -316,6 +317,7 @@ fn inferred_sections<F: Forge>(
 			artifact,
 			files: vec![files],
 			flavour: Flavour::Auto,
+			path_prefix: None,
 		});
 	}
 	Ok(out)

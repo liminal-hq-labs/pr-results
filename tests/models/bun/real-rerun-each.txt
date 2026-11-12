@@ -1,0 +1,26 @@
+suite "test/math.test.js" project=- flavour=bun 8ms
+  passed      0ms class="math" name="adds" at test/math.test.js:10
+  passed      0ms class="math > division" name="divides" at test/math.test.js:15
+  passed      1ms class="math > division" name="rejects zero" at test/math.test.js:19
+  passed      0ms class="math > division > rounding" name="rounds down" at test/math.test.js:24
+  failed      1ms class="math > division > rounding" name="fails with a stack" at test/math.test.js:29 message="expect(received).toBe(expected)"
+  skipped     0ms class="math" name="is skipped" at test/math.test.js:34
+  skipped     0ms class="math" name="is still to do" at test/math.test.js:38 message="TODO"
+  passed      0ms class="" name="works outside any describe" at test/math.test.js:41
+  passed      0ms class="math" name="adds" at test/math.test.js:10
+  passed      0ms class="math > division" name="divides" at test/math.test.js:15
+  passed      0ms class="math > division" name="rejects zero" at test/math.test.js:19
+  passed      0ms class="math > division > rounding" name="rounds down" at test/math.test.js:24
+  failed      0ms class="math > division > rounding" name="fails with a stack" at test/math.test.js:29 message="expect(received).toBe(expected)"
+  skipped     0ms class="math" name="is skipped" at test/math.test.js:34
+  skipped     0ms class="math" name="is still to do" at test/math.test.js:38 message="TODO"
+  passed      0ms class="" name="works outside any describe" at test/math.test.js:41
+suite "test/sub/retry.test.js" project=- flavour=bun 0ms
+  failed      0ms class="retries" name="passes on the second try" at test/sub/retry.test.js:15 message="not yet"
+  failed      0ms class="retries" name="never passes" at test/sub/retry.test.js:21 message="always broken"
+  failed      0ms class="retries" name="fails with an empty message" at test/sub/retry.test.js:25 message="Error"
+  failed      0ms class="retries" name="throws from the source" at src/math.js:12 message="division by zero"
+  failed      0ms class="retries" name="passes on the second try" at test/sub/retry.test.js:15 message="not yet"
+  failed      0ms class="retries" name="never passes" at test/sub/retry.test.js:21 message="always broken"
+  failed      0ms class="retries" name="fails with an empty message" at test/sub/retry.test.js:25 message="Error"
+  failed      0ms class="retries" name="throws from the source" at src/math.js:12 message="division by zero"

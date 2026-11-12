@@ -175,6 +175,13 @@ impl RepoPath {
 		Self::parse(file.as_str())
 	}
 
+	/// This path followed by `relative`, checked again as a whole. `None` when the result breaks
+	/// the path rules, so a prefix and a path that are each fine can never make one that is not
+	/// (`relative` may not climb out with `..`).
+	pub fn join(&self, relative: &str) -> Option<Self> {
+		Self::parse(&format!("{}/{}", self.0, relative))
+	}
+
 	pub fn as_str(&self) -> &str {
 		&self.0
 	}

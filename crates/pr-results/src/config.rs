@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 
-use pr_results_core::{CommentKey, Flavour, Glob};
+use pr_results_core::{CommentKey, Flavour, Glob, RepoPath};
 use pr_results_render::{Options, Symbols};
 use toml::de::{DeArray, DeTable, DeValue};
 use toml::Spanned;
@@ -54,6 +54,9 @@ pub struct SuiteSettings {
 	pub files: Vec<Glob>,
 	pub flavour: Flavour,
 	pub required: bool,
+	/// Put in front of every path the suite's reports name, so annotations land on repository
+	/// paths when the reporter's root is a subdirectory.
+	pub path_prefix: Option<RepoPath>,
 }
 
 #[derive(Debug, Clone)]
@@ -507,11 +510,15 @@ impl Reader<'_> {
 			})?,
 		};
 		let required = self.boolean(t, "required", "suite.")?.unwrap_or(false);
-		if let Some((p, span)) = self.string(t, "path_prefix", "suite.")? {
-			if !p.is_empty() {
-				return Err(self.err(span, "`suite.path_prefix` arrives in v0.2: leave it empty"));
-			}
-		}
+		let path_prefix = match self.string(t, "path_prefix", "suite.")? {
+			Some((p, span)) if !p.is_empty() => Some(RepoPath::parse(&p).ok_or_else(|| {
+				self.err(
+					span,
+					"`suite.path_prefix` must be a relative path inside the repository, such as \"apps/web/\"",
+				)
+			})?),
+			_ => None,
+		};
 		Ok(SuiteSettings {
 			name,
 			check,
@@ -519,6 +526,7 @@ impl Reader<'_> {
 			files,
 			flavour,
 			required,
+			path_prefix,
 		})
 	}
 

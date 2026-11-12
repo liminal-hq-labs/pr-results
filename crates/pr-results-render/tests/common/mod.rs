@@ -413,6 +413,77 @@ pub fn scenarios() -> Vec<Scenario> {
 		],
 	));
 
+	// Real output of the four JavaScript reporters, one section each.
+	all.push(Scenario::new(
+		"js-real",
+		"Example checks",
+		vec![
+			section(
+				"Vitest",
+				false,
+				load(&["vitest/real-file.xml"], Flavour::Auto),
+			),
+			section("Bun", false, load(&["bun/real-default.xml"], Flavour::Auto)),
+			section("Jest", false, load(&["jest/real-file.xml"], Flavour::Auto)),
+			section(
+				"Playwright",
+				false,
+				load(
+					&[
+						"playwright/real-shard-1-of-2.xml",
+						"playwright/real-shard-2-of-2.xml",
+					],
+					Flavour::Auto,
+				),
+			),
+		],
+	));
+
+	// The same reports with the attacker's text in every place a name or message comes from.
+	let real =
+		|file: &str| String::from_utf8(std::fs::read(fixtures_dir().join(file)).unwrap()).unwrap();
+	let evil = "@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe";
+	let mut hostile_sections = Vec::new();
+	for (title, file, flavour, words) in [
+		(
+			"Vitest",
+			"vitest/real-file.xml",
+			Flavour::Vitest,
+			["fails with a stack", "always broken", "division by zero"],
+		),
+		(
+			"Bun",
+			"bun/real-default.xml",
+			Flavour::Bun,
+			["fails with a stack", "always broken", "division by zero"],
+		),
+		(
+			"Jest",
+			"jest/real-file.xml",
+			Flavour::Jest,
+			["fails with a stack", "always broken", "division by zero"],
+		),
+		(
+			"Playwright",
+			"playwright/real-default.xml",
+			Flavour::Playwright,
+			["fails with a stack", "always broken", "division by zero"],
+		),
+	] {
+		let mut text = real(file);
+		for word in words {
+			text = text.replace(
+				word,
+				&evil
+					.replace('&', "&amp;")
+					.replace('<', "&lt;")
+					.replace('>', "&gt;"),
+			);
+		}
+		hostile_sections.push(section(title, false, parse_text(&text, flavour)));
+	}
+	all.push(Scenario::new("js-hostile", evil, hostile_sections));
+
 	all.push(Scenario::new(
 		"no-results-required",
 		"Example checks",

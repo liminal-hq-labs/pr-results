@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::Path;
 
 use pr_results_core::{
-	parse_junit, Flavour, Glob, Limits as ParseLimits, RepoSlug, Report, RunId, ServerUrl, Sha,
+	parse_junit_in, Flavour, Glob, Limits as ParseLimits, RepoSlug, Report, RunId, ServerUrl, Sha,
 	Suite,
 };
 use pr_results_render::{check, comment, Conclusion, Input, RunContext, Section};
@@ -192,7 +192,11 @@ fn sections(a: &RenderArgs, settings: &Settings, title: &str) -> Result<Vec<Owne
 		};
 		let bytes = read_file(path, limits.max_bytes)?;
 		let flavour = flavours.get(index).copied().unwrap_or(Flavour::Auto);
-		let parsed = parse_junit(&bytes, flavour, &limits)
+		let prefix = settings
+			.suites
+			.get(index)
+			.and_then(|s| s.path_prefix.as_ref());
+		let parsed = parse_junit_in(&bytes, flavour, &limits, prefix)
 			.map_err(|e| CliError::usage(format!("{}: {e}", path.display())))?;
 		if let Some(report) = reports.get_mut(index) {
 			report.suites.extend(parsed.suites);

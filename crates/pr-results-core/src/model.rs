@@ -227,6 +227,10 @@ impl Flavour {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Suite {
 	pub name: Untrusted,
+	/// The project the suite ran under, where the reporter names one (Playwright writes it as the
+	/// `hostname`). Part of the merge key, so the same spec file in two projects stays two suites.
+	/// Never a machine's host name: every other flavour leaves it empty.
+	pub project: Option<Untrusted>,
 	/// Never `Auto`: the flavour the parser settled on.
 	pub flavour: Flavour,
 	pub cases: Vec<Case>,
@@ -245,14 +249,18 @@ impl Suite {
 	}
 }
 
+/// What makes two suites one: name, characters cut from it, flavour, project and characters cut
+/// from that.
+type SuiteKey<'a> = (&'a str, usize, Flavour, &'a str, usize);
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Report {
 	pub suites: Vec<Suite>,
 }
 
 impl Report {
-	/// Merges suites that share a name (with the same number of characters cut from it) and flavour, keeping the order in which each was first
-	/// seen, so a matrix of jobs that each upload part of a suite shows as one.
+	/// Merges suites that share a name (with the same number of characters cut from it), project
+	/// and flavour, keeping the order in which each was first seen, so a matrix of jobs that each upload part of a suite shows as one.
 	///
 	/// The lookup is an ordered map, so the work grows with the number of suites times the log of
 	/// that number, however hostile the input, and the result does not depend on hashing.
@@ -261,11 +269,17 @@ impl Report {
 		// Where each suite ends up: the position of the first suite with its name and flavour.
 		// The count of characters cut from the name is part of the key: two names that are equal
 		// after a cut are not known to be the same name.
-		let mut first: BTreeMap<(&str, usize, Flavour), usize> = BTreeMap::new();
+		let mut first: BTreeMap<SuiteKey<'_>, usize> = BTreeMap::new();
 		let mut slots = Vec::with_capacity(suites.len());
 		for suite in &suites {
 			let next = first.len();
-			let key = (suite.name.as_str(), suite.name.omitted(), suite.flavour);
+			let key = (
+				suite.name.as_str(),
+				suite.name.omitted(),
+				suite.flavour,
+				suite.project.as_ref().map_or("", Untrusted::as_str),
+				suite.project.as_ref().map_or(0, Untrusted::omitted),
+			);
 			slots.push(*first.entry(key).or_insert(next));
 		}
 		drop(first);
