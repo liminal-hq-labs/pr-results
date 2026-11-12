@@ -90,6 +90,14 @@ while IFS= read -r line; do
 	fi
 done <<<"$action_pins"
 
+# Two different binaries cannot have the same digest: an aarch64 pin copied from x86_64 would make
+# the action fail to run on Arm, or pass a wrong file.
+x86_digest="$(sed -n 's/^PR_RESULTS_SHA256_X86_64: //p' <<<"$action_pins")"
+arm_digest="$(sed -n 's/^PR_RESULTS_SHA256_AARCH64: //p' <<<"$action_pins")"
+if [[ -n "$x86_digest" && "$x86_digest" == "$arm_digest" && "$x86_digest" != PLACEHOLDER ]]; then
+	bad "PR_RESULTS_SHA256_X86_64 and PR_RESULTS_SHA256_AARCH64 are the same digest"
+fi
+
 # ---- the verification step -----------------------------------------------------------------
 
 # The `run:` body of the step with id $2 in file $1, unindented.
@@ -131,6 +139,15 @@ for pair in "$action:$action_body" "$workflow:$workflow_body"; do
 	for needle in "${required[@]}"; do
 		if ! grep -qF -- "$needle" <<<"$body"; then
 			bad "$file: the install step lacks: $needle"
+		fi
+	done
+	# Each target must be paired with its own digest, not another's.
+	flat="$(tr -s ' \n' '  ' <<<"$body")"
+	for pairing in \
+		'target=x86_64-unknown-linux-musl want="$PR_RESULTS_SHA256_X86_64"' \
+		'target=aarch64-unknown-linux-musl want="$PR_RESULTS_SHA256_AARCH64"'; do
+		if ! grep -qF -- "$pairing" <<<"$flat"; then
+			bad "$file: the install step must contain: $pairing"
 		fi
 	done
 	# The digest check must run before the file is made executable, and must not be skipped.
