@@ -7,9 +7,20 @@
 
 set -euo pipefail
 
-# While the workspace version ends in `-dev`, a digest may still be the word PLACEHOLDER and the
-# download fails clearly if it is used. Once the version is a release, every digest must be a real
-# SHA-256 and the tag must be that version.
+# While the workspace version ends in `-dev` (or with `--unreleased`), a digest may still be the
+# word PLACEHOLDER and the download fails clearly if it is used. Once the version is a release,
+# every digest must be a real SHA-256 and the tag must be that version, so the release pull
+# request fails this check until the digests of its reproducible build are written in.
+
+unreleased=0
+case "${1:-}" in
+'') ;;
+--unreleased) unreleased=1 ;;
+*)
+	echo "usage: check-pins.sh [--unreleased]" >&2
+	exit 2
+	;;
+esac
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -25,7 +36,7 @@ if [[ -z "$version" ]]; then
 	exit 1
 fi
 dev=0
-[[ "$version" == *-dev ]] && dev=1
+[[ "$version" == *-dev || "$unreleased" == 1 ]] && dev=1
 expected_tag="v${version%-dev}"
 
 pins() {
@@ -53,7 +64,7 @@ while IFS= read -r line; do
 	elif [[ "$value" == PLACEHOLDER && "$dev" == 1 ]]; then
 		:
 	else
-		bad "$key is '$value': it must be a SHA-256 (PLACEHOLDER is allowed only while the version ends in -dev)"
+		bad "$key is '$value': it must be a SHA-256 (PLACEHOLDER is allowed only while the version ends in -dev, or with --unreleased)"
 	fi
 done <<<"$action_pins"
 

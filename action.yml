@@ -46,7 +46,6 @@ runs:
       env:
         PR_RESULTS_TAG: v0.1.0
         PR_RESULTS_SHA256_X86_64: PLACEHOLDER
-        PR_RESULTS_SHA256_AARCH64: PLACEHOLDER
       run: |
         set -euo pipefail
         case "$(uname -m)" in
@@ -54,12 +53,8 @@ runs:
             target=x86_64-unknown-linux-musl
             want="$PR_RESULTS_SHA256_X86_64"
             ;;
-          aarch64 | arm64)
-            target=aarch64-unknown-linux-musl
-            want="$PR_RESULTS_SHA256_AARCH64"
-            ;;
           *)
-            echo "::error::pr-results has no release binary for $(uname -m). Use build: source."
+            echo "::error::pr-results has no release binary for $(uname -m) yet (v0.1 ships x86_64 only). Use build: source."
             exit 1
             ;;
         esac
