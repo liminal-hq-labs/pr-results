@@ -186,7 +186,7 @@ fn push_markdown(
 	}
 }
 
-fn markers(omitted: usize) -> String {
+pub(crate) fn markers(omitted: usize) -> String {
 	format!("\u{2026} ({omitted} more characters omitted)")
 }
 
@@ -199,6 +199,12 @@ impl Safe {
 
 	pub fn number(n: u64) -> Self {
 		Self(n.to_string())
+	}
+
+	/// Text the crate built itself from checked parts (see `trusted.rs`). Not public: a caller
+	/// outside the crate has only the escaping constructors.
+	pub(crate) fn from_checked(text: String) -> Self {
+		Self(text)
 	}
 
 	pub fn as_str(&self) -> &str {
@@ -387,6 +393,37 @@ impl Safe {
 	/// and `,` are escaped.
 	pub fn workflow_property<S: Source + ?Sized>(source: &S, max_chars: usize) -> Self {
 		Self::workflow(source, max_chars, true)
+	}
+
+	/// One line of plain text for a check-run annotation title: nothing is escaped, because an
+	/// annotation is not Markdown, but controls are dropped, line breaks become spaces and
+	/// invisible characters are spelled out. Cutting is visible, as everywhere else.
+	pub fn plain_text<S: Source + ?Sized>(source: &S, max_chars: usize) -> Self {
+		Self::plain(source, max_chars, |c, _, _, out| out.push(c))
+	}
+
+	/// Plain text that keeps its line breaks, for an annotation message. Otherwise the same as
+	/// [`Safe::plain_text`].
+	pub fn plain_block<S: Source + ?Sized>(source: &S, max_chars: usize) -> Self {
+		let mut body = String::new();
+		let mut written = 0usize;
+		let mut omitted = source.omitted();
+		let mut chars = expand_keeping_lines(source.raw());
+		while let Some(c) = chars.next() {
+			if written + 1 > max_chars {
+				omitted = omitted.saturating_add(1 + chars.count());
+				break;
+			}
+			written += 1;
+			body.push(c);
+		}
+		if omitted > 0 {
+			if !body.is_empty() && !body.ends_with('\n') {
+				body.push('\n');
+			}
+			body.push_str(&markers(omitted));
+		}
+		Self(body)
 	}
 
 	fn workflow<S: Source + ?Sized>(source: &S, max_chars: usize, property: bool) -> Self {

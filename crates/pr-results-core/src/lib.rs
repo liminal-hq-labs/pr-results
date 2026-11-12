@@ -13,8 +13,10 @@ mod flavour;
 mod junit;
 mod model;
 mod safe;
+mod trusted;
 
 pub use error::ParseError;
 pub use junit::{parse_junit, Limits};
 pub use model::{Attempt, Case, Flavour, Report, Status, Suite, Untrusted, REPORT_SCHEMA};
 pub use safe::{Safe, Source, DEFAULT_MAX_CHARS};
+pub use trusted::{CommentKey, Marker, RepoPath, RepoSlug, RunId, ServerUrl, Sha, TrustedUrl};
