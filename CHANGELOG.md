@@ -4,6 +4,11 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Changed
+
+- The `pr-results-github` crate is now `pr-results-forge`. The transport's spacing, retries, retry budget and paging moved into a host-neutral `Client<F>`, the publisher asks a forge only through a new `Host` trait, and the GitHub behaviour is `Host` implemented for `GitHub<F>`. `publish` and the command line are generic over `Host`. The output, the request goldens and the behaviour are unchanged.
+- The `Reproducible build` job compares the digest it builds with the one pinned in `action.yml` and `publish.yml` only on a release pull request and on a tag; on any other pull request it proves that two builds agree and prints the digest, since the pins are the last release's.
+
 ### Fixed
 
 - The tag check of `release.yml` marks the checkout as a safe directory for git, which the pinned `ci-rust` container needs because its user does not own the checkout, and reports a comparison git could not make apart from a commit that is not on the default branch. The first run on `v0.1.0` failed closed on this and published nothing. `scripts/test-release-checks.sh` runs the check in that container as another user, and the `Release pins` job runs it.
