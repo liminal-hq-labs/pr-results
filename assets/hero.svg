@@ -11,7 +11,7 @@
 	passes at 0.72; the comment updates in place at 0.78; everything fades out from 0.94. Keep the
 	.motion and .static pairs, the 1200 x 320 viewBox, SMIL only and a title under about 16
 	characters. Check every change with scripts/check-banner.sh and its shots option, and look at the
-	frames (docs/new-project.md has the commands).
+	frames (the shots option of that script writes them).
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="hero-title hero-desc" data-loop="9">
 	<title id="hero-title">pr-results</title>
