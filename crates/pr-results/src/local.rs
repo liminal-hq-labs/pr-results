@@ -15,21 +15,17 @@ pub(crate) type LocalFile = (String, String, Vec<u8>);
 /// Open every component relative to an already opened directory, without following links.
 #[cfg(unix)]
 pub(crate) fn files(root: &Path, plan: &Plan) -> Result<(Vec<LocalFile>, usize), CliError> {
-	use rustix::fs::{openat, Dir, Mode, OFlags, CWD};
+	use rustix::fs::{openat, Dir, Mode, OFlags};
 	let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK;
-	let root = openat(CWD, root, flags | OFlags::DIRECTORY, Mode::empty())
-		.map_err(|_| CliError::usage("the input path must be a readable directory, not a link"))?;
+	let root = open_root(root, flags)?;
 	let mut pending = vec![(root, Vec::<String>::new())];
 	let mut found = Vec::new();
 	let mut skipped = 0usize;
 	let mut count = 0usize;
 	let mut total = 0u64;
-	let mut directories = 0usize;
+	let mut directories = 1usize;
+	let mut entries = 0usize;
 	while let Some((fd, parts)) = pending.pop() {
-		directories += 1;
-		if directories > plan.archive.max_files.saturating_add(1) || parts.len() > 64 {
-			return Err(CliError::usage("too many input directories"));
-		}
 		let mut dir = Dir::read_from(&fd)
 			.map_err(|_| CliError::usage("an input directory cannot be read"))?;
 		while let Some(entry) = dir.read() {
@@ -40,6 +36,10 @@ pub(crate) fn files(root: &Path, plan: &Plan) -> Result<(Vec<LocalFile>, usize),
 				.map_err(|_| CliError::usage("an input name is not UTF-8"))?;
 			if name == "." || name == ".." {
 				continue;
+			}
+			entries = entries.saturating_add(1);
+			if entries > plan.archive.max_files.saturating_mul(2).saturating_add(1) {
+				return Err(CliError::usage("too many input entries"));
 			}
 			let file = match openat(&fd, entry.file_name(), flags, Mode::empty()) {
 				Ok(fd) => std::fs::File::from(fd),
@@ -55,6 +55,10 @@ pub(crate) fn files(root: &Path, plan: &Plan) -> Result<(Vec<LocalFile>, usize),
 			let mut path = parts.clone();
 			path.push(name.to_owned());
 			if meta.is_dir() {
+				directories = directories.saturating_add(1);
+				if directories > plan.archive.max_files.saturating_add(1) || path.len() > 64 {
+					return Err(CliError::usage("too many input directories"));
+				}
 				pending.push((file.into(), path));
 				continue;
 			}
@@ -95,6 +99,35 @@ pub(crate) fn files(root: &Path, plan: &Plan) -> Result<(Vec<LocalFile>, usize),
 	}
 	found.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 	Ok((found, skipped))
+}
+
+/// Resolve the selected root one directory at a time; NOFOLLOW alone applies only to the last component.
+#[cfg(unix)]
+fn open_root(root: &Path, flags: rustix::fs::OFlags) -> Result<std::os::fd::OwnedFd, CliError> {
+	use rustix::fs::{openat, Mode, OFlags, CWD};
+	use std::path::Component;
+	if root.as_os_str().is_empty() {
+		return Err(CliError::usage("the input path is empty"));
+	}
+	let directory_flags = flags | OFlags::DIRECTORY;
+	let start = if root.is_absolute() { "/" } else { "." };
+	let fail =
+		|_| CliError::usage("the input path must contain only readable directories, not links");
+	let mut fd = openat(CWD, start, directory_flags, Mode::empty()).map_err(fail)?;
+	for part in root.components() {
+		match part {
+			Component::Normal(name) => {
+				fd = openat(&fd, name, directory_flags, Mode::empty()).map_err(fail)?
+			}
+			Component::RootDir | Component::CurDir => {}
+			_ => {
+				return Err(CliError::usage(
+					"the input path cannot contain parent components",
+				))
+			}
+		}
+	}
+	Ok(fd)
 }
 
 #[cfg(not(unix))]
@@ -157,5 +190,73 @@ mod tests {
 			inputs.suites[0][0].cases[0].file.as_ref().unwrap().as_str(),
 			"apps/web/src/a.js"
 		);
+	}
+	#[cfg(unix)]
+	#[test]
+	fn input_root_rejects_symlinked_ancestors() {
+		use std::os::unix::fs::symlink;
+		let relative =
+			std::path::PathBuf::from(format!("target/local-root-test-{}", std::process::id()));
+		let absolute = std::env::current_dir().unwrap().join(&relative);
+		std::fs::create_dir_all(absolute.join("real/results")).unwrap();
+		symlink("real", absolute.join("link")).unwrap();
+		let plan = Plan::new("App", CommentKey::parse("ci").unwrap(), vec![], "test");
+		assert!(files(&absolute.join("real/results"), &plan).is_ok());
+		assert!(files(&relative.join("real/results"), &plan).is_ok());
+		assert!(files(&absolute.join("link/results"), &plan).is_err());
+		assert!(files(&relative.join("link/results"), &plan).is_err());
+		assert!(files(&relative.join("real/../real/results"), &plan).is_err());
+		std::fs::remove_dir_all(absolute).unwrap();
+	}
+
+	#[cfg(target_os = "linux")]
+	#[test]
+	fn wide_directory_is_rejected_before_exhausting_file_descriptors() {
+		const CHILD: &str = "PR_RESULTS_FD_LIMIT_TEST";
+		if std::env::var_os(CHILD).is_none() {
+			let executable = std::env::current_exe().unwrap();
+			let output = std::process::Command::new("prlimit")
+				.args(["--nofile=32", "--"])
+				.arg(executable)
+				.args([
+					"--exact",
+					"local::tests::wide_directory_is_rejected_before_exhausting_file_descriptors",
+					"--nocapture",
+				])
+				.env(CHILD, "1")
+				.output()
+				.unwrap();
+			assert!(
+				output.status.success(),
+				"{}",
+				String::from_utf8_lossy(&output.stdout)
+			);
+			return;
+		}
+		let root = std::env::temp_dir().join(format!("pr-results-fd-test-{}", std::process::id()));
+		for i in 0..80 {
+			std::fs::create_dir_all(root.join(format!("dir-{i}"))).unwrap();
+		}
+		let mut plan = Plan::new("App", CommentKey::parse("ci").unwrap(), vec![], "test");
+		plan.archive.max_files = 2;
+		let error = files(&root, &plan).unwrap_err();
+		std::fs::remove_dir_all(root).unwrap();
+		assert_eq!(error.message, "too many input directories");
+	}
+	#[cfg(unix)]
+	#[test]
+	fn skipped_links_are_bounded() {
+		use std::os::unix::fs::symlink;
+		let root =
+			std::env::temp_dir().join(format!("pr-results-links-test-{}", std::process::id()));
+		std::fs::create_dir_all(&root).unwrap();
+		for i in 0..6 {
+			symlink("missing", root.join(format!("link-{i}"))).unwrap();
+		}
+		let mut plan = Plan::new("App", CommentKey::parse("ci").unwrap(), vec![], "test");
+		plan.archive.max_files = 2;
+		let result = files(&root, &plan);
+		std::fs::remove_dir_all(root).unwrap();
+		assert_eq!(result.unwrap_err().message, "too many input entries");
 	}
 }
