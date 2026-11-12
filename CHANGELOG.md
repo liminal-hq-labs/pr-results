@@ -13,6 +13,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - JUnit parsers for nextest (including `flakyFailure` and `rerunFailure`), vitest, jest-junit, bun, Playwright and Desk's step format, with limits on size, nesting, cases and attributes, no document types or custom entities, and no panics on hostile input.
 - Per-producer fixtures in `tests/fixtures/`, hostile-input and truncation tests, and continuous integration for format, clippy and tests in the pinned `ci-rust` image, with a nextest `ci` profile.
 - A `pr-results` command line with `--version` and `--help` only.
+- `Safe::code_span`, inline code on one line with an adaptive delimiter, as the form for test names and paths, since GitHub does not look for mentions in code.
 
 ### Changed
 
@@ -20,6 +21,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - `Safe` now spells out every format and default-ignorable character, including the tag block, variation selectors, the soft hyphen and the fillers, as `\u{…}`.
 - A suite's `file` is stored once and shared by its cases: 200,000 cases under a 1 KiB path peak at 64 MiB instead of 273 MiB.
 - `Limits` gains `max_suites` (10,000) and `max_text_bytes` (64 MiB), each refused with an error that names the limit, and `max_bytes` also applies after invalid UTF-8 is replaced.
+- `Safe::text` and `Safe::log_line` write `@` and `#` as the fullwidth U+FF20 and U+FF03 instead of HTML entities, which GitHub probably decodes before its mention filters run. This is not verified against GitHub.
 - Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
 
 There is no released version, action or binary yet, and the tool does not post anything.
