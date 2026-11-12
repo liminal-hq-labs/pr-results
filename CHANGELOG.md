@@ -11,11 +11,13 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - JavaScript stack frames give a failure its file and line: the first frame that is a repository path outside `node_modules`. An absolute or `file://` frame counts only when it ends with the case's own file.
 - Playwright's project (`hostname`) is part of a suite's identity and is shown in brackets after the spec, so one spec run in two projects stays two suites.
 - Extra `failure` or `error` elements in a case are attempts: vitest writes one for each attempt of a test that keeps failing.
-- `scripts/anonymize-junit.sh` and `anonymize_junit`, which rewrite a JUnit report so that it keeps its shape and none of its words, for sharing a private project's report as a fixture (`docs/anonymizing-reports.md`).
+- `scripts/anonymize-junit.sh` and `anonymize_junit`, which rewrite a JUnit report so that it keeps its shape and none of its words, for sharing a private project's report as a fixture (`docs/anonymizing-reports.md`). Tokens are an HMAC-SHA-256 of the word under a required salt (`--salt`, or `--random-salt`, which prints the one it made), element and attribute names outside the JUnit vocabulary are replaced, and addresses, ports and long numbers are replaced.
 - An ignored 5 200-case measurement of a vitest report.
 
 ### Changed
 
+- **Breaking for library users (0.x):** `pr_results_core::Suite` has a new public field, `project`, so code that builds a `Suite` with a struct literal must set it (`None` for every flavour but Playwright), and `Report::merge_same_named` now also keys on it. `pr_results_github::SectionPlan` has a new public field, `path_prefix`, and `pr_results::config::SuiteSettings` too. Neither crate is published (`publish = false`).
+- A stack frame whose path holds an invisible or format character is skipped, and a frame without parentheses keeps the spaces in its path.
 - bun's describe blocks read outermost first, jest-junit's repeated class name and leading space are dropped, a failure with no message (or bun's multi-line one) shows its first line, and Playwright is detected from the empty `id` and `name` on its root.
 
 ### Fixed
