@@ -1,6 +1,5 @@
 # One job per check, so a pull request's checks list names exactly what passed or failed.
-# The Rust jobs run in the shared ci-rust image. The reproducible-build job the specification lists
-# follows with the release.
+# The Rust jobs run in the shared ci-rust image.
 #
 # Every action is pinned by full commit SHA with its version in a comment, and images by digest.
 #
@@ -293,5 +292,88 @@ jobs:
       - name: Check the pins
         run: bash scripts/check-pins.sh
 
-  # The reproducible build (the musl binaries built twice, with their digests compared) follows
-  # with the release.
+  # The release binary, built twice from two copies of the tree at different paths, must give the
+  # same bytes. The digest it prints is the one the release pull request writes into `action.yml`
+  # and `publish.yml`, and `release.yml` rebuilds and compares at the tag. The aarch64 build is a
+  # trial for v0.2: it reports whether it reproduces and cannot fail the workflow.
+  reproducible:
+    name: Reproducible build (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            experimental: false
+          - name: aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            experimental: true
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the musl C compiler
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends musl-tools
+
+      - name: Build the first time
+        env:
+          TARGET: ${{ matrix.target }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-one
+          OUT_DIR: ${{ runner.temp }}/one
+        run: bash scripts/build-release.sh "$TARGET" "$OUT_DIR"
+
+      # A copy at another path, so a path leaking into the binary shows up as a different digest.
+      - name: Build the second time, from a copy
+        env:
+          TARGET: ${{ matrix.target }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-two
+          OUT_DIR: ${{ runner.temp }}/two
+          COPY: ${{ runner.temp }}/copy/pr-results
+        run: |
+          set -euo pipefail
+          mkdir -p "$COPY"
+          tar --exclude=.git -cf - . | tar -xf - -C "$COPY"
+          cd "$COPY"
+          bash scripts/build-release.sh "$TARGET" "$OUT_DIR"
+
+      - name: Compare the digests
+        env:
+          TARGET: ${{ matrix.target }}
+          ONE: ${{ runner.temp }}/one
+          TWO: ${{ runner.temp }}/two
+        run: |
+          set -euo pipefail
+          one="$(sha256sum "$ONE/pr-results-$TARGET" | cut -d ' ' -f 1)"
+          two="$(sha256sum "$TWO/pr-results-$TARGET" | cut -d ' ' -f 1)"
+          size="$(stat -c %s "$ONE/pr-results-$TARGET")"
+          {
+            echo "### Reproducible build: $TARGET"
+            echo
+            echo "- First build: \`$one\`"
+            echo "- Second build: \`$two\`"
+            echo "- Size: $size bytes"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$one" != "$two" ]; then
+            echo "::error::The two builds differ, so the binary is not reproducible."
+            exit 1
+          fi
+          "$ONE/pr-results-$TARGET" --version
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-results-${{ matrix.target }}
+          path: ${{ runner.temp }}/one/pr-results-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 14
