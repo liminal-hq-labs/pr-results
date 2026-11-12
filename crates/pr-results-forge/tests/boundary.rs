@@ -134,25 +134,25 @@ fn code_lines(path: &Path) -> Vec<(usize, String)> {
 fn the_token_is_added_only_in_ureq_forge_send() {
 	let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
 	let mut files = Vec::new();
-	for krate in [
-		"pr-results",
-		"pr-results-core",
-		"pr-results-forge",
-		"pr-results-render",
-	] {
-		sources(&root.join(krate).join("src"), &mut files);
+	// Every crate under `crates/`, so a crate added later is covered without editing this test.
+	for entry in fs::read_dir(&root).unwrap().flatten() {
+		sources(&entry.path().join("src"), &mut files);
 	}
 	assert!(files.len() > 20, "the source files were not found");
 
 	let mut exposes = Vec::new();
 	let mut headers = Vec::new();
 	for file in &files {
+		// The loopback tests read the headers they received; they send none.
+		if file.file_name().is_some_and(|n| n == "http_tests.rs") {
+			continue;
+		}
 		for (n, line) in code_lines(file) {
 			let name = file.file_name().unwrap().to_string_lossy().into_owned();
 			if line.contains(".expose(") {
 				exposes.push((name.clone(), n));
 			}
-			if line.contains("\"Authorization\"") {
+			if line.to_ascii_lowercase().contains("\"authorization\"") {
 				headers.push((name, n));
 			}
 		}

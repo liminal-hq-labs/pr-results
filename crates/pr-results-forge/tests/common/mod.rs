@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+pub mod conformance;
 pub mod zip;
 
 use std::fmt::Write as _;

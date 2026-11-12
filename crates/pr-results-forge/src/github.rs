@@ -141,7 +141,7 @@ impl<F: Forge> GitHub<F> {
 	/// sent only those beyond what it has, so a re-run does not duplicate them. A batch GitHub
 	/// refuses with 422 is left out and counted. A 422 on the run itself comes back as an error,
 	/// for the caller to retry with less.
-	pub fn upsert_check(&self, spec: &CheckSpec<'_>) -> Result<CheckResult, ForgeError> {
+	pub(crate) fn upsert_check(&self, spec: &CheckSpec<'_>) -> Result<CheckResult, ForgeError> {
 		let existing = self.find_check(spec)?;
 		let annotations: Vec<Value> = spec
 			.output
@@ -284,6 +284,8 @@ impl<F: Forge> GitHub<F> {
 	/// login, the account type, when it was made and the first `BODY_PREFIX_BYTES` bytes of the
 	/// body (the marker is on its first line). A hundred pages of large comments is therefore a
 	/// few kilobytes, not hundreds of megabytes.
+	/// Public for the tests, which read the listing the flow sees; the flow itself goes through
+	/// [`Host::upsert_comment`].
 	pub fn comments(&self, pr: u64) -> Result<Vec<Comment>, ForgeError> {
 		let req = self.client.get(&format!("issues/{pr}/comments"))?;
 		self.client
@@ -584,8 +586,6 @@ impl<F: Forge> Host for GitHub<F> {
 		})
 	}
 }
-
-impl<F: Forge> GitHub<F> {}
 
 fn pull_from(v: &Value) -> Option<Pull> {
 	let repo = |side: &str| {
