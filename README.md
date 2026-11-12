@@ -10,7 +10,7 @@
 
 pr-results reads the test and check results your CI produces and posts them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It reads JUnit from nextest (tuned) and step reports from shell-script projects (tuned), and from vitest, bun, jest and Playwright (parsed, tuned in v0.2), and it is safe on pull requests from forks by design.
 
-> **Status:** experimental. v0.1.0 is the first release: a Linux `x86_64` binary built reproducibly, with the nextest and step JUnit readers tuned and the vitest, bun, jest and Playwright readers parsed but untuned. It is tested against an in-memory GitHub and loopback servers, and a sandbox repository showed that the comment's text forms make no mentions or links. **Not verified:** the first run of the workflows on GitHub Actions, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), real team mentions and notifications, and the `aarch64` binary, which waits for v0.2. Interfaces and formats may change between any two minor versions, and [CHANGELOG.md](CHANGELOG.md) says what.
+> **Status:** experimental. v0.1.0 is the first release: Linux `x86_64` and `aarch64` binaries built reproducibly, with the nextest and step JUnit readers tuned and the vitest, bun, jest and Playwright readers parsed but untuned. It is tested against an in-memory GitHub and loopback servers, and a sandbox repository showed that the comment's text forms make no mentions or links. **Not verified:** the first run of the workflows on GitHub Actions, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), and real team mentions and notifications. Interfaces and formats may change between any two minor versions, and [CHANGELOG.md](CHANGELOG.md) says what.
 
 ## What it's for
 
@@ -49,7 +49,9 @@ The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks
 
 ## Install and run
 
-The setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. Look the SHA of the release up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.1.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation:
+The setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. Look the SHA of the release up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.1.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation. The publisher runs on Linux, `x86_64` and `aarch64`, as a static musl binary. On other platforms build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results pr-results --locked`. macOS and Windows binaries are not shipped in v0.1, and Windows path handling in the zip reader and the file checks is untested.
+
+The workflow:
 
 ```yaml
 # .github/workflows/publish-test-results.yml

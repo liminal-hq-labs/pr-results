@@ -6,7 +6,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## 0.1.0 — 2026-11-12
 
-The first release: experimental, with a Linux `x86_64` binary.
+The first release: experimental, with Linux `x86_64` and `aarch64` binaries.
 
 ### Added
 
@@ -40,12 +40,14 @@ The first release: experimental, with a Linux `x86_64` binary.
 - The release: `scripts/build-release.sh`, a reproducible `x86_64-unknown-linux-musl` build (remapped paths, a constant `SOURCE_DATE_EPOCH`, `musl-tools` for `ring`), the `Reproducible build` CI job that builds it twice from two paths, compares the digests, prints them and uploads the binary, and `release.yml`, which on a `v*` tag rebuilds, fails if the digest is not the one `action.yml` and `publish.yml` pin, attests build provenance and creates the GitHub release with the binary, `SHA256SUMS` and generated notes (decisions D55 and D56). `docs/releasing.md` says how a release is cut and verified.
 - `[profile.release]`: `opt-level = "z"`, fat LTO, one codegen unit, `panic = "abort"` and stripped symbols, which take the `x86_64` binary from 3 646 360 to 2 167 632 bytes.
 - `scripts/check-pins.sh --unreleased`, which allows `PLACEHOLDER` digests in a release version.
-- An experimental `Reproducible build (aarch64)` job on an Arm runner, which reports whether the `aarch64` binary reproduces and cannot fail the workflow.
+- An `aarch64` binary beside the `x86_64` one: the `Reproducible build (aarch64)` job builds it on `ubuntu-24.04-arm`, and on GitHub's runners it reproduced twice (decision D56). `release.yml` builds and compares both targets and attests one `SHA256SUMS` for both.
+- `scripts/check-toolchain.sh` and `scripts/musl-packages.txt`: the build jobs fail with "toolchain drift" if the installed `musl` packages differ from the recorded versions, or if a cargo configuration file or a `RUSTFLAGS`-like variable could override the build flags. The `Reproducible build` job also fails if its digest is not the one pinned.
 
 ### Changed
 
 - The workspace version is `0.1.0`.
-- `action.yml` and `publish.yml` carry one binary digest, `PR_RESULTS_SHA256_X86_64`: there is no `aarch64` release binary in v0.1 (an `aarch64` runner is told to use `build: source`), and the `aarch64` binary stays on the v0.2 roadmap.
+- `action.yml` and `publish.yml` carry a digest for each binary, `PR_RESULTS_SHA256_X86_64` and `PR_RESULTS_SHA256_AARCH64`, and the `Action smoke` job uses its own settings (`tests/fixtures/smoke.toml`) and checks the comment it renders.
+- The action gives `GITHUB_TOKEN` to `publish` only.
 - Decision D17 is amended: until v0.1.0 the dogfood publisher runs the default branch's reviewed source (`build: source`), and a follow-up after the tag pins the release.
 - An annotation title is at most 255 characters and its message at most 65 535 bytes, the omitted-characters marker included (a 1,000-character name used to render 286), and the comment, summary and text limits are held to 65 535 whatever the setting.
 - `Marker::parse` accepts a first line that ends in `\r\n`, as `Marker::prefix_matches` already did.
@@ -59,4 +61,4 @@ The first release: experimental, with a Linux `x86_64` binary.
 - `Debug` for `Untrusted` prints its size only, never the text.
 - Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
 
-Not verified: the first run of the workflows on GitHub Actions and of the release workflow, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), real team mentions, cross-repository references and notifications (decision D43 covers one sandbox), the `aarch64` binary, and artifact attestation end to end. The vitest, bun, jest and Playwright readers are parsed but not tuned until v0.2.
+Not verified: the first run of the workflows on GitHub Actions and of the release workflow, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), real team mentions, cross-repository references and notifications (decision D43 covers one sandbox), and artifact attestation end to end. The vitest, bun, jest and Playwright readers are parsed but not tuned until v0.2.

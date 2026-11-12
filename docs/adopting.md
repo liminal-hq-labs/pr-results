@@ -1,6 +1,6 @@
 # Adopting pr-results
 
-> **Experimental.** v0.1.0 is the first release, with a Linux `x86_64` binary only: on an `aarch64` runner use `build: source` in the composite action. The command line, the action and the workflows are tested against an in-memory GitHub, and none has yet run on GitHub Actions. The behaviour is specified in [SPEC.md](../SPEC.md).
+> **Experimental.** v0.1.0 is the first release. The publisher runs on Linux, `x86_64` and `aarch64`, as a static musl binary. On other platforms build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results pr-results --locked`. macOS and Windows binaries are not shipped in v0.1, and Windows path handling in the zip reader and the file checks is untested. The command line, the action and the workflows are tested against an in-memory GitHub, and none has yet run on GitHub Actions. The behaviour is specified in [SPEC.md](../SPEC.md).
 
 The publisher runs after your CI finishes, in a `workflow_run` workflow, so it works for pull requests from forks and from Dependabot, where a `pull_request` job's token is read-only. Your CI only needs to upload the results as artefacts.
 
