@@ -42,6 +42,13 @@ impl Paths<'_> {
 	/// (a Playwright stack names `../src/x.js` relative to its test directory) but never past the
 	/// repository's root. Every other refusal of [`clean_path`] stands.
 	pub(crate) fn place(&self, raw: &str) -> Option<String> {
+		// A path that `RepoPath` would refuse (an invisible or format character in it) is no path:
+		// it would replace a good one and the annotation would be lost.
+		self.place_unchecked(raw)
+			.filter(|p| RepoPath::parse(p).is_some())
+	}
+
+	fn place_unchecked(&self, raw: &str) -> Option<String> {
 		let Some(prefix) = self.prefix else {
 			return clean_path(raw, self.cap);
 		};
@@ -316,13 +323,24 @@ fn playwright_header(detail: &str, paths: &Paths<'_>) -> Option<Found> {
 /// The `path` and `line` of one stack-frame line, if it is a frame and has both.
 fn frame_location(line: &str) -> Option<(&str, u32)> {
 	let line = line.trim();
-	let rest = line
-		.strip_prefix("at ")
-		.or_else(|| line.strip_prefix('\u{276f}'))?
-		.trim();
+	let (rest, vitest) = match line.strip_prefix("at ") {
+		Some(rest) => (rest.trim(), false),
+		None => (line.strip_prefix('\u{276f}')?.trim(), true),
+	};
 	let place = match (rest.ends_with(')'), rest.rfind('(')) {
 		(true, Some(open)) => rest.get(open + 1..rest.len() - 1)?,
-		_ => rest.rsplit(char::is_whitespace).next()?,
+		// Without parentheses the whole remainder is the place, spaces included
+		// (`at src/my dir/a.js:1:1`). Only vitest's `❯ fn path:line:col` puts a function name
+		// first, and a name has no slash, colon or dot-slash in it.
+		_ if vitest => {
+			let (head, tail) = rest.split_once(char::is_whitespace).unwrap_or(("", rest));
+			if head.contains(['/', '\\', ':']) {
+				rest
+			} else {
+				tail.trim()
+			}
+		}
+		_ => rest,
 	};
 	split_line(place)
 }
