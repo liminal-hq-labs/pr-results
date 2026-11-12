@@ -284,13 +284,23 @@ jobs:
     name: Release pins
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # Proves the check itself rejects each way of weakening the install step or the pins.
+      - name: Test the pin check
+        run: bash scripts/test-check-pins.sh
+
+      # Online: asks GitHub (read access to public repositories, with the workflow's
+      # `contents: read` token) whether every `# vX` comment names the pinned commit.
       - name: Check the pins
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: bash scripts/check-pins.sh
 
   # The reproducible build (the musl binaries built twice, with their digests compared) follows
