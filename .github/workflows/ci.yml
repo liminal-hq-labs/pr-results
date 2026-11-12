@@ -263,12 +263,22 @@ jobs:
           command: validate-config
           build: source
 
+      # The smoke settings name the fixtures it renders, so a file that matches no suite fails the
+      # step instead of being skipped. The action gives `render` no token.
+      - name: Validate the smoke settings
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: validate-config
+          config: tests/fixtures/smoke.toml
+          build: source
+
       - name: Render the fixtures
         uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
         with:
           command: render
+          config: tests/fixtures/smoke.toml
           build: source
-          args: --title Smoke --out ${{ runner.temp }}/smoke tests/fixtures/nextest/pass.xml tests/fixtures/nextest/fail.xml
+          args: --out ${{ runner.temp }}/smoke tests/fixtures/nextest/pass.xml tests/fixtures/nextest/fail.xml
 
       - name: Check what it wrote
         env:
@@ -277,7 +287,11 @@ jobs:
           test -s "$SMOKE/comment.md"
           test -s "$SMOKE/checks/0.md"
           grep -q '^<!-- pr-results:1 key=ci ' "$SMOKE/comment.md"
-          grep -q '^### Smoke: ' "$SMOKE/comment.md"
+          grep -qF '### Smoke: 1 failure in 1 suite' "$SMOKE/comment.md"
+          grep -qF '| `Smoke tests` | **Failed** | 4 | 1 | 1 | 0 | 2.2 s |' "$SMOKE/comment.md"
+          grep -qF '`junit::sums_suite_time`' "$SMOKE/comment.md"
+          grep -qF 'conclusion: failure' "$SMOKE/checks/0.md"
+          grep -qF 'title: 1 failed, 4 passed, 1 skipped' "$SMOKE/checks/0.md"
 
   pins:
     name: Release pins

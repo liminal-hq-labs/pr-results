@@ -94,7 +94,8 @@ runs:
         PR_RESULTS_COMMAND: ${{ inputs.command }}
         PR_RESULTS_ARGS: ${{ inputs.args }}
         PR_RESULTS_CONFIG: ${{ inputs.config }}
-        GITHUB_TOKEN: ${{ inputs.token }}
+        # Only publish talks to GitHub: validate-config and render get no token.
+        GITHUB_TOKEN: ${{ inputs.command == 'publish' && inputs.token || '' }}
       run: |
         set -euo pipefail
         args=()

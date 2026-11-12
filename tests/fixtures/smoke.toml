@@ -1,0 +1,14 @@
+# pr-results settings for the action smoke job: one suite that takes the nextest fixtures it renders.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+title = "Smoke"
+
+[[suite]]
+name = "Smoke tests"
+check = "Smoke tests"
+artifact = "smoke-test-results"
+files = ["tests/fixtures/nextest/pass.xml", "tests/fixtures/nextest/fail.xml"]
+flavour = "nextest"
