@@ -142,6 +142,21 @@ pub(crate) fn group_of(suite: &Suite, case: &Case) -> Option<Piece> {
 	})
 }
 
+/// A suite's name, followed by the project it ran under in brackets where the reporter names one
+/// (Playwright), so the same spec file in two projects reads as two suites.
+pub(crate) fn suite_label(suite: &Suite) -> Piece {
+	match &suite.project {
+		Some(project) => Piece {
+			text: format!("{} [{}]", suite.name.as_str(), project.as_str()),
+			omitted: suite.name.omitted().saturating_add(project.omitted()),
+		},
+		None => Piece {
+			text: suite.name.as_str().to_owned(),
+			omitted: suite.name.omitted(),
+		},
+	}
+}
+
 /// The part of a failure's body that is shown: its first lines, or for step logs its last.
 pub(crate) struct Excerpt {
 	pub piece: Piece,

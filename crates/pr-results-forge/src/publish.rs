@@ -13,7 +13,7 @@ use std::cell::Cell;
 use std::fmt;
 
 use pr_results_core::{
-	parse_junit, CommentKey, Flavour, Glob, Limits, Marker, RepoPath, Report, RunId, Safe,
+	parse_junit_in, CommentKey, Flavour, Glob, Limits, Marker, RepoPath, Report, RunId, Safe,
 	ServerUrl, Sha, Status, Suite,
 };
 use pr_results_render::{
@@ -56,6 +56,8 @@ pub struct SectionPlan {
 	pub artifact: Glob,
 	pub files: Vec<Glob>,
 	pub flavour: Flavour,
+	/// Put in front of every path the section's reports name.
+	pub path_prefix: Option<RepoPath>,
 }
 
 #[derive(Debug, Clone)]
@@ -500,7 +502,12 @@ fn load<H: Host>(
 				.iter()
 				.filter(|e| section.files.iter().any(|g| g.is_match(&e.name)))
 			{
-				match parse_junit(&entry.data, section.flavour, &plan.parse) {
+				match parse_junit_in(
+					&entry.data,
+					section.flavour,
+					&plan.parse,
+					section.path_prefix.as_ref(),
+				) {
 					Ok(parsed) => out.suites.extend(parsed.suites),
 					Err(_) => {
 						report.notes.push(Note::InputUnreadable { section: *i });

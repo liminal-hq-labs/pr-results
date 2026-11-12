@@ -10,7 +10,7 @@
 use pr_results_core::{Case, Marker, Safe, Status, Suite, TrustedUrl};
 
 use crate::text::{big, cat, count, join, noun, num, t};
-use crate::view::{excerpt, group_of, location_piece, Counts, Entry, Verdict};
+use crate::view::{excerpt, group_of, location_piece, suite_label, Counts, Entry, Verdict};
 use crate::{RunContext, Symbols, Target};
 
 /// Budgets for the names shown on a line, in characters after escaping.
@@ -127,7 +127,7 @@ pub(crate) fn path_line(e: &Entry<'_>, section_title: Option<&str>) -> Safe {
 	if let Some(title) = section_title {
 		parts.push(Safe::code_span(title, SUITE_CHARS));
 	}
-	parts.push(Safe::code_span(&e.suite.name, SUITE_CHARS));
+	parts.push(Safe::code_span(&suite_label(e.suite), SUITE_CHARS));
 	if let Some(group) = group_of(e.suite, e.case) {
 		parts.push(Safe::code_span(&group, GROUP_CHARS));
 	}

@@ -1,0 +1,13 @@
+suite "test/math.test.js" project=- flavour=vitest 10ms
+  passed      1ms class="test/math.test.js" name="math > adds" at test/math.test.js
+  passed      0ms class="test/math.test.js" name="math > division > divides" at test/math.test.js
+  passed      0ms class="test/math.test.js" name="math > division > rejects zero" at test/math.test.js
+  passed      0ms class="test/math.test.js" name="math > division > rounding > rounds down" at test/math.test.js
+  failed      6ms class="test/math.test.js" name="math > division > rounding > fails with a stack" at test/math.test.js:29 attempts=2 message="expected 4 to be 5 // Object.is equality"
+  skipped     0ms class="test/math.test.js" name="math > is skipped" at test/math.test.js
+  skipped     0ms class="test/math.test.js" name="math > is still to do" at test/math.test.js
+  passed      0ms class="test/math.test.js" name="works outside any describe" at test/math.test.js
+suite "test/sub/retry.test.js" project=- flavour=vitest 7ms
+  passed      4ms class="test/sub/retry.test.js" name="retries > passes on the second try" at test/sub/retry.test.js
+  failed      1ms class="test/sub/retry.test.js" name="retries > never passes" at test/sub/retry.test.js:21 attempts=2 message="always broken"
+  failed      1ms class="test/sub/retry.test.js" name="retries > throws from the source" at src/math.js:12 attempts=2 message="division by zero"

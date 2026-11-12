@@ -245,10 +245,32 @@ fn settings_for_later_versions_are_refused_not_ignored() {
 	assert!(err("[comment]\nother_checks = true").contains("arrives in v0.3"));
 	assert!(err("[checks]\nper_suite = false").contains("arrives with the combined check"));
 	assert!(err("[checks]\ncombined = \"All\"").contains("arrives in v0.3"));
-	assert!(
-		err("[[suite]]\nname = \"a\"\nartifact = \"b\"\npath_prefix = \"web/\"")
-			.contains("arrives in v0.2")
-	);
+}
+
+fn suite_with_prefix(prefix: &str) -> String {
+	format!("[[suite]]\nname = \"a\"\nartifact = \"b\"\npath_prefix = \"{prefix}\"")
+}
+
+#[test]
+fn a_path_prefix_is_a_relative_path_in_the_repository() {
+	let read = |prefix: &str| {
+		Settings::parse(&suite_with_prefix(prefix))
+			.unwrap()
+			.suites
+			.remove(0)
+			.path_prefix
+			.map(|p| p.as_str().to_owned())
+	};
+	assert_eq!(read(""), None);
+	assert_eq!(read("apps/web/").as_deref(), Some("apps/web"));
+	assert_eq!(read("./apps\\\\web").as_deref(), Some("apps/web"));
+	for bad in ["/etc", "../up", "a/../b", "C:/x", "file:///x", "a\\u0001b"] {
+		let message = err(&suite_with_prefix(bad));
+		assert!(
+			message.contains("`suite.path_prefix` must be a relative path"),
+			"{bad:?}: {message}"
+		);
+	}
 }
 
 #[test]

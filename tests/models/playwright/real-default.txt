@@ -1,0 +1,24 @@
+suite "math.spec.js" project=chromium flavour=playwright 15ms
+  passed      2ms class="math.spec.js" name="math › adds" at math.spec.js
+  passed      0ms class="math.spec.js" name="math › division › divides" at math.spec.js
+  passed      0ms class="math.spec.js" name="math › division › rounding › rounds down" at math.spec.js
+  failed     10ms class="math.spec.js" name="math › division › rounding › fails with a stack" at math.spec.js:26 message="expect(received).toBe(expected) // Object.is equality"
+  skipped     0ms class="math.spec.js" name="math › is skipped" at math.spec.js
+  skipped     0ms class="math.spec.js" name="math › is still to do" at math.spec.js
+  passed      3ms class="math.spec.js" name="works outside any describe" at math.spec.js
+suite "sub/retry.spec.js" project=chromium flavour=playwright 8ms
+  passed      3ms class="sub/retry.spec.js" name="retries › passes on the second try" at sub/retry.spec.js
+  errored     2ms class="sub/retry.spec.js" name="retries › never passes" at sub/retry.spec.js:15 message="always broken"
+  errored     3ms class="sub/retry.spec.js" name="retries › throws from the source" at sub/retry.spec.js:19 message="division by zero"
+suite "math.spec.js" project=firefox flavour=playwright 16ms
+  passed      2ms class="math.spec.js" name="math › adds" at math.spec.js
+  passed      2ms class="math.spec.js" name="math › division › divides" at math.spec.js
+  passed      0ms class="math.spec.js" name="math › division › rounding › rounds down" at math.spec.js
+  failed     10ms class="math.spec.js" name="math › division › rounding › fails with a stack" at math.spec.js:26 message="expect(received).toBe(expected) // Object.is equality"
+  skipped     0ms class="math.spec.js" name="math › is skipped" at math.spec.js
+  skipped     0ms class="math.spec.js" name="math › is still to do" at math.spec.js
+  passed      2ms class="math.spec.js" name="works outside any describe" at math.spec.js
+suite "sub/retry.spec.js" project=firefox flavour=playwright 11ms
+  passed      4ms class="sub/retry.spec.js" name="retries › passes on the second try" at sub/retry.spec.js
+  errored     4ms class="sub/retry.spec.js" name="retries › never passes" at sub/retry.spec.js:15 message="always broken"
+  errored     3ms class="sub/retry.spec.js" name="retries › throws from the source" at sub/retry.spec.js:19 message="division by zero"
