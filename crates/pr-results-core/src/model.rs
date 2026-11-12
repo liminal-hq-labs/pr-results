@@ -148,6 +148,9 @@ pub struct Case {
 	pub status: Status,
 	pub time_ms: u64,
 	pub attempts: Vec<Attempt>,
+	/// How many further attempts were in the report but not kept, past `Limits::max_attempts`.
+	/// A renderer shows this whenever it is not zero, so a cut is never silent.
+	pub attempts_omitted: usize,
 	/// The first line of why the case failed, errored or was skipped. Capped at 1 KiB.
 	pub message: Option<Untrusted>,
 	/// The body of the failure. Capped at 16 KiB.

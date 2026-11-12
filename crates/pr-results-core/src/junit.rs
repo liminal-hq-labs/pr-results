@@ -30,7 +30,7 @@ pub struct Limits {
 	pub max_cases: usize,
 	/// Suites across the input, counting each top-level `testsuite` once.
 	pub max_suites: usize,
-	/// Retry attempts kept per case; the rest are dropped.
+	/// Retry attempts kept per case; the rest are counted in `Case::attempts_omitted`.
 	pub max_attempts: usize,
 	/// Names, class names and file paths, in bytes.
 	pub max_name_bytes: usize,
@@ -182,6 +182,7 @@ struct CaseBuilder {
 	failure: Option<(Status, Option<Untrusted>, Option<Untrusted>)>,
 	skipped: Option<(Option<Untrusted>, Option<Untrusted>)>,
 	attempts: Vec<Attempt>,
+	attempts_omitted: usize,
 	system_out: Option<Untrusted>,
 	system_err: Option<Untrusted>,
 }
@@ -517,7 +518,9 @@ impl<'l> Parser<'l> {
 						| Tag::RerunFailure
 						| Tag::FlakyError
 						| Tag::RerunError => {
-							if case.attempts.len() < max {
+							if case.attempts.len() >= max {
+								case.attempts_omitted = case.attempts_omitted.saturating_add(1);
+							} else {
 								let status = if matches!(t, Tag::FlakyFailure | Tag::RerunFailure) {
 									Status::Failed
 								} else {
@@ -542,12 +545,9 @@ impl<'l> Parser<'l> {
 }
 
 fn finish_case(b: CaseBuilder) -> Case {
-	let flaky = b.failure.is_none() && b.skipped.is_none() && !b.attempts.is_empty() && {
-		// Only the retries that preceded a pass make a case flaky.
-		b.attempts
-			.iter()
-			.any(|a| matches!(a.status, Status::Failed | Status::Errored))
-	};
+	// Every kept attempt is a failed or errored try, so any attempt before a pass makes a case
+	// flaky.
+	let flaky = b.failure.is_none() && b.skipped.is_none() && !b.attempts.is_empty();
 	let (status, message, detail) = match (b.failure, b.skipped) {
 		(Some((status, message, detail)), _) => (status, message, detail),
 		(None, Some((message, detail))) => (Status::Skipped, message, detail),
@@ -565,6 +565,7 @@ fn finish_case(b: CaseBuilder) -> Case {
 		status,
 		time_ms: b.time_ms,
 		attempts: b.attempts,
+		attempts_omitted: b.attempts_omitted,
 		message,
 		detail,
 		system_out: b.system_out,

@@ -30,6 +30,7 @@ fn suite(name: &str, flavour: Flavour, cases: &[&str]) -> Suite {
 				status: Status::Passed,
 				time_ms: 1,
 				attempts: Vec::new(),
+				attempts_omitted: 0,
 				message: None,
 				detail: None,
 				system_out: None,
@@ -301,4 +302,40 @@ fn input_that_grows_past_the_size_limit_when_repaired_is_refused() {
 			limit: given + 10
 		}
 	);
+}
+
+fn retries(kind: &str, n: usize) -> Vec<u8> {
+	let mut s =
+		String::from("<testsuites><testsuite name=\"s\"><testcase classname=\"c\" name=\"t\">");
+	for i in 0..n {
+		s.push_str(&format!("<{kind} message=\"try {i}\">trace</{kind}>"));
+	}
+	s.push_str("</testcase></testsuite></testsuites>");
+	s.into_bytes()
+}
+
+#[test]
+fn attempts_past_the_limit_are_counted_not_dropped_silently() {
+	let limits = Limits {
+		max_attempts: 2,
+		..Limits::default()
+	};
+	let report = parse_junit(&retries("rerunFailure", 5), Flavour::Nextest, &limits).unwrap();
+	let case = &report.suites[0].cases[0];
+	assert_eq!(case.attempts.len(), 2);
+	assert_eq!(case.attempts_omitted, 3);
+	assert_eq!(case.attempts[1].message.as_ref().unwrap().as_str(), "try 1");
+
+	// A flaky pass is still flaky when its retries were cut.
+	let report = parse_junit(&retries("flakyFailure", 5), Flavour::Nextest, &limits).unwrap();
+	let case = &report.suites[0].cases[0];
+	assert_eq!(
+		(case.status, case.attempts.len(), case.attempts_omitted),
+		(Status::Flaky, 2, 3)
+	);
+
+	// Nothing is omitted at or under the limit.
+	let report = parse_junit(&retries("rerunError", 2), Flavour::Nextest, &limits).unwrap();
+	assert_eq!(report.suites[0].cases[0].attempts_omitted, 0);
+	assert_eq!(report.suites[0].cases[0].attempts.len(), 2);
 }
