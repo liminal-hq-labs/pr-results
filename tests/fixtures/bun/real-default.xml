@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Real output of bun 1.4.4, run by scripts/gen-js-fixtures.sh on the sample project
+  tests/sample-projects/bun (variant: default). Only the run timestamps are replaced
+  (with 2026-01-01T00:00:00.000Z); the host name is the container's fixed sample-host.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="bun test" tests="12" assertions="6" failures="5" skipped="2" time="0.019240103">
+  <testsuite name="test/math.test.js" file="test/math.test.js" tests="8" assertions="6" failures="1" skipped="2" time="0.007473928" hostname="sample-host">
+    <testsuite name="math" file="test/math.test.js" line="9" tests="7" assertions="5" failures="1" skipped="2" time="0" hostname="sample-host">
+      <testcase name="adds" classname="math" time="0.000022" file="test/math.test.js" line="10" assertions="1" />
+      <testsuite name="division" file="test/math.test.js" line="14" tests="4" assertions="4" failures="1" skipped="0" time="0" hostname="sample-host">
+        <testcase name="divides" classname="division &gt; math" time="0.000048" file="test/math.test.js" line="15" assertions="1" />
+        <testcase name="rejects zero" classname="division &gt; math" time="0.000627" file="test/math.test.js" line="19" assertions="1" />
+        <testsuite name="rounding" file="test/math.test.js" line="23" tests="2" assertions="2" failures="1" skipped="0" time="0" hostname="sample-host">
+          <testcase name="rounds down" classname="rounding &gt; division &gt; math" time="0.000305" file="test/math.test.js" line="24" assertions="1" />
+          <testcase name="fails with a stack" classname="rounding &gt; division &gt; math" time="0.000762" file="test/math.test.js" line="28" assertions="1">
+            <failure type="AssertionError" message="expect(received).toBe(expected)&#10;&#10;Expected: 5&#10;Received: 4&#10;">AssertionError: expect(received).toBe(expected)&#10;&#10;Expected: 5&#10;Received: 4&#10;&#10;      at test/math.test.js:29:23&#10;</failure>
+          </testcase>
+        </testsuite>
+      </testsuite>
+      <testcase name="is skipped" classname="math" time="0" file="test/math.test.js" line="34" assertions="0">
+        <skipped />
+      </testcase>
+      <testcase name="is still to do" classname="math" time="0" file="test/math.test.js" line="38" assertions="0">
+        <skipped message="TODO" />
+      </testcase>
+    </testsuite>
+    <testcase name="works outside any describe" classname="" time="0.000024" file="test/math.test.js" line="41" assertions="1" />
+  </testsuite>
+  <testsuite name="test/sub/retry.test.js" file="test/sub/retry.test.js" tests="4" assertions="0" failures="4" skipped="0" time="0.00025312" hostname="sample-host">
+    <testsuite name="retries" file="test/sub/retry.test.js" line="11" tests="4" assertions="0" failures="4" skipped="0" time="0" hostname="sample-host">
+      <testcase name="passes on the second try" classname="retries" time="0.000033" file="test/sub/retry.test.js" line="12" assertions="0">
+        <failure type="Error" message="not yet">Error: not yet&#10;      at test/sub/retry.test.js:15:29&#10;</failure>
+      </testcase>
+      <testcase name="never passes" classname="retries" time="0.000019" file="test/sub/retry.test.js" line="20" assertions="0">
+        <failure type="Error" message="always broken">Error: always broken&#10;      at test/sub/retry.test.js:21:34&#10;</failure>
+      </testcase>
+      <testcase name="fails with an empty message" classname="retries" time="0.000015" file="test/sub/retry.test.js" line="24" assertions="0">
+        <failure type="Error">Error&#10;      at test/sub/retry.test.js:25:21&#10;</failure>
+      </testcase>
+      <testcase name="throws from the source" classname="retries" time="0.000017" file="test/sub/retry.test.js" line="28" assertions="0">
+        <failure type="RangeError" message="division by zero">RangeError: division by zero&#10;      at divide (src/math.js:12:42)&#10;      at test/sub/retry.test.js:29:10&#10;</failure>
+      </testcase>
+    </testsuite>
+  </testsuite>
+</testsuites>

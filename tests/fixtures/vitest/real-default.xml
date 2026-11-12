@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  Real output of vitest 5.1.0 on node 22.23.5, run by scripts/gen-js-fixtures.sh on the sample project
+  tests/sample-projects/vitest (variant: default). Only the run timestamps are replaced
+  (with 2026-01-01T00:00:00.000Z); the host name is the container's fixed sample-host.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="vitest tests" tests="11" failures="3" errors="0" time="0.010426019">
+    <testsuite name="test/math.test.js" timestamp="2026-01-01T00:00:00.000Z" hostname="sample-host" tests="8" failures="1" errors="0" skipped="2" time="0.006041092">
+        <testcase classname="test/math.test.js" name="math &gt; adds" time="0.000882457">
+        </testcase>
+        <testcase classname="test/math.test.js" name="math &gt; division &gt; divides" time="0.00018631">
+        </testcase>
+        <testcase classname="test/math.test.js" name="math &gt; division &gt; rejects zero" time="0.000161599">
+        </testcase>
+        <testcase classname="test/math.test.js" name="math &gt; division &gt; rounding &gt; rounds down" time="0.00018611">
+        </testcase>
+        <testcase classname="test/math.test.js" name="math &gt; division &gt; rounding &gt; fails with a stack" time="0.00357118">
+            <failure message="expected 4 to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected 4 to be 5 // Object.is equality
+
+- Expected
++ Received
+
+- 5
++ 4
+
+ ❯ test/math.test.js:29:23
+            </failure>
+            <failure message="expected 4 to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected 4 to be 5 // Object.is equality
+
+- Expected
++ Received
+
+- 5
++ 4
+
+ ❯ test/math.test.js:29:23
+            </failure>
+            <failure message="expected 4 to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected 4 to be 5 // Object.is equality
+
+- Expected
++ Received
+
+- 5
++ 4
+
+ ❯ test/math.test.js:29:23
+            </failure>
+        </testcase>
+        <testcase classname="test/math.test.js" name="math &gt; is skipped" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="test/math.test.js" name="math &gt; is still to do" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="test/math.test.js" name="works outside any describe" time="0.00010344">
+        </testcase>
+    </testsuite>
+    <testsuite name="test/sub/retry.test.js" timestamp="2026-01-01T00:00:00.000Z" hostname="sample-host" tests="3" failures="2" errors="0" skipped="0" time="0.004384927">
+        <testcase classname="test/sub/retry.test.js" name="retries &gt; passes on the second try" time="0.002304623">
+        </testcase>
+        <testcase classname="test/sub/retry.test.js" name="retries &gt; never passes" time="0.000586948">
+            <failure message="always broken" type="Error">
+Error: always broken
+ ❯ test/sub/retry.test.js:21:9
+            </failure>
+            <failure message="always broken" type="Error">
+Error: always broken
+ ❯ test/sub/retry.test.js:21:9
+            </failure>
+            <failure message="always broken" type="Error">
+Error: always broken
+ ❯ test/sub/retry.test.js:21:9
+            </failure>
+        </testcase>
+        <testcase classname="test/sub/retry.test.js" name="retries &gt; throws from the source" time="0.000695518">
+            <failure message="division by zero" type="RangeError">
+RangeError: division by zero
+ ❯ divide src/math.js:12:9
+ ❯ test/sub/retry.test.js:25:10
+            </failure>
+            <failure message="division by zero" type="RangeError">
+RangeError: division by zero
+ ❯ divide src/math.js:12:9
+ ❯ test/sub/retry.test.js:25:10
+            </failure>
+            <failure message="division by zero" type="RangeError">
+RangeError: division by zero
+ ❯ divide src/math.js:12:9
+ ❯ test/sub/retry.test.js:25:10
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
