@@ -11,7 +11,7 @@ use crate::blocks::{
 };
 use crate::budget::{fit, Plan};
 use crate::text::{big, cat, count, join, measure, noun, num, t, Doc, Piece};
-use crate::view::{entries, is_failure, Counts, Entry, SectionInfo, Verdict};
+use crate::view::{entries, is_failure, suite_label, Counts, Entry, SectionInfo, Verdict};
 use crate::{
 	Annotation, CheckOutput, Conclusion, Input, Level, Section, StatusOutput, StatusState, Target,
 	STATUS_DESCRIPTION_CHARS,
@@ -259,7 +259,7 @@ fn suite_table(suites: &[pr_results_core::Suite]) -> Vec<Safe> {
 		lines.push(join(
 			&t(" | "),
 			&[
-				cat(&[t("| "), Safe::code_span(&suite.name, 120)]),
+				cat(&[t("| "), Safe::code_span(&suite_label(suite), 120)]),
 				count(c.passed),
 				count(c.failed),
 				count(c.skipped),

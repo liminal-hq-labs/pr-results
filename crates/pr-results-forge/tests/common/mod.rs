@@ -107,6 +107,7 @@ pub fn section(title: &str, check: &str, artifact: &str) -> SectionPlan {
 		artifact: Glob::new(artifact).unwrap(),
 		files: vec![Glob::new("**/*.xml").unwrap()],
 		flavour: Flavour::Generic,
+		path_prefix: None,
 	}
 }
 

@@ -1,6 +1,6 @@
 check 0: 0 annotations, 0 not shown
 check 1: 1 annotations, 0 not shown
-- failure src/lib/format.test.ts:1-1
+- failure src/lib/format.test.ts:18-18
   title: formatDuration > rounds up
   message: expected '1 m 47 s' to be '1 m 48 s' // Object.is equality
     AssertionError: expected '1 m 47 s' to be '1 m 48 s' // Object.is equality

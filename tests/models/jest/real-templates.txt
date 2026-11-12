@@ -1,0 +1,13 @@
+suite "math" project=- flavour=generic 125ms
+  passed      2ms class="test/math.test.js math" name="adds" at test/math.test.js
+  passed      0ms class="test/math.test.js math division" name="divides" at test/math.test.js
+  passed      2ms class="test/math.test.js math division" name="rejects zero" at test/math.test.js
+  passed      0ms class="test/math.test.js math division rounding" name="rounds down" at test/math.test.js
+  failed      1ms class="test/math.test.js math division rounding" name="fails with a stack" at test/math.test.js
+  skipped     0ms class="test/math.test.js math" name="is skipped" at test/math.test.js
+  passed      0ms class="test/math.test.js math" name="is still to do" at test/math.test.js
+  passed      0ms class="test/math.test.js " name="works outside any describe" at test/math.test.js
+suite "retries" project=- flavour=generic 127ms
+  passed      1ms class="test/sub/retry.test.js retries" name="passes on the second try" at test/sub/retry.test.js
+  failed      0ms class="test/sub/retry.test.js retries" name="never passes" at test/sub/retry.test.js
+  failed      0ms class="test/sub/retry.test.js retries" name="throws from the source" at test/sub/retry.test.js

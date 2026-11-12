@@ -19,6 +19,7 @@ use pr_results_core::{
 fn suite(name: &str, flavour: Flavour, cases: &[&str]) -> Suite {
 	Suite {
 		name: Untrusted::new(name),
+		project: None,
 		flavour,
 		cases: cases
 			.iter()

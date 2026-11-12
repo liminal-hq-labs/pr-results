@@ -65,7 +65,7 @@ Errored: `test aborted with signal 11 (SIGSEGV)` · 3.0 s
 
 `Frontend tests` › `src/lib/format.test.ts` › `formatDuration > rounds up`
 
-`expected '1 m 47 s' to be '1 m 48 s' // Object.is equality` · at `src/lib/format.test.ts` · 0.0 s
+`expected '1 m 47 s' to be '1 m 48 s' // Object.is equality` · at `src/lib/format.test.ts:18` · 0.0 s
 
 ````text
 AssertionError: expected '1 m 47 s' to be '1 m 48 s' // Object.is equality

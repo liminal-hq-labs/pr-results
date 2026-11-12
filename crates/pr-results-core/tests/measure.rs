@@ -53,6 +53,7 @@ fn measure_merge_time() {
 		suites: (0..n)
 			.map(|i| Suite {
 				name: Untrusted::new(format!("suite {i}")),
+				project: None,
 				flavour: Flavour::Generic,
 				cases: Vec::new(),
 				time_ms: 0,

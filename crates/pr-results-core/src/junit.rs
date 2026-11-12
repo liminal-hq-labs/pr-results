@@ -8,8 +8,9 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
 use crate::error::ParseError;
-use crate::flavour;
+use crate::flavour::{self, Paths};
 use crate::model::{Attempt, Case, Flavour, Report, Status, Suite, TextBuf, Untrusted};
+use crate::trusted::RepoPath;
 
 /// The most attributes one element may carry.
 const MAX_ATTRIBUTES: usize = 256;
@@ -65,6 +66,19 @@ impl Default for Limits {
 /// the five predefined ones and numeric references. Invalid UTF-8 is replaced with U+FFFD. The
 /// result depends only on the bytes and the arguments.
 pub fn parse_junit(input: &[u8], flavour: Flavour, limits: &Limits) -> Result<Report, ParseError> {
+	parse_junit_in(input, flavour, limits, None)
+}
+
+/// Parses one JUnit file whose paths are relative to `path_prefix` (the `suite.path_prefix`
+/// setting): the prefix is put in front of every path the report names, whether it came from an
+/// attribute, a class name, a panic or a stack frame, and the result is checked again. Everything
+/// else is as for [`parse_junit`], which is this with no prefix.
+pub fn parse_junit_in(
+	input: &[u8],
+	flavour: Flavour,
+	limits: &Limits,
+	path_prefix: Option<&RepoPath>,
+) -> Result<Report, ParseError> {
 	if input.len() > limits.max_bytes {
 		return Err(ParseError::TooLarge {
 			len: input.len(),
@@ -89,12 +103,16 @@ pub fn parse_junit(input: &[u8], flavour: Flavour, limits: &Limits) -> Result<Re
 		});
 	}
 
-	let mut parser = Parser::new(limits);
+	let paths = Paths {
+		cap: limits.max_name_bytes,
+		prefix: path_prefix,
+	};
+	let mut parser = Parser::new(limits, &paths);
 	parser.run(&text)?;
 	let mut suites = parser.suites;
 	let resolved = flavour::resolve(flavour, &parser.facts);
 	for suite in &mut suites {
-		flavour::apply(resolved, suite, limits, &mut parser.budget)?;
+		flavour::apply(resolved, suite, limits, &paths, &mut parser.budget)?;
 	}
 	Ok(Report { suites })
 }
@@ -141,6 +159,8 @@ pub(crate) struct Facts {
 	pub root_name: String,
 	pub saw_assertions: bool,
 	pub saw_attachment: bool,
+	/// The root has an `id` attribute and an empty `name`, which is how Playwright writes it.
+	pub saw_empty_id: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -179,6 +199,7 @@ impl Tag {
 
 struct SuiteBuilder {
 	name: Untrusted,
+	project: Option<Untrusted>,
 	time_ms: Option<u64>,
 	cases: Vec<Case>,
 }
@@ -207,6 +228,7 @@ struct Sink {
 
 struct Parser<'l> {
 	limits: &'l Limits,
+	paths: &'l Paths<'l>,
 	stack: Vec<Tag>,
 	roots: usize,
 	suites: Vec<Suite>,
@@ -223,9 +245,10 @@ struct Parser<'l> {
 }
 
 impl<'l> Parser<'l> {
-	fn new(limits: &'l Limits) -> Self {
+	fn new(limits: &'l Limits, paths: &'l Paths<'l>) -> Self {
 		Self {
 			limits,
+			paths,
 			stack: Vec::new(),
 			roots: 0,
 			suites: Vec::new(),
@@ -400,20 +423,27 @@ impl<'l> Parser<'l> {
 			Tag::Testsuites => {
 				self.facts.root_name = get("name").unwrap_or_default().to_owned();
 				self.facts.saw_assertions |= get("assertions").is_some();
+				self.facts.saw_empty_id =
+					get("id").is_some() && get("name").is_none_or(str::is_empty);
 			}
 			Tag::Testsuite => {
 				self.facts.saw_assertions |= get("assertions").is_some();
 				if self.stack.is_empty() {
 					self.facts.root_name = get("name").unwrap_or_default().to_owned();
 				}
-				let file = match get("file").and_then(|f| flavour::clean_path(f, name_cap)) {
+				let file = match get("file").and_then(|f| self.paths.place(f)) {
 					Some(path) => Some(self.budget.keep(Untrusted::new(path))?),
 					None => None,
 				};
 				self.files.push(file);
 				if self.suite.is_none() {
+					let project = match get("hostname").filter(|h| !h.is_empty()) {
+						Some(h) => Some(self.budget.keep(capped(h))?),
+						None => None,
+					};
 					self.suite = Some(SuiteBuilder {
 						name: self.budget.keep(capped(get("name").unwrap_or_default()))?,
+						project,
 						time_ms: get("time").map(parse_time_ms),
 						cases: Vec::new(),
 					});
@@ -427,7 +457,7 @@ impl<'l> Parser<'l> {
 					});
 				}
 				self.budget.charge(CASE_OVERHEAD)?;
-				let own = match get("file").and_then(|f| flavour::clean_path(f, name_cap)) {
+				let own = match get("file").and_then(|f| self.paths.place(f)) {
 					Some(path) => Some(self.budget.keep(Untrusted::new(path))?),
 					None => None,
 				};
@@ -490,6 +520,7 @@ impl<'l> Parser<'l> {
 							.fold(0u64, |t, c| t.saturating_add(c.time_ms));
 						self.suites.push(Suite {
 							name: done.name,
+							project: done.project,
 							flavour: Flavour::Generic,
 							time_ms: done.time_ms.unwrap_or(sum),
 							cases: done.cases,
@@ -518,13 +549,26 @@ impl<'l> Parser<'l> {
 				if let Some(case) = self.case.as_mut() {
 					let detail = sink.text.trimmed();
 					match t {
-						Tag::Failure => {
-							case.failure
-								.get_or_insert((Status::Failed, sink.message, detail));
-						}
-						Tag::Error => {
-							case.failure
-								.get_or_insert((Status::Errored, sink.message, detail));
+						// A second `failure` or `error` is a retry: vitest writes one for every
+						// attempt of a test that kept failing.
+						Tag::Failure | Tag::Error => {
+							let status = if t == Tag::Failure {
+								Status::Failed
+							} else {
+								Status::Errored
+							};
+							if case.failure.is_none() {
+								case.failure = Some((status, sink.message, detail));
+							} else if case.attempts.len() >= max {
+								case.attempts_omitted = case.attempts_omitted.saturating_add(1);
+							} else {
+								self.budget.charge(ATTEMPT_OVERHEAD)?;
+								case.attempts.push(Attempt {
+									status,
+									message: sink.message,
+									detail,
+								});
+							}
 						}
 						Tag::Skipped => {
 							case.skipped.get_or_insert((sink.message, detail));

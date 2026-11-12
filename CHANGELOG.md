@@ -12,11 +12,21 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - The job summary's cut understands indented and `~~~` code fences as well as backtick ones (`Safe::tildes` closes the latter), and a heading title with `://` or `www.` is written in a code span on Forgejo.
 - `TrustedUrl::forgejo_run` and `TrustedUrl::comment_anchor`, and `Safe::first_lines` and `Safe::backticks`.
 - `mention_probe` takes a team and a second repository and, with `--check-run --head-sha SHA`, writes a check run with annotations. `docs/probe-workflow.yml` is the owner's gate for the rest of Q9: it posts the comment as `github-actions[bot]` from a sandbox, reads back the rendered HTML, the timelines, the check run and its annotations (decision D66). It has not been run.
+- The vitest, bun, jest-junit and Playwright readers were tuned against reports the reporters wrote for sample projects (decision D63): `tests/sample-projects`, the generator `scripts/gen-js-fixtures.sh` (pinned images, no network for the runs) and the `real-*.xml` fixtures with a model of each in `tests/models/`. `docs/inputs.md` records what each reporter writes, including that none of them records a test that failed and then passed.
+- `suite.path_prefix` is read: it is put in front of every path a report names, so annotations land on repository paths for a package below the repository root, for bun's working directory and for Playwright's `testDir`.
+- JavaScript stack frames give a failure its file and line: the first frame that is a repository path outside `node_modules`. An absolute or `file://` frame counts only when it ends with the case's own file.
+- Playwright's project (`hostname`) is part of a suite's identity and is shown in brackets after the spec, so one spec run in two projects stays two suites.
+- Extra `failure` or `error` elements in a case are attempts: vitest writes one for each attempt of a test that keeps failing.
+- `scripts/anonymize-junit.sh` and `anonymize_junit`, which rewrite a JUnit report so that it keeps its shape and none of its words, for sharing a private project's report as a fixture (`docs/anonymizing-reports.md`). Tokens are an HMAC-SHA-256 of the word under a required salt (`--salt`, or `--random-salt`, which prints the one it made), element and attribute names outside the JUnit vocabulary are replaced, and addresses, ports and long numbers are replaced.
+- An ignored 5 200-case measurement of a vitest report.
 
 ### Changed
 
 - The `pr-results-github` crate is now `pr-results-forge`. The transport's spacing, retries, retry budget and paging moved into a host-neutral `Client<F>`, the publisher asks a forge only through a new `Host` trait, and the GitHub behaviour is `Host` implemented for `GitHub<F>`. `publish` and the command line are generic over `Host`. The output, the request goldens and the behaviour are unchanged.
 - The `Reproducible build` job compares the digest it builds with the one pinned in `action.yml` and `publish.yml` only on a release pull request and on a tag; on any other pull request it proves that two builds agree and prints the digest, since the pins are the last release's.
+- **Breaking for library users (0.x):** `pr_results_core::Suite` has a new public field, `project`, so code that builds a `Suite` with a struct literal must set it (`None` for every flavour but Playwright), and `Report::merge_same_named` now also keys on it. `pr_results_github::SectionPlan` has a new public field, `path_prefix`, and `pr_results::config::SuiteSettings` too. Neither crate is published (`publish = false`).
+- A stack frame whose path holds an invisible or format character is skipped, and a frame without parentheses keeps the spaces in its path.
+- bun's describe blocks read outermost first, jest-junit's repeated class name and leading space are dropped, a failure with no message (or bun's multi-line one) shows its first line, and Playwright is detected from the empty `id` and `name` on its root.
 
 ### Fixed
 

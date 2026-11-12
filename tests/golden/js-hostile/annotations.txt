@@ -1,0 +1,473 @@
+check 0: 3 annotations, 0 not shown
+- failure test/math.test.js:29-29
+  title: math > division > rounding > @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+  message: expected 4 to be 5 // Object.is equality
+    AssertionError: expected 4 to be 5 // Object.is equality
+    
+    - Expected
+    + Received
+    
+    - 5
+    + 4
+    
+     ❯ test/math.test.js:29:23
+- failure test/sub/retry.test.js:21-21
+  title: retries > never passes
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+     ❯ test/sub/retry.test.js:21:9
+- failure src/math.js:12-12
+  title: retries > throws from the source
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+     ❯ divide src/math.js:12:9
+     ❯ test/sub/retry.test.js:25:10
+check 1: 5 annotations, 0 not shown
+- failure test/math.test.js:29-29
+  title: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+  message: expect(received).toBe(expected)
+    AssertionError: expect(received).toBe(expected)
+    
+    Expected: 5
+    Received: 4
+    
+          at test/math.test.js:29:23
+- failure test/sub/retry.test.js:15-15
+  title: passes on the second try
+  message: not yet
+    Error: not yet
+          at test/sub/retry.test.js:15:29
+- failure test/sub/retry.test.js:21-21
+  title: never passes
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+          at test/sub/retry.test.js:21:34
+- failure test/sub/retry.test.js:25-25
+  title: fails with an empty message
+  message: Error
+    Error
+          at test/sub/retry.test.js:25:21
+- failure src/math.js:12-12
+  title: throws from the source
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+          at divide (src/math.js:12:42)
+          at test/sub/retry.test.js:29:10
+check 2: 3 annotations, 0 not shown
+- failure test/sub/retry.test.js:22-22
+  title: retries never passes
+  message: Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+        at Object.<anonymous> (/work/test/sub/retry.test.js:22:9)
+        at Promise.finally.completed (/work/node_modules/jest-circus/build/jestAdapterInit.js:1834:28)
+        at new Promise (<anonymous>)
+        at callAsyncCircusFn (/work/node_modules/jest-circus/build/jestAdapterInit.js:1774:10)
+        at _callCircusTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:1167:40)
+        at processTicksAndRejections (node:internal/process/task_queues:103:5)
+        at _runTestInContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:1103:3)
+        at rerunTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:977:7)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1033:5)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at run (/work/node_modules/jest-circus/build/jestAdapterInit.js:789:3)
+        at runAndTransformResultsToJestFormat (/work/node_modules/jest-circus/build/jestAdapterInit.js:2300:21)
+        at jestAdapter (/work/node_modules/jest-circus/build/runner.js:111:19)
+        at runTestInternal (/work/node_modules/jest-runner/build/testWorker.js:247:16)
+        at runTest (/work/node_modules/jest-runner/build/testWorker.js:315:7)
+        at Object.worker (/work/node_modules/jest-runner/build/testWorker.js:479:12)
+- failure test/sub/retry.test.js:26-26
+  title: retries throws from the source
+  message: RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+        at divide (/work/src/math.js:12:9)
+        at Object.divide (/work/test/sub/retry.test.js:26:10)
+        at Promise.finally.completed (/work/node_modules/jest-circus/build/jestAdapterInit.js:1834:28)
+        at new Promise (<anonymous>)
+        at callAsyncCircusFn (/work/node_modules/jest-circus/build/jestAdapterInit.js:1774:10)
+        at _callCircusTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:1167:40)
+        at processTicksAndRejections (node:internal/process/task_queues:103:5)
+        at _runTestInContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:1103:3)
+        at rerunTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:977:7)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1033:5)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at run (/work/node_modules/jest-circus/build/jestAdapterInit.js:789:3)
+        at runAndTransformResultsToJestFormat (/work/node_modules/jest-circus/build/jestAdapterInit.js:2300:21)
+        at jestAdapter (/work/node_modules/jest-circus/build/runner.js:111:19)
+        at runTestInternal (/work/node_modules/jest-runner/build/testWorker.js:247:16)
+        at runTest (/work/node_modules/jest-runner/build/testWorker.js:315:7)
+        at Object.worker (/work/node_modules/jest-runner/build/testWorker.js:479:12)
+- failure test/math.test.js:28-28
+  title: math division rounding @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+  message: Error: expect(received).toBe(expected) // Object.is equality
+    Error: expect(received).toBe(expected) // Object.is equality
+    
+    Expected: 5
+    Received: 4
+        at Object.toBe (/work/test/math.test.js:28:23)
+        at Promise.finally.completed (/work/node_modules/jest-circus/build/jestAdapterInit.js:1834:28)
+        at new Promise (<anonymous>)
+        at callAsyncCircusFn (/work/node_modules/jest-circus/build/jestAdapterInit.js:1774:10)
+        at _callCircusTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:1167:40)
+        at processTicksAndRejections (node:internal/process/task_queues:103:5)
+        at _runTestInContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:1103:3)
+        at runTestWithContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:996:5)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1008:11)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+        at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+        at run (/work/node_modules/jest-circus/build/jestAdapterInit.js:789:3)
+        at runAndTransformResultsToJestFormat (/work/node_modules/jest-circus/build/jestAdapterInit.js:2300:21)
+        at jestAdapter (/work/node_modules/jest-circus/build/runner.js:111:19)
+        at runTestInternal (/work/node_modules/jest-runner/build/testWorker.js:247:16)
+        at runTest (/work/node_modules/jest-runner/build/testWorker.js:315:7)
+        at Object.worker (/work/node_modules/jest-runner/build/testWorker.js:479:12)
+check 3: 6 annotations, 0 not shown
+- failure math.spec.js:26-26
+  title: math › division › rounding › @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+  message: expect(received).toBe(expected) // Object.is equality
+    [chromium] › math.spec.js:24:4 › math › division › rounding › @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe ─────────────────
+    
+        Error: expect(received).toBe(expected) // Object.is equality
+    
+        Expected: 5
+        Received: 4
+    
+          24 | 			test('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe', async ({}, testInfo) => {
+          25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+        > 26 | 				expect(add(2, 2)).toBe(5);
+             | 				                  ^
+          27 | 			});
+          28 | 		});
+          29 | 	});
+            at /work/test/math.spec.js:26:23
+    
+        attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+        a note for the report
+        ────────────────────────────────────────────────────────────────────────────────────────────────
+    
+        Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-chromium/error-context.md
+    
+        Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: expect(received).toBe(expected) // Object.is equality
+    
+        Expected: 5
+        Received: 4
+    
+          24 | 			test('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe', async ({}, testInfo) => {
+          25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+        > 26 | 				expect(add(2, 2)).toBe(5);
+             | 				                  ^
+          27 | 			});
+          28 | 		});
+          29 | 	});
+            at /work/test/math.spec.js:26:23
+    
+        attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+        a note for the report
+        ────────────────────────────────────────────────────────────────────────────────────────────────
+    
+        Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-chromium-retry1/error-context.md
+    
+        Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: expect(received).toBe(expected) // Object.is equality
+    
+        Expected: 5
+        Received: 4
+    
+          24 | 			test('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe', async ({}, testInfo) => {
+          25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+        > 26 | 				expect(add(2, 2)).toBe(5);
+             | 				                  ^
+          27 | 			});
+          28 | 		});
+          29 | 	});
+            at /work/test/math.spec.js:26:23
+    
+        attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+        a note for the report
+        ────────────────────────────────────────────────────────────────────────────────────────────────
+    
+        Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-chromium-retry2/error-context.md
+- failure sub/retry.spec.js:15-15
+  title: retries › never passes
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    [chromium] › sub/retry.spec.js:14:2 › retries › never passes ─────────────────────────────────────
+    
+        Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+          13 |
+          14 | 	test('never passes', () => {
+        > 15 | 		throw new Error('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          16 | 	});
+          17 |
+          18 | 	test('throws from the source', () => {
+            at /work/test/sub/retry.spec.js:15:9
+    
+        Error Context: ../test-results/sub-retry-retries-never-passes-chromium/error-context.md
+    
+        Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+          13 |
+          14 | 	test('never passes', () => {
+        > 15 | 		throw new Error('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          16 | 	});
+          17 |
+          18 | 	test('throws from the source', () => {
+            at /work/test/sub/retry.spec.js:15:9
+    
+        Error Context: ../test-results/sub-retry-retries-never-passes-chromium-retry1/error-context.md
+    
+        Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+          13 |
+          14 | 	test('never passes', () => {
+        > 15 | 		throw new Error('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          16 | 	});
+          17 |
+          18 | 	test('throws from the source', () => {
+            at /work/test/sub/retry.spec.js:15:9
+    
+        Error Context: ../test-results/sub-retry-retries-never-passes-chromium-retry2/error-context.md
+- failure sub/retry.spec.js:19-19
+  title: retries › throws from the source
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    [chromium] › sub/retry.spec.js:18:2 › retries › throws from the source ───────────────────────────
+    
+        RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+           at ../src/math.js:12
+    
+          10 | export function divide(a, b) {
+          11 | 	if (b === 0) {
+        > 12 | 		throw new RangeError('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          13 | 	}
+          14 | 	return a / b;
+          15 | }
+            at divide (/work/src/math.js:12:9)
+            at /work/test/sub/retry.spec.js:19:10
+    
+        Error Context: ../test-results/sub-retry-retries-throws-from-the-source-chromium/error-context.md
+    
+        Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+           at ../src/math.js:12
+    
+          10 | export function divide(a, b) {
+          11 | 	if (b === 0) {
+        > 12 | 		throw new RangeError('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          13 | 	}
+          14 | 	return a / b;
+          15 | }
+            at divide (/work/src/math.js:12:9)
+            at /work/test/sub/retry.spec.js:19:10
+    
+        Error Context: ../test-results/sub-retry-retries-throws-from-the-source-chromium-retry1/error-context.md
+    
+        Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+           at ../src/math.js:12
+    
+          10 | export function divide(a, b) {
+          11 | 	if (b === 0) {
+        > 12 | 		throw new RangeError('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          13 | 	}
+          14 | 	return a / b;
+          15 | }
+            at divide (/work/src/math.js:12:9)
+            at /work/test/sub/retry.spec.js:19:10
+    
+        Error Context: ../test-results/sub-retry-retries-throws-from-the-source-chromium-retry2/error-context.md
+- failure math.spec.js:26-26
+  title: math › division › rounding › @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+  message: expect(received).toBe(expected) // Object.is equality
+    [firefox] › math.spec.js:24:4 › math › division › rounding › @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe ──────────────────
+    
+        Error: expect(received).toBe(expected) // Object.is equality
+    
+        Expected: 5
+        Received: 4
+    
+          24 | 			test('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe', async ({}, testInfo) => {
+          25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+        > 26 | 				expect(add(2, 2)).toBe(5);
+             | 				                  ^
+          27 | 			});
+          28 | 		});
+          29 | 	});
+            at /work/test/math.spec.js:26:23
+    
+        attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+        a note for the report
+        ────────────────────────────────────────────────────────────────────────────────────────────────
+    
+        Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-firefox/error-context.md
+    
+        Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: expect(received).toBe(expected) // Object.is equality
+    
+        Expected: 5
+        Received: 4
+    
+          24 | 			test('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe', async ({}, testInfo) => {
+          25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+        > 26 | 				expect(add(2, 2)).toBe(5);
+             | 				                  ^
+          27 | 			});
+          28 | 		});
+          29 | 	});
+            at /work/test/math.spec.js:26:23
+    
+        attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+        a note for the report
+        ────────────────────────────────────────────────────────────────────────────────────────────────
+    
+        Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-firefox-retry1/error-context.md
+    
+        Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: expect(received).toBe(expected) // Object.is equality
+    
+        Expected: 5
+        Received: 4
+    
+          24 | 			test('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe', async ({}, testInfo) => {
+          25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+        > 26 | 				expect(add(2, 2)).toBe(5);
+             | 				                  ^
+          27 | 			});
+          28 | 		});
+          29 | 	});
+            at /work/test/math.spec.js:26:23
+    
+        attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+        a note for the report
+        ────────────────────────────────────────────────────────────────────────────────────────────────
+    
+        Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-firefox-retry2/error-context.md
+- failure sub/retry.spec.js:15-15
+  title: retries › never passes
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    [firefox] › sub/retry.spec.js:14:2 › retries › never passes ──────────────────────────────────────
+    
+        Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+          13 |
+          14 | 	test('never passes', () => {
+        > 15 | 		throw new Error('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          16 | 	});
+          17 |
+          18 | 	test('throws from the source', () => {
+            at /work/test/sub/retry.spec.js:15:9
+    
+        Error Context: ../test-results/sub-retry-retries-never-passes-firefox/error-context.md
+    
+        Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+          13 |
+          14 | 	test('never passes', () => {
+        > 15 | 		throw new Error('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          16 | 	});
+          17 |
+          18 | 	test('throws from the source', () => {
+            at /work/test/sub/retry.spec.js:15:9
+    
+        Error Context: ../test-results/sub-retry-retries-never-passes-firefox-retry1/error-context.md
+    
+        Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        Error: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+          13 |
+          14 | 	test('never passes', () => {
+        > 15 | 		throw new Error('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          16 | 	});
+          17 |
+          18 | 	test('throws from the source', () => {
+            at /work/test/sub/retry.spec.js:15:9
+    
+        Error Context: ../test-results/sub-retry-retries-never-passes-firefox-retry2/error-context.md
+- failure sub/retry.spec.js:19-19
+  title: retries › throws from the source
+  message: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe
+    [firefox] › sub/retry.spec.js:18:2 › retries › throws from the source ────────────────────────────
+    
+        RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+           at ../src/math.js:12
+    
+          10 | export function divide(a, b) {
+          11 | 	if (b === 0) {
+        > 12 | 		throw new RangeError('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          13 | 	}
+          14 | 	return a / b;
+          15 | }
+            at divide (/work/src/math.js:12:9)
+            at /work/test/sub/retry.spec.js:19:10
+    
+        Error Context: ../test-results/sub-retry-retries-throws-from-the-source-firefox/error-context.md
+    
+        Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+           at ../src/math.js:12
+    
+          10 | export function divide(a, b) {
+          11 | 	if (b === 0) {
+        > 12 | 		throw new RangeError('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          13 | 	}
+          14 | 	return a / b;
+          15 | }
+            at divide (/work/src/math.js:12:9)
+            at /work/test/sub/retry.spec.js:19:10
+    
+        Error Context: ../test-results/sub-retry-retries-throws-from-the-source-firefox-retry1/error-context.md
+    
+        Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+    
+        RangeError: @everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe
+    
+           at ../src/math.js:12
+    
+          10 | export function divide(a, b) {
+          11 | 	if (b === 0) {
+        > 12 | 		throw new RangeError('@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) &lt;img src=x onerror=alert(1)&gt; | pipe');
+             | 		      ^
+          13 | 	}
+          14 | 	return a / b;
+          15 | }
+            at divide (/work/src/math.js:12:9)
+            at /work/test/sub/retry.spec.js:19:10
+    
+        Error Context: ../test-results/sub-retry-retries-throws-from-the-source-firefox-retry2/error-context.md
