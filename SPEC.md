@@ -148,7 +148,7 @@ id      = suite key + "\u{1f}" + classname + "\u{1f}" + name, after whitespace n
 
 `detail` is capped at 16 KiB per case at parse time and `message` at 1 KiB, and names, class names and paths at 1 KiB. Suites with the same name across files merge, so a matrix of jobs that each upload part of a suite shows as one.
 
-As built in `pr-results-core`: a `Report` holds `Suite`s (`name`, `flavour`, `cases`, `time_ms`), and a `Case` holds `name`, `classname`, `file`, `line`, `status`, `time_ms`, `attempts`, `message`, `detail`, and the captured `system_out` and `system_err`. Every string is an `Untrusted`, which cannot be formatted except through `Safe`. `id` is computed by `Case::identity` rather than stored. `schema`, `tool_version`, `key`, `display_name` and `source_files` belong to the serialized report and the settings layer, and arrive with them.
+As built in `pr-results-core`: a `Report` holds `Suite`s (`name`, `flavour`, `cases`, `time_ms`), and a `Case` holds `name`, `classname`, `file`, `line`, `status`, `time_ms`, `attempts`, `attempts_omitted` (how many retries past `max_attempts` were not kept, always shown when not zero), `message`, `detail`, and the captured `system_out` and `system_err`. Every string is an `Untrusted`, which cannot be formatted except through `Safe`. `id` is computed by `Case::identity` rather than stored. `schema`, `tool_version`, `key`, `display_name` and `source_files` belong to the serialized report and the settings layer, and arrive with them.
 
 ### The step-results contract
 
@@ -479,7 +479,7 @@ Each carries the default this specification assumes. Settled questions are in [d
 
 - **Q5. First adopter.** Default: a shell-step product, once its step converter lands. A product that already publishes through `workflow_run` would be a quicker first proof, since it needs no new CI work.
 - **Q8. Base-branch annotations.** Should pushes to the default branch also get check runs (default yes, no comment)?
-- **Q9. Mentions.** Is rendering `@` as an entity acceptable in test names, or should the tool refuse to post a name containing `@`?
+- **Q9. Mentions.** Is rendering `@` as an entity acceptable in test names, or should the tool refuse to post a name containing `@`? GitHub's filters probably run on rendered text, so the entity likely decodes back to `@`. A sandbox test must precede the renderer.
 - **Q10. `steps-junit` or `steps-times`.** Should a shell-step product keep its own converter (default), or should `pr-results` read `CHECK_TIMES` directly so the converter can go?
 - **Q11. Pinning and branch protection.** Should the repository turn on `sha_pinning_required` and add a ruleset for `main` (default yes, once the checks have run green long enough to name as required)?
 

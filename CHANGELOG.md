@@ -14,4 +14,12 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - Per-producer fixtures in `tests/fixtures/`, hostile-input and truncation tests, and continuous integration for format, clippy and tests in the pinned `ci-rust` image, with a nextest `ci` profile.
 - A `pr-results` command line with `--version` and `--help` only.
 
+### Changed
+
+- Merging same-named suites no longer takes quadratic time: 100,000 distinct suites went from 10.6 s to 17 ms.
+- `Safe` now spells out every format and default-ignorable character, including the tag block, variation selectors, the soft hyphen and the fillers, as `\u{…}`.
+- A suite's `file` is stored once and shared by its cases: 200,000 cases under a 1 KiB path peak at 64 MiB instead of 273 MiB.
+- `Limits` gains `max_suites` (10,000) and `max_text_bytes` (64 MiB), each refused with an error that names the limit, and `max_bytes` also applies after invalid UTF-8 is replaced.
+- Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
+
 There is no released version, action or binary yet, and the tool does not post anything.

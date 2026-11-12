@@ -32,7 +32,7 @@ One streaming reader serves every flavour, and the flavour only decides how name
 | Input | Error |
 | --- | --- |
 | No content, or only whitespace | the input is empty |
-| More than 50 MiB (configurable) | too large |
+| More than 50 MiB (configurable), as given or after invalid UTF-8 is replaced | too large |
 | Ends before the root closes, or inside a tag, comment or CDATA section | truncated |
 | A `<!DOCTYPE>`, whatever it declares | not accepted |
 | An entity other than `&lt;` `&gt;` `&amp;` `&apos;` `&quot;` and numeric references, or `&#0;` | not accepted |
@@ -41,9 +41,10 @@ One streaming reader serves every flavour, and the flavour only decides how name
 | Mismatched or duplicate tags and attributes, a second root, text outside the root | not well formed |
 | A root other than `testsuites` or `testsuite` | unexpected root |
 | A `<testcase>` directly under `<testsuites>` | structure |
-| More than 64 levels of elements, 200 000 cases or 256 attributes on one element | over the limit |
+| More than 64 levels of elements, 10 000 suites, 200 000 cases or 256 attributes on one element | over the limit |
+| More than 64 MiB of text to keep, counted after invalid UTF-8 is replaced | over the limit |
 
-Names, class names, paths, messages and bodies longer than their caps (1 KiB, 1 KiB and 16 KiB) are cut while streaming, and the number of characters lost is kept and shown. A `time` or `line` that is not plain digits is read as zero or absent rather than failing the file. A `time` is read as seconds with no floating-point maths, rounded to the nearest millisecond.
+Names, class names, paths, messages and bodies longer than their caps (1 KiB, 1 KiB and 16 KiB) are cut while streaming, and the number of characters lost is kept and shown. Retries past 100 per case are not kept, and their number is kept and shown too. A suite's `file` is stored once and shared by its cases. A `time` or `line` that is not plain digits is read as zero or absent rather than failing the file. A `time` is read as seconds with no floating-point maths, rounded to the nearest millisecond.
 
 **Status.** `<failure>` gives failed, `<error>` gives errored and `<skipped>` gives skipped, and a failure wins over a skip. A case with no failure, error or skip and at least one `<flakyFailure>` or `<flakyError>` is flaky. `<rerunFailure>` and `<rerunError>` are recorded as attempts of a case that stays failed. A suite with no `time` takes the sum of its cases.
 
