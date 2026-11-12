@@ -127,3 +127,5 @@ GitHub's limits for check runs: `output.summary` and `output.text` are each at m
 - **Scope creep** towards a dashboard. The non-goals hold the line.
 
 | D67 | Forgejo host and trust | The Forgejo host writes commit statuses and checks the sticky comment’s marker and author. The automatic identity is `forgejo-actions` with id −2; a named bot is verified against the token account. `[forge]` selects the host, a same-host HTTPS API URL and an optional PEM CA bundle; blob host overrides are restricted to GitHub. The host is tested against a fake and loopback TLS, while in-job publishing and a live Forgejo gate remain to be built | Identity checks protect other authors’ comments, and keeping the API on the runner’s host confines the token |
+
+| D68 | Explicit HTTP for Forgejo | `[forge] allow_http = true` permits a Forgejo runner with an HTTP server URL to use its same-authority HTTP API. HTTPS is the default, GitHub does not use this opt-in, and an HTTPS runner cannot be downgraded | Some private networks run Forgejo without TLS; making the risk explicit preserves a secure default |

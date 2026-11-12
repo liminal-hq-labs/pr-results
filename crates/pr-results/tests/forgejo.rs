@@ -509,3 +509,70 @@ fn forgejos_missing_workflow_run_is_explained() {
 	let err = refused(&vars, &["publish", "--config", &cfg], &fake, "pull_request");
 	assert!(err.contains("Forgejo has no workflow_run trigger"), "{err}");
 }
+
+#[test]
+fn http_requires_opt_in_and_stays_on_the_runner_host() {
+	let dir = scratch("fj-http-opt-in");
+	let fake = forgejo_world();
+	let mut vars = runner_env(&dir);
+	vars.insert("GITHUB_SERVER_URL".into(), "http://git.lan".into());
+	vars.insert("GITHUB_API_URL".into(), "http://git.lan/api/v1".into());
+	let no = write_config(&dir, "no.toml", FORGEJO);
+	refused(
+		&vars,
+		&["publish", "--config", &no],
+		&fake,
+		"HTTP without opt-in",
+	);
+	let yes = write_config(
+		&dir,
+		"yes.toml",
+		"[forge]\nkind = \"forgejo\"\nallow_http = true\n",
+	);
+	let factory = Factory::new(&fake.forge());
+	let result = invoke(&["publish", "--config", &yes], &vars, &factory);
+	assert_eq!(result.code, 1, "{}", result.err);
+	assert!(factory.setups.borrow()[0].allow_http);
+	vars.insert("GITHUB_API_URL".into(), "http://other.lan/api/v1".into());
+	refused(
+		&vars,
+		&["publish", "--config", &yes],
+		&fake,
+		"another HTTP host",
+	);
+}
+
+#[test]
+fn http_cannot_downgrade_an_https_runner() {
+	let dir = scratch("fj-http-downgrade");
+	let fake = forgejo_world();
+	let mut vars = runner_env(&dir);
+	vars.insert("GITHUB_API_URL".into(), "http://git.lan/api/v1".into());
+	let cfg = write_config(
+		&dir,
+		"yes.toml",
+		"[forge]\nkind = \"forgejo\"\nallow_http = true\n",
+	);
+	refused(
+		&vars,
+		&["publish", "--config", &cfg],
+		&fake,
+		"HTTPS downgrade",
+	);
+}
+
+#[test]
+fn http_opt_in_does_not_change_the_api_port_or_scheme() {
+	let dir = scratch("fj-http-authority");
+	let cfg = write_config(
+		&dir,
+		"yes.toml",
+		"[forge]\nkind = \"forgejo\"\nallow_http = true\n",
+	);
+	let mut vars = runner_env(&dir);
+	vars.insert("GITHUB_SERVER_URL".into(), "http://git.lan".into());
+	for api in ["http://git.lan:443/api/v1", "https://git.lan/api/v1"] {
+		vars.insert("GITHUB_API_URL".into(), api.into());
+		refused(&vars, &["publish", "--config", &cfg], &forgejo_world(), api);
+	}
+}

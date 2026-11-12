@@ -111,7 +111,18 @@ pub struct ServerUrl(String);
 
 impl ServerUrl {
 	pub fn parse(s: &str) -> Option<Self> {
-		let rest = s.strip_prefix("https://")?;
+		Self::parse_with_http(s, false)
+	}
+
+	/// Allows HTTP only when the caller has explicitly opted in.
+	pub fn parse_with_http(s: &str, allow_http: bool) -> Option<Self> {
+		let (scheme, rest) = if let Some(rest) = s.strip_prefix("https://") {
+			("https", rest)
+		} else if allow_http {
+			("http", s.strip_prefix("http://")?)
+		} else {
+			return None;
+		};
 		let (host, port) = match rest.split_once(':') {
 			Some((host, port)) => (host, Some(port)),
 			None => (rest, None),
@@ -140,7 +151,8 @@ impl ServerUrl {
 			return None;
 		}
 		Some(Self(format!(
-			"https://{}{}",
+			"{}://{}{}",
+			scheme,
 			host.to_ascii_lowercase(),
 			port.map(|p| format!(":{p}")).unwrap_or_default()
 		)))

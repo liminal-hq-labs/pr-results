@@ -300,3 +300,34 @@ fn the_errors_say_what_is_wrong_and_quote_nothing() {
 		assert!(!e.to_string().is_empty());
 	}
 }
+
+#[test]
+fn forgejo_http_is_explicit_and_sends_a_request_to_the_selected_api() {
+	let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+	let port = listener.local_addr().unwrap().port();
+	let server = std::thread::spawn(move || {
+		let (mut stream, _) = listener.accept().unwrap();
+		let mut bytes = [0; 4096];
+		let count = stream.read(&mut bytes).unwrap();
+		stream
+			.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+			.unwrap();
+		String::from_utf8_lossy(&bytes[..count]).into_owned()
+	});
+	let base = format!("http://127.0.0.1:{port}/api/v1");
+	assert!(UreqForge::forgejo(&base, Token::new(SECRET).unwrap()).is_err());
+	let forge = UreqForge::forgejo_http(&base, Token::new(SECRET).unwrap()).unwrap();
+	assert_eq!(
+		forge
+			.send(&ApiRequest::get(ApiPath::parse("/user").unwrap()))
+			.unwrap()
+			.status,
+		200
+	);
+	let request = server.join().unwrap();
+	assert!(request.contains("/api/v1/user"));
+	assert!(request.contains(SECRET));
+	assert!(
+		UreqForge::forgejo_http("http://user@host/api/v1", Token::new(SECRET).unwrap()).is_err()
+	);
+}

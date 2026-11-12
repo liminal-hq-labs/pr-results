@@ -83,6 +83,8 @@ impl Default for Limits {
 /// command line's `--forge` and `--bot-login` override `kind` and `bot_login`.
 #[derive(Debug, Clone, Default)]
 pub struct ForgeSettings {
+	/// Explicitly permit HTTP for Forgejo on a trusted network.
+	pub allow_http: bool,
 	/// As written; `None` is GitHub.
 	pub kind: Option<HostKind>,
 	/// Confirms the API address, which must be on the runner's own host. It never moves the token.
@@ -433,10 +435,20 @@ impl Reader<'_> {
 	fn forge(&self, t: &Table<'_>) -> Result<ForgeSettings, ConfigError> {
 		self.only(
 			t,
-			&["kind", "api_url", "ca_file", "blob_hosts", "bot_login"],
+			&[
+				"kind",
+				"api_url",
+				"ca_file",
+				"blob_hosts",
+				"bot_login",
+				"allow_http",
+			],
 			"forge.",
 		)?;
-		let mut f = ForgeSettings::default();
+		let mut f = ForgeSettings {
+			allow_http: self.boolean(t, "allow_http", "forge.")?.unwrap_or(false),
+			..ForgeSettings::default()
+		};
 		if let Some((k, span)) = self.string(t, "kind", "forge.")? {
 			f.kind =
 				Some(HostKind::from_name(&k).ok_or_else(|| {
@@ -444,13 +456,17 @@ impl Reader<'_> {
 				})?);
 		}
 		if let Some((url, span)) = self.string(t, "api_url", "forge.")? {
-			if url.starts_with("http://") {
+			if url.starts_with("http://") && !f.allow_http {
 				return Err(self.err(
 					span,
 					"`forge.api_url` is plain http, which is refused: the token would cross the network in clear",
 				));
 			}
-			let usable = BlobUrl::parse(&url).is_some() && !url.contains(['?', '#']);
+			let candidate = url
+				.strip_prefix("http://")
+				.map(|rest| format!("https://{rest}"))
+				.unwrap_or_else(|| url.clone());
+			let usable = BlobUrl::parse(&candidate).is_some() && !url.contains(['?', '#']);
 			if !usable {
 				return Err(self.err(
 					span,
