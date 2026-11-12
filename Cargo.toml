@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/pr-results-core", "crates/pr-results-render", "crates/pr-results-forge", "crates/pr-results"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.86"
 license = "Apache-2.0 OR MIT"
@@ -19,9 +19,9 @@ miniz_oxide = { version = "=0.9.1", default-features = false, features = ["with-
 # Only the tests use it: a loopback TLS server for the CA-file tests. The features are the ones
 # `ureq` already enables for the client, so it adds no crate (decision D61).
 rustls = { version = "=0.23.46", default-features = false, features = ["logging", "ring", "std", "tls12"] }
-pr-results-core = { version = "0.1.0", path = "crates/pr-results-core" }
-pr-results-render = { version = "0.1.0", path = "crates/pr-results-render" }
-pr-results-forge = { version = "0.1.0", path = "crates/pr-results-forge" }
+pr-results-core = { version = "0.2.0", path = "crates/pr-results-core" }
+pr-results-render = { version = "0.2.0", path = "crates/pr-results-render" }
+pr-results-forge = { version = "0.2.0", path = "crates/pr-results-forge" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
