@@ -18,13 +18,13 @@ inputs:
     description: Further arguments, split on whitespace, such as `--dry-run out` or the files for render
     default: ''
   config:
-    description: The settings file. For publish and render it is left out when it is the default path and does not exist
+    description: The settings file. Publish chooses its default for the selected forge; render uses the GitHub path
     default: .github/pr-results.toml
   build:
     description: release (download the binary and check its SHA-256) or source (build it with cargo)
     default: release
   token:
-    description: The token publish uses. Only GITHUB_TOKEN, with the four permissions of the publisher workflow
+    description: The job token publish uses. Only grant the permissions the publishing flow needs
     default: ${{ github.token }}
 
 runs:

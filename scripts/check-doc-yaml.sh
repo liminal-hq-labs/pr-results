@@ -38,6 +38,8 @@ while IFS= read -r doc; do
 			n=$((n + 1))
 			body="${block//<full commit sha>/$zeros}"
 			body="${body//<sha>/$zeros}"
+			# Actionlint accepts GitHub-style names, not Forgejo's full-URL action syntax.
+			body="$(sed -E 's#(uses:[[:space:]]*)https://(github.com|code.forgejo.org)/#\1#' <<<"$body")"
 			out="$work/in/$(echo "$doc" | tr '/.' '__')-$n.yml"
 			first="$(grep -m1 -vE '^[[:space:]]*(#.*)?$' <<<"$body" || true)"
 			if grep -qE '^on:' <<<"$body"; then
