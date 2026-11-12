@@ -17,13 +17,14 @@ use pr_results_core::{
 	ServerUrl, Sha, Status, Suite,
 };
 use pr_results_render::{
-	check_with_paths, comment, Comment, Conclusion, Input, Options, RunContext, Section,
+	check_with_paths, comment, job_summary, Comment, Conclusion, Input, Options, RunContext,
+	Section, Target,
 };
 use serde_json::Value;
 
 use crate::api::ForgeError;
 use crate::archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
-use crate::host::{Artifact, CheckSpec, CommentAction, CommentSpec, Host, Pull, Tree};
+use crate::host::{Artifact, CheckSpec, CommentAction, CommentSpec, Host, HostKind, Pull, Tree};
 
 /// A pull request is commented on this many times at most when several verify.
 const MAX_PULLS: usize = 5;
@@ -196,6 +197,10 @@ pub struct PublishReport {
 	pub titles: Vec<String>,
 	pub notes: Vec<Note>,
 	pub failures: Vec<Failure>,
+	/// The comment without its marker, within the job summary's size cap: what the command line
+	/// writes to the run's own page before its diagnostics. Nothing when the run was cancelled or
+	/// skipped.
+	pub job_summary: Option<String>,
 }
 
 impl PublishReport {
@@ -365,8 +370,13 @@ pub fn publish<H: Host>(
 		repo: gh.repo().clone(),
 		head_sha: run.head_sha.clone(),
 		run_id: run.id,
+		run_number: None,
 		key: plan.key.clone(),
 		tool_version: plan.tool_version,
+		target: match gh.kind() {
+			HostKind::GitHub => Target::GitHub,
+			HostKind::Forgejo => Target::Forgejo,
+		},
 	};
 	let sections: Vec<Section<'_>> = plan
 		.sections
@@ -388,9 +398,12 @@ pub fn publish<H: Host>(
 		options: &plan.options,
 	};
 
+	let full: Comment = comment(&input);
+	report.job_summary = Some(job_summary(&full).as_str().to_owned());
+
 	let tree = read_tree(gh, run, &loaded, &mut report);
 	post_checks(gh, run, plan, &input, tree.as_ref(), &mut report);
-	post_comments(gh, run, plan, &input, &ctx, &artifacts, &mut report);
+	post_comments(gh, run, plan, &input, &full, &artifacts, &mut report);
 	if gh.retry_budget_spent() {
 		report.notes.push(Note::RetryBudgetSpent);
 	}
@@ -750,7 +763,7 @@ fn post_comments<H: Host>(
 	run: &WorkflowRun,
 	plan: &Plan,
 	input: &Input<'_>,
-	ctx: &RunContext,
+	full: &Comment,
 	artifacts: &[Artifact],
 	report: &mut PublishReport,
 ) {
@@ -779,7 +792,6 @@ fn post_comments<H: Host>(
 	}
 	report.notes.extend(note);
 
-	let full: Comment = comment(input);
 	let Some(marker) = Marker::parse(full.body.as_str()) else {
 		// The renderer always writes a marker first; without one there is nothing to find again.
 		report.failures.push(Failure::Comment {
@@ -820,7 +832,6 @@ fn post_comments<H: Host>(
 				};
 				comment(&Input {
 					options: &options,
-					ctx,
 					..input.clone()
 				})
 			});

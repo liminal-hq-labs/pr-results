@@ -10,15 +10,20 @@ use crate::blocks::{
 	table_row, TITLE_CHARS,
 };
 use crate::budget::{fit, Plan};
-use crate::text::{big, cat, count, noun, num, t, Doc};
+use crate::text::{big, cat, count, forgejo_inert, noun, num, t, Doc};
 use crate::view::{entries, is_failure, Counts, Entry, SectionInfo, Verdict};
-use crate::{Comment, Input, Options, RunContext, Symbols};
+use crate::wording;
+use crate::{Comment, Input, Options, RunContext, Symbols, Target};
 
 /// The heading line: `### Title: outcome`. The title is text from the settings file, so it goes
-/// through `Safe::text`, and the literal colon after it keeps it from joining the outcome.
-fn heading(title: &str, outcome: Safe) -> Safe {
+/// through `Safe::text`, and the literal colon after it keeps it from joining the outcome. On
+/// Forgejo, which links a bare commit hash, `!12`, mathematics and `:emoji:` in ordinary text, a
+/// title that holds any of them goes in a code span instead.
+fn heading(target: Target, title: &str, outcome: Safe) -> Safe {
 	let shown = if title.trim().is_empty() {
 		t("Test results")
+	} else if target == Target::Forgejo && !forgejo_inert(title) {
+		Safe::code_span(title, TITLE_CHARS)
 	} else {
 		Safe::text_max(title, TITLE_CHARS)
 	};
@@ -136,18 +141,17 @@ fn render(
 	plan: &Plan,
 ) -> Safe {
 	let o: &Options = i.options;
+	let target = i.ctx.target;
 	let mut doc = Doc::new();
 	doc.line(marker_line(i.ctx));
-	doc.line(heading(i.title, outcome(infos)));
+	doc.line(heading(i.ctx.target, i.title, outcome(infos)));
 	let mut total = Counts::default();
 	for info in infos {
 		total.add(&info.counts);
 	}
 	if plan.minimal {
 		doc.block(totals_line(&total, infos.len()));
-		doc.block(t(
-			"Most of this comment was left out to fit GitHub's size limit. The check runs hold the full results.",
-		));
+		doc.block(t(wording::minimal_note(target)));
 		doc.block(footer(i.ctx));
 		return doc.build();
 	}
@@ -173,8 +177,14 @@ fn render(
 		doc.block(t("#### Failures"));
 		for (k, e) in failures.iter().take(shown).enumerate() {
 			doc.blank();
-			let (lines, body) =
-				failure_lines(k + 1, m, e, section_title(multi, e), plan.excerpt_lines);
+			let (lines, body) = failure_lines(
+				k + 1,
+				m,
+				e,
+				section_title(multi, e),
+				plan.excerpt_lines,
+				target,
+			);
 			excerpts_cut |= plan.excerpt_lines < o.excerpt_lines && body > plan.excerpt_lines;
 			doc.lines(lines);
 		}
@@ -182,24 +192,11 @@ fn render(
 	if m > shown {
 		let left = big(m - shown);
 		doc.block(if shown == 0 {
-			cat(&[
-				count(left),
-				noun(
-					left,
-					" failure is not listed here. See the check runs.",
-					" failures are not listed here. See the check runs.",
-				),
-			])
+			let (one, many) = wording::none_listed(target);
+			cat(&[count(left), noun(left, one, many)])
 		} else {
-			cat(&[
-				t("\u{2026}and "),
-				count(left),
-				noun(
-					left,
-					" more failure in the check runs.",
-					" more failures in the check runs.",
-				),
-			])
+			let (one, many) = wording::more_listed(target);
+			cat(&[t("\u{2026}and "), count(left), noun(left, one, many)])
 		});
 	}
 
@@ -211,7 +208,7 @@ fn render(
 				t("The list of "),
 				count(k),
 				noun(k, " flaky test", " flaky tests"),
-				t(" was left out to fit GitHub's size limit. The table counts them."),
+				t(wording::flaky_left_out(target)),
 			]));
 		} else {
 			doc.blank();
@@ -236,14 +233,11 @@ fn render(
 		early.push(cat(&[
 			t("Failure excerpts were shortened to "),
 			num(plan.excerpt_lines),
-			t(" lines each to fit GitHub's size limit."),
+			t(wording::excerpts_cut(target)),
 		]));
 	}
 	if let Some(k) = folded {
-		early.push(cat(&[
-			count(k),
-			t(" passing suites were combined into one row to fit GitHub's size limit."),
-		]));
+		early.push(cat(&[count(k), t(wording::passing_combined(target))]));
 	}
 	for note in early {
 		doc.block(note);
@@ -270,7 +264,7 @@ pub(crate) fn comment(i: &Input<'_>) -> Comment {
 pub(crate) fn no_results(ctx: &RunContext, title: &str) -> Comment {
 	let mut doc = Doc::new();
 	doc.line(marker_line(ctx));
-	doc.line(heading(title, t("No results")));
+	doc.line(heading(ctx.target, title, t("No results")));
 	doc.block(t("No results were uploaded for this run."));
 	doc.block(footer(ctx));
 	Comment {
@@ -279,6 +273,107 @@ pub(crate) fn no_results(ctx: &RunContext, title: &str) -> Comment {
 	}
 }
 
-pub(crate) fn job_summary(c: &Comment) -> Safe {
-	c.body.after_first_line()
+/// Bytes kept free for what closes a cut summary and the line that says it was cut.
+const CUT_RESERVE: usize = 256;
+
+/// The line that closes a `<details>` block, with its line break.
+const CLOSE_BLOCK_BYTES: usize = 11;
+
+/// What a cut has to close: a code fence (its length, or nought) and the `<details>` blocks.
+#[derive(Clone, Copy, Default)]
+struct Open {
+	fence: usize,
+	details: usize,
+}
+
+impl Open {
+	/// The state after `line`.
+	fn after(self, line: &str) -> Self {
+		let ticks = line.chars().take_while(|c| *c == '`').count();
+		if self.fence > 0 {
+			let closes = ticks >= self.fence && line.trim() == "`".repeat(ticks);
+			return Self {
+				fence: if closes { 0 } else { self.fence },
+				..self
+			};
+		}
+		if ticks >= 3 && !line.chars().skip(ticks).any(|c| c == '`') {
+			return Self {
+				fence: ticks,
+				..self
+			};
+		}
+		// The only lines outside code that start with `<` are the renderer's own: `<d…` opens a
+		// block, `</d…` closes one and `<s…` is a summary.
+		if line.starts_with("</d") {
+			Self {
+				details: self.details.saturating_sub(1),
+				..self
+			}
+		} else if line.starts_with("<d") {
+			Self {
+				details: self.details.saturating_add(1),
+				..self
+			}
+		} else {
+			self
+		}
+	}
+
+	/// Bytes of the lines that close what is open.
+	fn closing_len(self) -> usize {
+		let fence = if self.fence > 0 { self.fence + 1 } else { 0 };
+		fence.saturating_add(self.details.saturating_mul(CLOSE_BLOCK_BYTES))
+	}
+}
+
+pub(crate) fn job_summary(c: &Comment, cap: usize) -> Safe {
+	let body = c.body.after_first_line();
+	if body.as_str().len() <= cap {
+		return body;
+	}
+	if cap < CUT_RESERVE {
+		return Safe::default();
+	}
+	let mut used = 0usize;
+	let mut open = Open::default();
+	let mut kept = 0usize;
+	let mut total = 0usize;
+	for line in body.as_str().lines() {
+		total += 1;
+		let next = open.after(line);
+		let cost = line.len() + 1;
+		if kept + 1 == total
+			&& used
+				.saturating_add(cost)
+				.saturating_add(next.closing_len())
+				.saturating_add(CUT_RESERVE)
+				<= cap
+		{
+			used += cost;
+			open = next;
+			kept += 1;
+		}
+	}
+	let mut parts = vec![body.first_lines(kept)];
+	if open.fence > 0 {
+		parts.push(Safe::backticks(open.fence));
+		parts.push(t("\n"));
+	}
+	for _ in 0..open.details {
+		parts.push(t("</details>\n"));
+	}
+	let left = big(total - kept);
+	parts.push(t("\n"));
+	parts.push(cat(&[
+		t("The last "),
+		count(left),
+		noun(
+			left,
+			" line of this summary was",
+			" lines of this summary were",
+		),
+		t(" left out to fit the size limit for a job summary.\n"),
+	]));
+	cat(&parts)
 }

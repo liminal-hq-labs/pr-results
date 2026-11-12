@@ -12,7 +12,10 @@ use crate::blocks::{
 use crate::budget::{fit, Plan};
 use crate::text::{big, cat, count, join, measure, noun, num, t, Doc, Piece};
 use crate::view::{entries, is_failure, Counts, Entry, SectionInfo, Verdict};
-use crate::{Annotation, CheckOutput, Conclusion, Input, Level, Section};
+use crate::{
+	Annotation, CheckOutput, Conclusion, Input, Level, Section, StatusOutput, StatusState, Target,
+	STATUS_DESCRIPTION_CHARS,
+};
 
 /// GitHub allows at most this many annotations on one check run.
 const ANNOTATION_HARD_CAP: usize = 500;
@@ -34,6 +37,9 @@ pub(crate) fn check(
 	index: usize,
 	keep: &dyn Fn(&RepoPath) -> bool,
 ) -> Option<CheckOutput> {
+	if i.ctx.target == Target::Forgejo {
+		return None;
+	}
 	let section = i.sections.get(index)?;
 	let info = SectionInfo::new(section);
 	let one = std::slice::from_ref(section);
@@ -60,8 +66,32 @@ pub(crate) fn check(
 	})
 }
 
+pub(crate) fn status(i: &Input<'_>, index: usize) -> Option<StatusOutput> {
+	let section = i.sections.get(index)?;
+	let info = SectionInfo::new(section);
+	let state = match info.verdict {
+		Verdict::Failed => StatusState::Failure,
+		Verdict::Passed => StatusState::Success,
+		Verdict::NoResults if section.required => StatusState::Failure,
+		Verdict::NoResults => StatusState::Success,
+	};
+	// No thin spaces between digit groups: plain text spells them out.
+	let title = title_with(&info, Safe::number);
+	let description = bounded(
+		STATUS_DESCRIPTION_CHARS,
+		STATUS_DESCRIPTION_CHARS,
+		measure,
+		|budget| Safe::plain_text(title.as_str(), budget),
+	);
+	Some(StatusOutput { state, description })
+}
+
 /// `1 failed, 23 passed, 4 skipped`, or `672 passed, 1 flaky`.
 fn title(info: &SectionInfo<'_>) -> Safe {
+	title_with(info, count)
+}
+
+fn title_with(info: &SectionInfo<'_>, number: fn(u64) -> Safe) -> Safe {
 	if info.verdict == Verdict::NoResults {
 		return t("No results were uploaded");
 	}
@@ -74,7 +104,7 @@ fn title(info: &SectionInfo<'_>) -> Safe {
 		(c.skipped, " skipped"),
 	] {
 		if n > 0 {
-			parts.push(cat(&[count(n), t(word)]));
+			parts.push(cat(&[number(n), t(word)]));
 		}
 	}
 	if parts.is_empty() {
@@ -146,7 +176,8 @@ fn summary(
 		doc.block(t("#### Failures"));
 		for (k, e) in failures.iter().take(shown).enumerate() {
 			doc.blank();
-			let (lines, body) = failure_lines(k + 1, m, e, None, plan.excerpt_lines);
+			let (lines, body) =
+				failure_lines(k + 1, m, e, None, plan.excerpt_lines, Target::GitHub);
 			excerpts_cut |= plan.excerpt_lines < o.excerpt_lines && body > plan.excerpt_lines;
 			doc.lines(lines);
 		}
@@ -286,7 +317,7 @@ fn detail_lines(n: usize, e: &Entry<'_>, cap: usize) -> Vec<Safe> {
 	let mut lines = vec![
 		cat(&[t("##### "), num(n), t(". "), path_line(e, None)]),
 		Safe::default(),
-		message_line(e.case),
+		message_line(e.case, Target::GitHub),
 	];
 	if let Some(detail) = &e.case.detail {
 		if !detail.is_empty() {

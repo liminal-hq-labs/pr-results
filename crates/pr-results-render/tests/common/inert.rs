@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use pr_results_core::Marker;
+use pr_results_render::Target;
 
 /// The text of `line` with its inline code spans removed. A span opens with a run of backticks
 /// and closes at the next run of the same length; a run with no partner is literal.
@@ -125,11 +126,61 @@ fn trusted_html(line: &str) -> bool {
 	}
 }
 
+/// Removes the backslash in front of an ASCII punctuation mark, as a Markdown renderer does.
+fn unescape(text: &str) -> String {
+	let mut out = String::new();
+	let mut chars = text.chars().peekable();
+	while let Some(c) = chars.next() {
+		match chars.peek() {
+			Some(next) if c == '\\' && next.is_ascii_punctuation() => {}
+			_ => out.push(c),
+		}
+	}
+	out
+}
+
+/// What Forgejo links outside code and GitHub does not, in text as it renders: a bare commit hash
+/// (seven or more hexadecimal digits), `!` and a digit, `$`, and `:word:`.
+fn assert_forgejo_inert(at: &str, line: &str, text: &str) {
+	let plain = unescape(text);
+	assert!(!plain.contains('$'), "{at}: mathematics: {line:?}");
+	let chars: Vec<char> = plain.chars().collect();
+	assert!(
+		!chars
+			.windows(2)
+			.any(|w| w[0] == '!' && w[1].is_ascii_digit()),
+		"{at}: a pull request reference: {line:?}"
+	);
+	let mut run = 0;
+	for c in &chars {
+		run = if c.is_ascii_hexdigit() { run + 1 } else { 0 };
+		assert!(run < 7, "{at}: a bare commit hash: {line:?}");
+	}
+	for (i, c) in chars.iter().enumerate() {
+		if *c != ':' {
+			continue;
+		}
+		let inner = chars[i + 1..]
+			.iter()
+			.take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-'))
+			.count();
+		assert!(
+			inner == 0 || chars.get(i + 1 + inner) != Some(&':'),
+			"{at}: an emoji code: {line:?}"
+		);
+	}
+}
+
 /// Asserts that `md` is inert: outside code there is no `<img`, no link the tool did not build, no
 /// hidden marker after the first line, no `@`, no `#` except in a heading, no URL to autolink, no
 /// reference such as `GH-123`, no HTML but the trusted lines, and every `<details>` is closed.
 /// Inside code, only that the fences close.
 pub fn assert_inert(name: &str, md: &str, link_prefix: &str) {
+	assert_inert_for(Target::GitHub, name, md, link_prefix);
+}
+
+/// Like [`assert_inert`] for a target. Forgejo adds the rules for what it links outside code.
+pub fn assert_inert_for(target: Target, name: &str, md: &str, link_prefix: &str) {
 	let mut fence: Option<usize> = None;
 	let mut depth = 0i64;
 	for (number, line) in md.lines().enumerate() {
@@ -183,6 +234,9 @@ pub fn assert_inert(name: &str, md: &str, link_prefix: &str) {
 			"{at}: a URL to autolink: {line:?}"
 		);
 		assert!(!has_reference(&text), "{at}: a reference: {line:?}");
+		if target == Target::Forgejo {
+			assert_forgejo_inert(&at, line, &text);
+		}
 	}
 	assert!(fence.is_none(), "{name}: a code fence is never closed");
 	assert_eq!(depth, 0, "{name}: unbalanced <details>");

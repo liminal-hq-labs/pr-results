@@ -61,6 +61,11 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 		return Ok(0);
 	}
 
+	// GitHub's runner sets one, and so does Forgejo's from 13.2.
+	let summary = get("GITHUB_STEP_SUMMARY")
+		.or_else(|| get("FORGEJO_STEP_SUMMARY"))
+		.map(PathBuf::from);
+
 	let bot = match &a.bot_login {
 		Some(login) if valid_login(login) => login.clone(),
 		Some(_) => return Err(CliError::usage("--bot-login is not a GitHub login")),
@@ -83,13 +88,13 @@ pub(crate) fn publish_command<X: ForgeFactory>(
 	let report = match &a.dry_run {
 		Some(dir) => {
 			let gh = GitHub::new(DryRun::new(forge), env.repo.clone(), &bot);
-			let report = execute(&gh, &run, &env, &settings, io)?;
+			let report = execute(&gh, &run, &env, &settings, summary.as_deref(), io)?;
 			write_dry_run(dir, &gh.forge().requests(), io)?;
 			report
 		}
 		None => {
 			let gh = GitHub::new(forge, env.repo.clone(), &bot);
-			execute(&gh, &run, &env, &settings, io)?
+			execute(&gh, &run, &env, &settings, summary.as_deref(), io)?
 		}
 	};
 	Ok(exit_code(&report, a.fail_on_failures))
@@ -194,6 +199,7 @@ fn execute<H: Host>(
 	run: &WorkflowRun,
 	env: &Environment,
 	settings: &Settings,
+	summary: Option<&Path>,
 	io: &mut Streams<'_>,
 ) -> Result<PublishReport, CliError> {
 	let title = settings
@@ -212,7 +218,9 @@ fn execute<H: Host>(
 	for line in &lines {
 		io.say(line);
 	}
-	summarize(&lines, io);
+	if let Some(path) = summary {
+		summarize_to(path, report.job_summary.as_deref(), &lines, io);
+	}
 	Ok(report)
 }
 
@@ -321,17 +329,20 @@ fn inferred_sections<H: Host>(
 	Ok(out)
 }
 
-/// Appends the diagnostics to the job summary, if the runner gave a file for it. Failing to write
-/// it never fails the run.
-fn summarize(lines: &[String], io: &mut Streams<'_>) {
-	let Some(path) = std::env::var_os("GITHUB_STEP_SUMMARY").filter(|p| !p.is_empty()) else {
-		return;
-	};
-	summarize_to(&PathBuf::from(path), lines, io);
-}
-
-pub(crate) fn summarize_to(path: &Path, lines: &[String], io: &mut Streams<'_>) {
-	let mut text = String::from("### pr-results\n\n");
+/// Appends the comment (without its marker), then the diagnostics, to the job summary. Failing
+/// to write it never fails the run.
+pub(crate) fn summarize_to(
+	path: &Path,
+	comment: Option<&str>,
+	lines: &[String],
+	io: &mut Streams<'_>,
+) {
+	let mut text = String::new();
+	if let Some(comment) = comment.filter(|c| !c.is_empty()) {
+		text.push_str(comment);
+		text.push('\n');
+	}
+	text.push_str("### pr-results\n\n");
 	for line in lines {
 		text.push_str("- ");
 		text.push_str(line);

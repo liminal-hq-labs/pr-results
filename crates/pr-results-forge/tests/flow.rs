@@ -840,6 +840,18 @@ fn a_push_gets_check_runs_and_no_comment() {
 }
 
 #[test]
+fn the_report_carries_the_comment_for_the_job_summary_even_when_nothing_is_posted() {
+	let mut env = env_with_results();
+	env.run.event = "push".to_owned();
+	env.run.pull_requests = Vec::new();
+	let report = env.publish();
+	let summary = report.job_summary.unwrap();
+	assert!(summary.starts_with("### "), "{summary}");
+	assert!(!summary.contains("<!--"));
+	assert!(summary.contains("All 3 passed"));
+}
+
+#[test]
 fn a_cancelled_or_skipped_run_publishes_nothing() {
 	for conclusion in ["cancelled", "skipped"] {
 		let mut env = env_with_results();

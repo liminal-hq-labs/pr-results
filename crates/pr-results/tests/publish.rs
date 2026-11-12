@@ -736,3 +736,45 @@ fn hostile_names_never_reach_the_log() {
 		assert!(!start.starts_with("::"), "{line}");
 	}
 }
+
+#[test]
+fn the_comment_then_the_diagnostics_go_to_the_job_summary() {
+	for variable in ["GITHUB_STEP_SUMMARY", "FORGEJO_STEP_SUMMARY"] {
+		let dir = scratch(&format!("summary-{variable}"));
+		let fake = github_with_pr();
+		artifact(&fake, "rust-test-results", &[("junit.xml", &failing_xml())]);
+		let mut vars = publisher_env(&dir, &pr_event());
+		let file = dir.join("summary.md");
+		vars.insert(variable.to_owned(), file.display().to_string());
+
+		let o = invoke(&["publish"], &vars, &Factory::new(&fake));
+
+		assert_eq!(o.code, 0, "{}", o.err);
+		let summary = std::fs::read_to_string(&file).unwrap();
+		let comment = &fake.comments(7)[0].body;
+		let body = comment.split_once('\n').unwrap().1;
+		assert!(!summary.contains("<!--"), "{summary}");
+		assert!(summary.starts_with(body), "{summary}");
+		let rest = summary.strip_prefix(body).unwrap();
+		assert!(
+			rest.starts_with("\n### pr-results\n\n- Check run created"),
+			"{rest}"
+		);
+		assert!(
+			rest.contains("- Comment on pull request 7 created."),
+			"{rest}"
+		);
+	}
+}
+
+#[test]
+fn a_cancelled_run_writes_no_job_summary() {
+	let dir = scratch("summary-cancelled");
+	let fake = github_with_pr();
+	let mut vars = publisher_env(&dir, &pr_event().replace("\"success\"", "\"cancelled\""));
+	let file = dir.join("summary.md");
+	vars.insert("GITHUB_STEP_SUMMARY".to_owned(), file.display().to_string());
+	let o = invoke(&["publish"], &vars, &Factory::new(&fake));
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert!(!file.exists());
+}
