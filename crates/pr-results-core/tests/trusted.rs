@@ -342,5 +342,6 @@ fn lines_are_cut_whole_and_a_fence_closer_is_only_backticks() {
 	assert_eq!(text.first_lines(2).as_str(), "a\nb\n");
 	assert_eq!(text.first_lines(9).as_str(), "a\nb\nc");
 	assert_eq!(Safe::backticks(4).as_str(), "````");
+	assert_eq!(Safe::tildes(3).as_str(), "~~~");
 	assert_eq!(Safe::backticks(100_000).as_str().len(), 65_536);
 }

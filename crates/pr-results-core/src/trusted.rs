@@ -339,6 +339,11 @@ impl Safe {
 		Safe::from_checked(self.as_str().split_inclusive('\n').take(n).collect())
 	}
 
+	/// A run of `n` tildes, at most 65 536: the line that closes a tilde code fence of that length.
+	pub fn tildes(n: usize) -> Safe {
+		Safe::from_checked("~".repeat(n.min(65_536)))
+	}
+
 	/// A run of `n` backticks, at most 65 536: the line that closes a code fence of that length.
 	pub fn backticks(n: usize) -> Safe {
 		Safe::from_checked("`".repeat(n.min(65_536)))

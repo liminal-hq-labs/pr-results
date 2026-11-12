@@ -279,29 +279,53 @@ const CUT_RESERVE: usize = 256;
 /// The line that closes a `<details>` block, with its line break.
 const CLOSE_BLOCK_BYTES: usize = 11;
 
-/// What a cut has to close: a code fence (its length, or nought) and the `<details>` blocks.
+/// What a cut has to close: a code fence (its length, and whether it is made of tildes; nought
+/// for none) and the `<details>` blocks.
 #[derive(Clone, Copy, Default)]
 struct Open {
 	fence: usize,
+	tilde: bool,
 	details: usize,
+}
+
+/// The line without up to three leading spaces, which CommonMark allows before a fence. Four or
+/// more make an indented code block, not a fence.
+fn fence_indent(line: &str) -> Option<&str> {
+	let rest = line.trim_start_matches(' ');
+	(line.len() - rest.len() <= 3).then_some(rest)
+}
+
+/// The mark and length of a run of three or more backticks or tildes that starts `rest`.
+fn fence_run(rest: &str) -> Option<(char, usize)> {
+	let mark = rest.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+	let n = rest.chars().take_while(|c| *c == mark).count();
+	(n >= 3).then_some((mark, n))
 }
 
 impl Open {
 	/// The state after `line`.
 	fn after(self, line: &str) -> Self {
-		let ticks = line.chars().take_while(|c| *c == '`').count();
+		let run = fence_indent(line).and_then(|rest| fence_run(rest).map(|r| (rest, r)));
 		if self.fence > 0 {
-			let closes = ticks >= self.fence && line.trim() == "`".repeat(ticks);
-			return Self {
-				fence: if closes { 0 } else { self.fence },
-				..self
+			let mark = if self.tilde { '~' } else { '`' };
+			let closes = run.is_some_and(|(rest, (m, n))| {
+				m == mark && n >= self.fence && rest.trim_end() == mark.to_string().repeat(n)
+			});
+			return if closes {
+				Self { fence: 0, ..self }
+			} else {
+				self
 			};
 		}
-		if ticks >= 3 && !line.chars().skip(ticks).any(|c| c == '`') {
-			return Self {
-				fence: ticks,
-				..self
-			};
+		if let Some((rest, (mark, n))) = run {
+			// A backtick fence's info string holds no backtick, or the line is a code span.
+			if mark == '~' || !rest.chars().skip(n).any(|c| c == '`') {
+				return Self {
+					fence: n,
+					tilde: mark == '~',
+					..self
+				};
+			}
 		}
 		// The only lines outside code that start with `<` are the renderer's own: `<d…` opens a
 		// block, `</d…` closes one and `<s…` is a summary.
@@ -357,7 +381,11 @@ pub(crate) fn job_summary(c: &Comment, cap: usize) -> Safe {
 	}
 	let mut parts = vec![body.first_lines(kept)];
 	if open.fence > 0 {
-		parts.push(Safe::backticks(open.fence));
+		parts.push(if open.tilde {
+			Safe::tildes(open.fence)
+		} else {
+			Safe::backticks(open.fence)
+		});
 		parts.push(t("\n"));
 	}
 	for _ in 0..open.details {
@@ -376,4 +404,73 @@ pub(crate) fn job_summary(c: &Comment, cap: usize) -> Safe {
 		t(" left out to fit the size limit for a job summary.\n"),
 	]));
 	cat(&parts)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+	use super::*;
+
+	/// A comment whose body is a marker line, `opening`, then a long run of plain lines.
+	fn comment_with(opening: &'static str) -> Comment {
+		let filler = t("some line of the body\n");
+		let mut parts = vec![t("<!-- marker -->\n"), t(opening), t("\n")];
+		parts.extend(std::iter::repeat_n(filler, 60));
+		Comment {
+			body: Safe::concat(&parts),
+			steps_taken: Vec::new(),
+		}
+	}
+
+	fn cut(opening: &'static str) -> String {
+		job_summary(&comment_with(opening), 600).as_str().to_owned()
+	}
+
+	#[test]
+	fn an_indented_backtick_fence_is_closed() {
+		let out = cut("   ```text");
+		assert!(out.contains("\n```\n\nThe last "), "{out}");
+	}
+
+	#[test]
+	fn a_tilde_fence_is_closed_with_tildes() {
+		let out = cut("~~~~");
+		assert!(out.contains("\n~~~~\n\nThe last "), "{out}");
+		let out = cut("  ~~~ rust");
+		assert!(out.contains("\n~~~\n\nThe last "), "{out}");
+	}
+
+	#[test]
+	fn four_spaces_make_no_fence_and_a_code_span_line_is_not_one() {
+		for opening in ["    ```text", "```x``` and more"] {
+			let out = cut(opening);
+			assert!(!out.contains("\n```\n\nThe last"), "{opening}: {out}");
+			assert!(out.contains("\n\nThe last "), "{out}");
+		}
+	}
+
+	#[test]
+	fn a_fence_that_was_closed_before_the_cut_is_not_closed_again() {
+		let mut parts = vec![t("<!-- marker -->\n~~~\ncode\n~~~\n")];
+		parts.extend(std::iter::repeat_n(t("plain line of the body\n"), 60));
+		let c = Comment {
+			body: Safe::concat(&parts),
+			steps_taken: Vec::new(),
+		};
+		let out = job_summary(&c, 600);
+		assert_eq!(out.as_str().matches("~~~").count(), 2, "{out}");
+	}
+
+	#[test]
+	fn a_closing_fence_must_match_the_mark_and_be_long_enough() {
+		// "~~~" does not close a backtick fence, and "```" is too short to close "````".
+		let mut parts = vec![t("<!-- marker -->\n````\n~~~\n```\n")];
+		parts.extend(std::iter::repeat_n(t("inside the block\n"), 60));
+		let c = Comment {
+			body: Safe::concat(&parts),
+			steps_taken: Vec::new(),
+		};
+		let out = job_summary(&c, 600);
+		assert!(out.as_str().contains("\n````\n\nThe last "), "{out}");
+	}
 }
