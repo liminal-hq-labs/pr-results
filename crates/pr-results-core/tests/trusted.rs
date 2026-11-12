@@ -165,6 +165,14 @@ fn urls_come_only_from_trusted_parts() {
 		TrustedUrl::run_artifacts(&server, &repo, RunId(7)).as_str(),
 		"https://github.com/example/app/actions/runs/7#artifacts"
 	);
+	assert_eq!(
+		TrustedUrl::forgejo_run(&server, &repo, 12).as_str(),
+		"https://github.com/example/app/actions/runs/12"
+	);
+	assert_eq!(
+		TrustedUrl::comment_anchor(&server, &repo, 3, 45).as_str(),
+		"https://github.com/example/app/pulls/3#issuecomment-45"
+	);
 	let url = TrustedUrl::run(&server, &repo, RunId(7));
 	let label = Safe::trusted("workflow run");
 	assert_eq!(
@@ -325,4 +333,14 @@ fn after_first_line_drops_the_marker() {
 	let whole = Safe::concat(&[marker().render(), Safe::trusted("\n### T\n\ntext")]);
 	assert_eq!(whole.after_first_line().as_str(), "### T\n\ntext");
 	assert_eq!(marker().render().after_first_line().as_str(), "");
+}
+
+#[test]
+fn lines_are_cut_whole_and_a_fence_closer_is_only_backticks() {
+	let text = Safe::trusted("a\nb\nc");
+	assert_eq!(text.first_lines(0).as_str(), "");
+	assert_eq!(text.first_lines(2).as_str(), "a\nb\n");
+	assert_eq!(text.first_lines(9).as_str(), "a\nb\nc");
+	assert_eq!(Safe::backticks(4).as_str(), "````");
+	assert_eq!(Safe::backticks(100_000).as_str().len(), 65_536);
 }
