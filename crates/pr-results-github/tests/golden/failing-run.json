@@ -1,0 +1,91 @@
+[
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/runs/5000/artifacts?per_page=100"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/artifacts/1001/zip"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/git/trees/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334?recursive=1"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/commits/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334/check-runs?check_name=Example%20Rust%20tests&filter=latest&per_page=100"
+  },
+  {
+    "body": {
+      "conclusion": "failure",
+      "external_id": "pr-results:1:ci:Example Rust tests",
+      "head_sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+      "name": "Example Rust tests",
+      "output": {
+        "annotations": [
+          {
+            "annotation_level": "failure",
+            "end_line": 3,
+            "message": "boom 0\ndetail 0",
+            "path": "src/f0.rs",
+            "start_line": 3,
+            "title": "t0"
+          },
+          {
+            "annotation_level": "failure",
+            "end_line": 3,
+            "message": "boom 1\ndetail 1",
+            "path": "src/f1.rs",
+            "start_line": 3,
+            "title": "t1"
+          },
+          {
+            "annotation_level": "failure",
+            "end_line": 3,
+            "message": "boom 2\ndetail 2",
+            "path": "src/f2.rs",
+            "start_line": 3,
+            "title": "t2"
+          }
+        ],
+        "summary": "| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | **Failed** | 0 | 3 | 0 | 0 | 0.3 s |\n\n| Group | Passed | Failed | Skipped | Flaky | Time |\n| --- | ---: | ---: | ---: | ---: | ---: |\n| `suite` | 0 | 3 | 0 | 0 | 0.3 s |\n\n#### Failures\n\n<details open>\n<summary>Failure 1 of 3</summary>\n\n`suite` › `c` › `t0`\n\n`boom 0` · 0.1 s\n\n````text\ndetail 0\n````\n\n</details>\n\n<details open>\n<summary>Failure 2 of 3</summary>\n\n`suite` › `c` › `t1`\n\n`boom 1` · 0.1 s\n\n````text\ndetail 1\n````\n\n</details>\n\n<details open>\n<summary>Failure 3 of 3</summary>\n\n`suite` › `c` › `t2`\n\n`boom 2` · 0.1 s\n\n````text\ndetail 2\n````\n\n</details>\n\nAnnotations: 3.\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n",
+        "text": "#### Failure details\n\n##### 1. `suite` › `c` › `t0`\n\n`boom 0` · 0.1 s\n\n````text\ndetail 0\n````\n\n##### 2. `suite` › `c` › `t1`\n\n`boom 1` · 0.1 s\n\n````text\ndetail 1\n````\n\n##### 3. `suite` › `c` › `t2`\n\n`boom 2` · 0.1 s\n\n````text\ndetail 2\n````\n\n#### Slowest tests\n\n| Test | Time |\n| --- | ---: |\n| `suite` › `c` › `t0` | 0.1 s |\n| `suite` › `c` › `t1` | 0.1 s |\n| `suite` › `c` › `t2` | 0.1 s |\n",
+        "title": "3 failed"
+      },
+      "status": "completed"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/check-runs"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/7/comments?per_page=100"
+  },
+  {
+    "body": {
+      "body": "<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=5000 -->\n### Example checks: 3 failures in 1 suite\n\n| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | **Failed** | 0 | 3 | 0 | 0 | 0.3 s |\n\n#### Failures\n\n<details open>\n<summary>Failure 1 of 3</summary>\n\n`suite` › `c` › `t0`\n\n`boom 0` · 0.1 s\n\n````text\ndetail 0\n````\n\n</details>\n\n<details open>\n<summary>Failure 2 of 3</summary>\n\n`suite` › `c` › `t1`\n\n`boom 1` · 0.1 s\n\n````text\ndetail 1\n````\n\n</details>\n\n<details open>\n<summary>Failure 3 of 3</summary>\n\n`suite` › `c` › `t2`\n\n`boom 2` · 0.1 s\n\n````text\ndetail 2\n````\n\n</details>\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/issues/7/comments"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/7/comments?per_page=100"
+  }
+]
