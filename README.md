@@ -8,9 +8,9 @@
   <img src="https://img.shields.io/badge/licence-Apache--2.0%20OR%20MIT-3fb950" alt="Licence: Apache-2.0 OR MIT">
 </p>
 
-pr-results will read the test and check results your CI produces and post them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It is planned to understand JUnit from nextest, vitest, bun, jest and Playwright as well as step reports from shell-script projects, and to be safe on pull requests from forks by design.
+pr-results reads the test and check results your CI produces and posts them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It reads JUnit from nextest (tuned) and step reports from shell-script projects (tuned), and from vitest, bun, jest and Playwright (parsed, tuned in v0.2), and it is safe on pull requests from forks by design.
 
-> **Status:** experimental and **barely built**. The data model, the escaping type, the JUnit parsers, the renderer that writes the comment, check runs and annotations, and the GitHub client and publish flow exist and are tested against an in-memory GitHub, but the command line does not call them, nothing has talked to the real API, and the tool **posts nothing**. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
+> **Status:** experimental and **not released**. The data model, the escaping type, the JUnit parsers, the renderer, the GitHub client and publish flow, the command line (`publish`, `render` and `validate-config`), the settings file, the composite action and the reusable workflow are built and tested against an in-memory GitHub. Nothing has talked to the real API or run on GitHub Actions yet, and there is no release or binary: the action and the reusable workflow stop with a message until a release fills in the binary digests, and the action's `build: source` builds the checkout. Interfaces and formats may change between any two commits.
 
 ## What it's for
 
@@ -22,7 +22,7 @@ pr-results will read the test and check results your CI produces and post them t
 
 ## What the comment will look like
 
-This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The renderer and the publish flow exist, but the command line does not post it yet.
+This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The renderer and the command line exist; nothing has posted it to a real pull request yet.
 
 > ### Example checks: 1 failure in 2 suites
 >
@@ -49,7 +49,7 @@ The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks
 
 ## Install and run
 
-**Planned, not yet available.** The intended setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. The SHA below is a placeholder, because there is no release to pin yet:
+**Not released yet.** The setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. The SHA below is a placeholder, because there is no release to pin yet, and the workflow stops with a message until there is:
 
 ```yaml
 # .github/workflows/publish-test-results.yml
@@ -66,14 +66,14 @@ jobs:
   publish:
     if: github.event.workflow_run.conclusion != 'skipped' && github.event.workflow_run.conclusion != 'cancelled'
     permissions:
-      actions: read
-      checks: write
-      pull-requests: write
-      contents: read
+      actions: read # list and download the run's artefacts
+      checks: write # create and update check runs and annotations
+      pull-requests: write # create and update the sticky comment
+      contents: read # check out .github/ from the default branch
     uses: liminal-hq-labs/pr-results/.github/workflows/publish.yml@<full commit sha> # v0.1.0
 ```
 
-Your CI uploads its results as artefacts (`rust-test-results`, `frontend-test-results`, `event-file` and so on), and the publisher does the rest. See [docs/adopting.md](docs/adopting.md) for the steps and the optional `.github/pr-results.toml`.
+Your CI uploads its results as artefacts (`rust-test-results`, `frontend-test-results`, `event-file` and so on), and the publisher does the rest. See [docs/adopting.md](docs/adopting.md) for the steps, a recipe for each test runner (nextest, vitest, Playwright shards, bun and Desk) and the optional `.github/pr-results.toml`.
 
 ## Documentation
 

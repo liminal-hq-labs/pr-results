@@ -4,7 +4,7 @@ A summary of [AGENTS.md](AGENTS.md), which is canonical. Keep the two in sync.
 
 ## What this is
 
-pr-results is a Liminal HQ Labs experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental and only partly built (the model, `Safe`, the JUnit parsers, the renderer and the GitHub client with the publish flow; the command line does not post anything yet), so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
+pr-results is a Liminal HQ Labs experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental and not released (the model, `Safe`, the JUnit parsers, the renderer, the GitHub client with the publish flow, the command line, the action and the workflows are built and tested against an in-memory GitHub; none has run on GitHub), so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
 
 ## Rules to remember
 
@@ -21,6 +21,8 @@ pr-results is a Liminal HQ Labs experiment: calm test and check results for pull
 
 ```sh
 bash scripts/check-headers.sh
+bash scripts/check-pins.sh        # tag and digests agree, every action pinned
+bash scripts/check-doc-yaml.sh   # actionlint over the documents' YAML
 bash scripts/check-banner.sh     # add --shots /tmp/shots for review frames
 docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.24.0 "**/*.md"
 # once there are crates:

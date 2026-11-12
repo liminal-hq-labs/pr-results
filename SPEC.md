@@ -2,7 +2,7 @@
 
 The source of truth for behaviour. A change that alters behaviour updates this file in the same change. Why each choice was made is in [docs/decisions.md](docs/decisions.md); the per-format input notes are in [docs/inputs.md](docs/inputs.md), the threat model in [docs/security.md](docs/security.md) and the adoption guide in [docs/adopting.md](docs/adopting.md).
 
-The data model, `Safe`, the trusted values a renderer needs, the JUnit parsers, the renderer (the comment, the check runs, their annotations and the size budget), the artefact zip reader, the glob matcher, the GitHub client behind a `Forge` trait with its in-memory fake, and the publish flow exist (see the notes in [Components](#components) and [the normalized model](#the-normalized-model)). The command line does not call them yet, and the settings file, the action and the workflows are not built; everything else described here is not built yet. Where a decision is still the owner's, the text says **Open question** and names its number in the [list at the end](#open-questions).
+The data model, `Safe`, the trusted values a renderer needs, the JUnit parsers, the renderer (the comment, the check runs, their annotations and the size budget), the artefact zip reader, the glob matcher, the GitHub client behind a `Forge` trait with its in-memory fake, the publish flow, the command line (`publish`, `render` and `validate-config`), the settings file, the composite action and the reusable workflow exist (see the notes in [Components](#components) and [the normalized model](#the-normalized-model)). They are tested against an in-memory GitHub and loopback servers; the workflows have not run on GitHub, and there is no release, so the action and the reusable workflow stop with a message until a release fills in the binary digests. Everything else described here is not built yet. Where a decision is still the owner's, the text says **Open question** and names its number in the [list at the end](#open-questions).
 
 ## Contents
 
@@ -97,29 +97,49 @@ A Cargo workspace, added crate by crate with the code that needs it:
 | `pr-results-core` | The normalized model (below), the `Safe` type, the trusted values (`Sha`, `RepoSlug`, `RunId`, `CommentKey`, `ServerUrl`, `RepoPath`, `TrustedUrl`, `Marker`) and the text built from them (`Safe::link`, `grouped`, `duration_ms`), the JUnit and step-results parsers with flavour detection and location derivation, and `Glob` (`*`, `**` and `?`) for artefact names and file paths | none, pure |
 | `pr-results-render` | The comment, the check runs and their annotations from the model, built only from `Safe`, with budgets | none, pure |
 | `pr-results-github` | The `Forge` trait with `UreqForge` (the real client), `FakeForge` (an in-memory GitHub) and `DryRun`; `GitHub<F>` (artefacts, pull requests, tree, check runs, the sticky comment); the zip reader; and `publish`, the flow | network, only in `UreqForge` |
-| `pr-results` | The command line: configuration, wiring and `main` | files and network |
+| `pr-results` | The command line: arguments, settings, the event and the environment, wiring, `--dry-run` files and `main` | files and network |
 
 Everything except `UreqForge` and the command line's `main` is pure and tested offline. `pr-results-github` sits behind the `Forge` trait, with an in-memory fake that follows GitHub's REST documentation, pages lists two to a page, imposes GitHub's size limits, scripts faults and records requests, and a loopback server that tests `UreqForge` itself. Each crate has `#![forbid(unsafe_code)]`, and library code denies `unwrap`, `expect`, `panic` and unchecked indexing, so hostile input cannot panic the tool.
 
-Dependencies, all permissively licensed and checked by `cargo deny`, each added with the code that needs it and pinned exactly: `quick-xml`, `serde_json` (no `derive`, so no `serde` of our own), `miniz_oxide` (inflating, under our own zip reader instead of the `zip` crate) and `ureq` with `rustls` on the `ring` provider (and its `webpki-roots`) are in; `toml` and `sha2` follow. Globs are our own `Glob`, not `globset`. No async runtime, no `reqwest`, no OpenSSL, no `aws-lc`. The licences, the crate count and the binary size are in [D44](docs/decisions.md). The command line has only `--version` and `--help` so far.
+Dependencies, all permissively licensed and checked by `cargo deny`, each added with the code that needs it and pinned exactly: `quick-xml`, `serde_json` (no `derive`, so no `serde` of our own), `miniz_oxide` (inflating, under our own zip reader instead of the `zip` crate) and `ureq` with `rustls` on the `ring` provider (and its `webpki-roots`) are in; `toml` (`parse` only: its span-keeping `DeTable`, for line numbers, and no `serde`) is in with the command line. There is no `sha2`: the action checks the binary with `sha256sum`. Globs are our own `Glob`, not `globset`. No async runtime, no `reqwest`, no OpenSSL, no `aws-lc`, no argument-parsing crate. The licences, the crate count and the binary size are in [D44](docs/decisions.md) and [D51](docs/decisions.md).
 
 ### Command line
 
 ```text
-pr-results publish [--config PATH] [--event PATH] [--dry-run DIR]   # in workflow_run
-pr-results render  [--config PATH] FILE...  [--out DIR]             # local, no network: comment.md, checks/*.md
-pr-results collect [--config PATH] FILE...  --out report.json       # normalize in a CI job (optional)
+pr-results publish [--config PATH] [--dry-run DIR] [--token-env NAME] [--bot-login LOGIN] [--fail-on-failures]
+pr-results render  [--config PATH] [--title TEXT] [--flavour NAME] FILE... [--out DIR]
 pr-results validate-config PATH
-pr-results --version
+pr-results --version | --help
 ```
 
-`--dry-run DIR` does everything except the writes and puts the would-be API requests as JSON in `DIR`, for testing a repository's setup.
+`collect` (normalize in a CI job) is deferred, and refused with a message. A flag takes its value as `--flag value` or `--flag=value`.
+
+**`publish`** runs in a `workflow_run` workflow on the default branch and nowhere else. It exits `2` before any request unless `GITHUB_EVENT_NAME` is `workflow_run`, `GITHUB_REF` is `refs/heads/<default branch>` (the default branch is the one the event names), the event's `repository` and its run's `repository` are `GITHUB_REPOSITORY` (without regard to case), `GITHUB_API_URL` and `GITHUB_SERVER_URL` are `https://` and the token is in the variable `--token-env` names (default `GITHUB_TOKEN`). Publishing from the test job itself is v0.2. The settings file is `--config`, which must exist, or `.github/pr-results.toml` when that exists, or the defaults. `--bot-login` is the login the sticky comment must be authored by (default `github-actions[bot]`).
+
+`--dry-run DIR` reads from GitHub for real and writes nothing. It saves `requests.json` (every write it would have sent, with its body), `comment.md` (the first comment body) and `checks/<n>.md` (each check run's conclusion, title, summary and text, in the layout of the goldens) in `DIR`, and prints the comment.
+
+**`render`** has no network. Without `--out` it prints the comment. With `--out DIR` it writes `comment.md` and `checks/<n>.md`, numbering the sections from 0. With no `[[suite]]` it is one section, "Tests", holding every file. With suites, each file goes to the first suite whose `files` patterns match its path or any tail of it, and a file no suite claims is an error. `--flavour` overrides the flavour of every suite. Its footer links point at a placeholder repository, because there is no run.
+
+**`validate-config`** reads a settings file and exits `0` with the number of suites, or `2` with the key and the line.
+
+**Exit status.**
+
+| Code | Meaning |
+| ---: | --- |
+| `0` | Published, rendered or validated, even if tests failed; or nothing to do (a cancelled or skipped run, a head repository that has been deleted) |
+| `1` | Publishing failed: artefacts could not be listed, or a check run or comment was refused. The message says which |
+| `2` | The arguments, the settings file, a file given to `render` or the environment are wrong |
+| `4` | Tests failed, and only with `--fail-on-failures` (never when publishing itself failed: that is `1`) |
+
+**Logs.** Every line on standard output or standard error passes through `Safe::log_line`, so a name cannot start a workflow command. Markdown printed to standard output (the comment of `--dry-run`, and `render` without `--out`) has a backslash and a space put in front of any line that starts with `::` or `##[`; the files it writes are exact. The token is masked with `::add-mask::` before the first request.
 
 ### Packaging
 
-A statically linked Linux binary (`x86_64` and `aarch64`, musl) attached to each GitHub release, run by a thin composite action whose `action.yml` carries the SHA-256 of each binary. Pinning the action by commit SHA therefore pins the exact binary. A reusable workflow in the same repository wraps the whole `workflow_run` publisher, so a product adopts it in about fifteen lines. A from-source fallback (`build: source`) covers any runner the binaries do not.
+A statically linked Linux binary (`x86_64-unknown-linux-musl` and, when it reproduces, `aarch64-unknown-linux-musl`) attached to each GitHub release as `pr-results-<target>`, run by a thin composite action whose `action.yml` carries the SHA-256 of each binary. Pinning the action by commit SHA therefore pins the exact binary. A reusable workflow in the same repository wraps the whole `workflow_run` publisher, so a product adopts it in about fifteen lines.
 
-The composite action is about 40 lines of YAML that pick the target, download from the release whose tag is recorded in `action.yml`, verify the digest with `sha256sum -c` and run it. `build: source` runs `cargo build --locked --release` from `${{ github.action_path }}`.
+The composite action takes `command`, `args`, `config`, `build` and `token`. Its `build: release` step picks the target with `uname -m`, downloads `https://github.com/liminal-hq-labs/pr-results/releases/download/<tag>/pr-results-<target>` with `curl --proto '=https'`, verifies the digest with `sha256sum -c` and runs the file. The tag and the digests are `env` values of the step, `PR_RESULTS_TAG` and `PR_RESULTS_SHA256_X86_64` and `PR_RESULTS_SHA256_AARCH64`. A digest that is not 64 hexadecimal digits (before the first release it is the word `PLACEHOLDER`) stops the step with a message that says so, and the check cannot be skipped. `build: source` installs a pinned toolchain with `rustup` and runs `cargo build --locked --release` from the action's own checkout under `$RUNNER_TEMP`. Inputs reach the shell only through `env`.
+
+A reusable workflow cannot name its own commit, so `publish.yml` cannot call the action at the same revision. It downloads and verifies the binary inline, with the same tag and digests, and `scripts/check-pins.sh` fails if the two differ. It has no `build` input: building from source is a composite-action feature.
 
 ## Inputs
 
@@ -203,7 +223,7 @@ Truncation cuts at a `char` boundary and never inside an escape sequence, becaus
 
 ### Job summary
 
-The publisher writes the comment body (without the marker, which is `job_summary`) to `GITHUB_STEP_SUMMARY`, plus a short diagnostics block: inputs found per suite, files skipped and why, annotations dropped and the baseline run used. The comment is far under the 900 KiB the summary allows. The diagnostics block is written by the publisher, which knows what it read.
+From v0.2 the publisher writes the comment body (without the marker, which is `job_summary`) to `GITHUB_STEP_SUMMARY`, plus a short diagnostics block: inputs found per suite, files skipped and why, annotations dropped and the baseline run used. The comment is far under the 900 KiB the summary allows. In v0.1 it appends only the diagnostics: the lines of the log (checks written and their annotation counts, the comments, and every note such as "no open pull request matches this run"), each a count and fixed words.
 
 ### Limits
 
@@ -285,7 +305,9 @@ path_prefix = ""                 # added to file paths for annotations, e.g. "ap
 | `baseline.slower_percent`, `baseline.slower_min_seconds` | `25`, `5` | When a suite or step counts as slower |
 | `limits.*` | as above | Download and parse limits |
 
-Defaults when there is no file: `title` is the repository name in title case, and suites are inferred from artefacts matching `*-test-results*`, one suite per artefact, named from the artefact (`rust-test-results` becomes "Rust tests", `frontend-test-results` becomes "Frontend tests"), with `flavour = "auto"` and `required = false`.
+A setting for a later version is an error, not a setting that does nothing: `comment.mode` of `changes` or `failures`, `comment.other_checks = true`, `checks.per_suite = false`, a non-empty `checks.combined` (v0.3), and a non-empty `suite.path_prefix` (v0.2). The `[baseline]` keys are checked and have no effect until v0.3. `suite.format` must be `junit`. Numbers are limited: `max_failures` and `excerpt_lines` to 1000, `annotations.max_per_suite` to 500, `limits.max_files` to 10 000, `limits.max_file_bytes` to 256 MiB, `limits.max_cases` to a million and `limits.max_artifact_bytes` to a gibibyte. A title, a suite name and a check name are 1 to 100 printable characters, two suites may not share a check name, and there are at most 50 suites. The limits map to the downloads and the parser: `max_artifact_bytes` bounds the bytes downloaded for a run and the inflated bytes of an artefact, `max_files` the entries of an artefact, and `max_file_bytes` the inflated size of one file and the parser's input.
+
+Defaults when there is no file: `title` is the repository name in title case, and suites are inferred from artefacts matching `*-test-results*`, one suite per artefact, named from the artefact (`rust-test-results` becomes "Rust tests", `frontend-test-results` becomes "Frontend tests"), with `flavour = "auto"` and `required = false`, and the check named `<title> <suite name>`. The part before `-test-results` names the suite, so `e2e-test-results-1` and `e2e-test-results-2` are one suite, "E2e tests", read from `e2e-test-results*`. Only artefact names of letters, digits, `.`, `_` and `-` are used, because whoever wrote the workflow chose them (a fork included) and they become check names, and at most 20 suites are inferred. The suites are inferred at publish time from the run's artefact list, so they depend on the run.
 
 ## The workflow_run flow and security
 
@@ -344,7 +366,7 @@ Everything from artefacts is untrusted: file names, XML content, artefact names 
 - **Fragments never join into a reference.** `Safe::text` breaks `GH-123` inside one fragment, but `Safe::concat` can build it from `GH` and `-123`. Every line of the renderer is joined by `cat`, which puts a space between two fragments that would form a reference across the join, and a test fails if the renderer calls `Safe::concat` or `Safe::join` anywhere else.
 - **Paths for annotations** are normalized, must be relative, must not contain `..`, and must exist in the commit's tree.
 - **No hostnames, timestamps, properties or environment values** from the inputs are rendered.
-- **Secrets.** `pr-results` reads only `GITHUB_TOKEN` (or `--token-env NAME`), `GITHUB_EVENT_PATH`, `GITHUB_REPOSITORY`, `GITHUB_API_URL`, `GITHUB_SERVER_URL`, `GITHUB_STEP_SUMMARY` and `RUNNER_TEMP`. It sends the token only to `GITHUB_API_URL`, never forwards the `Authorization` header across a cross-host redirect (the artefact download redirects to a presigned blob URL that needs no token), never logs headers, and masks the token with `::add-mask::` defensively. In the code the token is added in one place, to a URL made of the API base and a path type that cannot hold a host; a `Link` header is followed only if it begins with the API base exactly; the HTTP library follows no redirect, and the blob is fetched by a separate call that carries no credentials and follows at most three more redirects, each to an `https://` URL (an `http://` redirect is refused). Errors name a status or a fixed phrase, never text from a response or the library.
+- **Secrets.** `pr-results` reads only `GITHUB_TOKEN` (or `--token-env NAME`), `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_EVENT_PATH`, `GITHUB_REPOSITORY`, `GITHUB_API_URL`, `GITHUB_SERVER_URL` and `GITHUB_STEP_SUMMARY`. It sends the token only to `GITHUB_API_URL`, never forwards the `Authorization` header across a cross-host redirect (the artefact download redirects to a presigned blob URL that needs no token), never logs headers, and masks the token with `::add-mask::` defensively. In the code the token is added in one place, to a URL made of the API base and a path type that cannot hold a host; a `Link` header is followed only if it begins with the API base exactly; the HTTP library follows no redirect, and the blob is fetched by a separate call that carries no credentials and follows at most three more redirects, each to an `https://` URL (an `http://` redirect is refused). Errors name a status or a fixed phrase, never text from a response or the library.
 - **Workflow commands.** Untrusted names and messages written to a log or to an annotation command such as `::error file=…::` can inject `::` commands. They are escaped through the one `Safe` type: `%`, CR and LF always, and `:` and `,` as well inside annotation properties. The publisher's log holds only counts, fixed phrases and, for a section's title, `Safe::log_line`, so it needs no `::stop-commands::` wrapper. Any other untrusted log output must be wrapped in `::stop-commands::<random token>` and resumed with the same token.
 - **No execution.** Nothing from an artefact is run, sourced or used as a path outside the temporary directory. The reusable workflow never checks out the pull request head.
 - **Network.** HTTPS only, `User-Agent: liminal-hq-pr-results/<version>` (no address of any person), timeouts (15 s to connect, 60 s a call, 180 s for a blob), and at most two writes a second. A read or an idempotent write is retried on a 5xx or a dropped connection after 1, 2, 4 and 8 s; a 429 or a secondary limit is retried the same way for every method, honouring `retry-after` up to 60 s; a primary limit is waited out only if it resets within 60 s. Other 4xx are final, and a POST is never repeated blindly (see the marker above). Pages are followed up to 100.
@@ -381,18 +403,19 @@ jobs:
     uses: liminal-hq-labs/pr-results/.github/workflows/publish.yml@<full commit sha> # v0.1.0
 ```
 
-The reusable workflow runs on `ubuntu-24.04` without a container so it starts fast, does the sparse checkout, runs the composite action and writes the job summary. Its inputs are `config` (path, default `.github/pr-results.toml`) and `build` (`release` or `source`).
+The reusable workflow runs on `ubuntu-24.04` without a container so it starts fast, does the sparse checkout of the default branch's `.github/`, verifies and runs the binary, and holds exactly the four permissions above on its job. Its one input is `config` (path, default `.github/pr-results.toml`).
 
 ### The composite action (in-job use or custom flows)
 
 ```yaml
 - uses: liminal-hq-labs/pr-results@<full commit sha> # v0.1.0
   with:
-    command: publish           # publish | render | collect
+    command: publish           # publish | render | validate-config
     config: .github/pr-results.toml
+    args: --dry-run out        # split on whitespace
 ```
 
-In-job use on `pull_request` works for same-repository pull requests and pushes. Forks and Dependabot need the `workflow_run` form, and the documentation says so plainly.
+`publish` runs only from a `workflow_run` workflow on the default branch in v0.1. In-job publishing on `pull_request` (same-repository pull requests and pushes) is v0.2, and forks and Dependabot need the `workflow_run` form in any case. The documentation says so plainly.
 
 ### Why not `liminal-hq/.github`
 
@@ -418,9 +441,9 @@ The shared `.github` repository holds CI images and a reusable packaging workflo
 
 ### The tool's own CI
 
-`.github/workflows/ci.yml` has one job per check. Today: `Markdown lint`, `Link check`, `Licence headers`, `Hero banner`, `Workflow lint` (actionlint) and `Workflow audit` (zizmor, blocking from day one). With the code, the PR that adds the crates uncomments and adapts: `Format` (`cargo fmt --all -- --check`), `Clippy` (`-D warnings`, all targets), `Tests` (`cargo nextest run --workspace --locked --profile ci`, uploading `rust-test-results`), `Goldens` (`pr-results render` over `tests/fixtures/`, diffed against `tests/golden/`), `Dependency policy` (`cargo deny check`), `Reproducible build` (builds the musl binaries twice and compares digests) and `Action smoke` (runs the composite action with `build: source` and `command: render`). Rust jobs run in the shared `ci-rust` image by digest, taken from the recommended pins of `liminal-hq/.github` at the time.
+`.github/workflows/ci.yml` has one job per check: `Markdown lint`, `Link check`, `Licence headers`, `Hero banner`, `Workflow lint` (actionlint, over the workflows and over the YAML in the documents), `Workflow audit` (zizmor, blocking from day one), `Format` (`cargo fmt --all -- --check`), `Clippy` (`-D warnings`, all targets), `Tests` (`cargo nextest run --workspace --locked --profile ci`, uploading `rust-test-results` and `event-file`), `Goldens` (every test that compares output with a golden file, which cannot be blessed under `CI`), `Dependency policy` (`cargo deny check`), `Action smoke` (runs the composite action with `build: source` for `validate-config` and `render`) and `Release pins` (`scripts/check-pins.sh`: the tag and digests in `action.yml` and `publish.yml` agree, a placeholder digest is allowed only while the version ends in `-dev`, and every action and image is pinned). `Reproducible build` (builds the musl binaries twice and compares digests) follows with the release. Rust jobs run in the shared `ci-rust` image by digest, taken from the recommended pins of `liminal-hq/.github` at the time.
 
-**Dogfood.** `publish-test-results.yml` in this repository uses the **latest release pinned by SHA**, never the pull request's own build, so a pull request cannot change the code that holds the write token.
+**Dogfood.** `publish-test-results.yml` in this repository is a `workflow_run` workflow with exactly the four permissions, which checks out the default branch with no credentials and runs `uses: ./` with `build: source`. Until the first release it therefore runs the reviewed source of the default branch, never the pull request's build, so a pull request cannot change the code that holds the write token; it is inert until the file is on the default branch. A follow-up after the v0.1.0 tag pins the **latest release by SHA**, as every adopter does ([D17](docs/decisions.md)). The `workflow_run` trigger carries an inline `# zizmor: ignore[dangerous-triggers]` with its reason.
 
 ### Release
 
@@ -446,13 +469,13 @@ If the build proves not reproducible, fall back to a two-commit release (tag, bu
 `tests/fixtures/`, real outputs trimmed and hostnames replaced:
 
 - `nextest/{pass,fail,flaky,retries-exhausted,panic-location}.xml`
-- `steps/{pass,step-fail,groups-split-a,groups-split-b,desk-job}.xml` and `steps/check-times.tsv`
+- `steps/{pass,step-fail,groups-split-a,groups-split-b,desk-job}.xml`
 - `vitest/{pass,fail-with-stack,describe-nesting}.xml`, `bun/{pass,fail-file-line,nested}.xml`, `jest-junit/default.xml`, `playwright/{shard-1-of-2,shard-2-of-2,attachments}.xml`, `python/{xmlrunner,pytest}.xml` and `generic/{gradle,gut}.xml`
 - `events/{workflow_run-pr,workflow_run-fork,workflow_run-push,uploaded-event-forged}.json`
 
 ### Goldens
 
-`tests/golden/<scenario>/{comment.md,check-<n>.md,annotations.txt}`, produced by the render crate's tests from scenarios written in Rust (one `truncated-<step>` for each step of the budget). `requests.json` joins them when `publish --dry-run` exists. `PR_RESULTS_BLESS=1 cargo nextest run` rewrites them, and CI fails on any difference. Goldens are reviewed as Markdown in the pull request diff.
+`tests/golden/<scenario>/{comment.md,check-<n>.md,annotations.txt}`, produced by the render crate's tests from scenarios written in Rust (one `truncated-<step>` for each step of the budget). `requests.json` is written by `publish --dry-run`. `PR_RESULTS_BLESS=1 cargo nextest run` rewrites them, and CI fails on any difference. Goldens are reviewed as Markdown in the pull request diff.
 
 ### Fork-safety and hostile-input tests
 
@@ -462,7 +485,7 @@ A manual workflow (`workflow_dispatch`, owner only) publishes the hostile fixtur
 
 ### Integration and end to end
 
-- `publish --dry-run` over each fixture set, asserting the request sequence (list artefacts, download, list pull requests, create check runs, annotations in batches of 50, list comments with pagination, update comment).
+- `publish` over `FakeForge` from each of `tests/fixtures/events/{workflow_run-pr,workflow_run-fork,workflow_run-push}.json` and the forged `uploaded-event-forged.json`, and `publish --dry-run`, asserting the request sequence (list artefacts, download, list pull requests, create check runs, annotations in batches of 50, list comments with pagination, update comment), the exit codes and the refusals.
 - A sandbox repository in `liminal-hq-labs` (private or public, the owner's choice) with a CI that uploads the fixtures and a publisher pinned to the pull request's build SHA, run manually: a same-repository pull request, a fork pull request and a Dependabot pull request.
 - The tool's own dogfood publisher on every pull request, pinned to the latest release.
 
@@ -499,3 +522,6 @@ Q5, Q8, Q10 and Q11 are answered in [docs/decisions.md](docs/decisions.md) (D38 
 - That the fork fallback (`pulls?head=owner:branch`) finds fork pull requests where the other two routes do not, and that `workflow_run.pull_requests[]` and `commits/{sha}/pulls` are empty for them.
 - The real TLS handshake to `api.github.com` and the real redirect target of an artefact download. The loopback tests prove where the token goes, not what GitHub answers.
 - GitHub Enterprise Server: the base accepts a path (`https://host/api/v3`), and nothing else was tried.
+- That any workflow here runs on GitHub: `action.yml`, `publish.yml`, `publish-test-results.yml` and the new `ci.yml` jobs are checked by actionlint, zizmor (also `--pedantic`) and a local test of their shell steps, and nothing else. In particular: `workflow_run` runs the file from the default branch only, so the dogfood publisher is inert until merged; `uses: ./` and `github.action_path` in a composite action; `rustup` and a pinned toolchain on the runner for `build: source`; the sparse checkout of `.github`; `actions/upload-artifact` inside the `ci-rust` container (it needs the runner's Node); the concurrency group expression in a reusable workflow; and that the caller's four permissions reach the called job.
+- That `toml` reports a line for every kind of mistake in a settings file. Spans were checked for the cases in the tests.
+- That the fixtures of the `workflow_run` event match a real payload. They are written by hand from GitHub's documentation with only the fields the tool reads.
