@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/licence-Apache--2.0%20OR%20MIT-3fb950" alt="Licence: Apache-2.0 OR MIT">
 </p>
 
-pr-results reads the test and check results your CI produces and posts them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It understands JUnit from nextest, vitest, bun, jest and Playwright as well as step reports from shell-script projects, and it is safe on pull requests from forks.
+pr-results will read the test and check results your CI produces and post them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It is planned to understand JUnit from nextest, vitest, bun, jest and Playwright as well as step reports from shell-script projects, and to be safe on pull requests from forks by design.
 
 > **Status:** experimental and **not built yet**. Today this repository holds the specification, the design decisions and the project's own checks. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
 
