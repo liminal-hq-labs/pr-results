@@ -10,12 +10,14 @@
 
 mod error;
 mod flavour;
+mod glob;
 mod junit;
 mod model;
 mod safe;
 mod trusted;
 
 pub use error::ParseError;
+pub use glob::{Glob, GlobError, MAX_GLOB_BYTES};
 pub use junit::{parse_junit, Limits};
 pub use model::{Attempt, Case, Flavour, Report, Status, Suite, Untrusted, REPORT_SCHEMA};
 pub use safe::{Safe, Source, DEFAULT_MAX_CHARS};
