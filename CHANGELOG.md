@@ -4,6 +4,20 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Added
+
+- The vitest, bun, jest-junit and Playwright readers were tuned against reports the reporters wrote for sample projects (decision D63): `tests/sample-projects`, the generator `scripts/gen-js-fixtures.sh` (pinned images, no network for the runs) and the `real-*.xml` fixtures with a model of each in `tests/models/`. `docs/inputs.md` records what each reporter writes, including that none of them records a test that failed and then passed.
+- `suite.path_prefix` is read: it is put in front of every path a report names, so annotations land on repository paths for a package below the repository root, for bun's working directory and for Playwright's `testDir`.
+- JavaScript stack frames give a failure its file and line: the first frame that is a repository path outside `node_modules`. An absolute or `file://` frame counts only when it ends with the case's own file.
+- Playwright's project (`hostname`) is part of a suite's identity and is shown in brackets after the spec, so one spec run in two projects stays two suites.
+- Extra `failure` or `error` elements in a case are attempts: vitest writes one for each attempt of a test that keeps failing.
+- `scripts/anonymize-junit.sh` and `anonymize_junit`, which rewrite a JUnit report so that it keeps its shape and none of its words, for sharing a private project's report as a fixture (`docs/anonymizing-reports.md`).
+- An ignored 5 200-case measurement of a vitest report.
+
+### Changed
+
+- bun's describe blocks read outermost first, jest-junit's repeated class name and leading space are dropped, a failure with no message (or bun's multi-line one) shows its first line, and Playwright is detected from the empty `id` and `name` on its root.
+
 ### Fixed
 
 - The tag check of `release.yml` marks the checkout as a safe directory for git, which the pinned `ci-rust` container needs because its user does not own the checkout, and reports a comparison git could not make apart from a commit that is not on the default branch. The first run on `v0.1.0` failed closed on this and published nothing. `scripts/test-release-checks.sh` runs the check in that container as another user, and the `Release pins` job runs it.

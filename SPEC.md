@@ -68,9 +68,9 @@ Liminal HQ products run their tests in several languages and report them in seve
 
 ### Should
 
-- **S1.** vitest, bun, jest-junit and Playwright JUnit flavours, with path mapping so annotations land on repository paths (v0.2).
-- **S2.** Annotations with file and line: from `file` and `line` attributes (bun, jest-junit), from Rust panic locations in failure text (`panicked at src/x.rs:12:5`), and from the first repository-relative frame of a JavaScript stack (v0.2).
-- **S3.** Flaky tests: passed after a retry in this run (nextest `flakyFailure`), listed in their own collapsed section (v0.2).
+- **S1.** vitest, bun, jest-junit and Playwright JUnit flavours, with path mapping (`path_prefix`) so annotations land on repository paths (v0.2, tuned against real output, decision D63).
+- **S2.** Annotations with file and line: from `file` and `line` attributes (bun, jest-junit), from Rust panic locations in failure text (`panicked at src/x.rs:12:5`), and from the first repository-relative frame of a JavaScript stack, outside `node_modules` (v0.2, D63).
+- **S3.** Flaky tests: passed after a retry in this run (nextest `flakyFailure`), listed in their own collapsed section (v0.2). Only nextest records such a retry: vitest, bun, jest-junit and Playwright write a test that failed and then passed as a plain pass (D63).
 - **S4.** Base-branch comparison: new failures, failures already on the base branch, tests added and removed, and suites that got slower beyond a threshold, from the results artefact of the latest completed CI run on the base branch (v0.3).
 - **S5.** An optional combined check run across all suites, for a single required status (v0.3).
 - **S6.** An optional table of every other check run on the commit, so the comment is the pull request's one summary (v0.3).
@@ -153,7 +153,7 @@ Every input becomes the normalized model, which is also the format of `pr-result
 | `steps-times` (could) | none | A `CHECK_TIMES` file of `start` and `end` lines |
 | `steps-json` (could) | none | The generic step JSON, schema `pr-results-steps/1` |
 
-With `flavour = "auto"`, detection picks by the root's `name` attribute (`nextest-run`, `vitest tests`, `bun test`), by `assertions` attributes (bun) and by `[[ATTACHMENT|` (Playwright), and falls back to `generic`.
+With `flavour = "auto"`, detection picks by the root's `name` attribute (`nextest-run`, `vitest tests`, `bun test`), by `assertions` attributes (bun), by an empty `name` beside an `id` on the root (Playwright) and by `[[ATTACHMENT|` (Playwright), and falls back to `generic`. Detection also knows `jest tests`; a jest-junit file with its own `suiteName` needs `flavour = "jest"`.
 
 The `workflow_run` event is trusted. The uploaded pull request event file (`event-file` artefact, `event.json`) is **untrusted**: a fork controls it, and it is used only as a tie-breaker for the pull request number. It is read only when more than one pull request has already passed the checks of the trusted event and the API (open, at the run's head commit, from the run's head repository, into this one), and only its `pull_request.number` (a whole number) is used, from an `event.json` of at most 1 MiB in an artefact of at most 2 MiB. If that number is one of the pull requests that passed, it chooses it; if not, it is ignored and up to five get the comment. It never adds a pull request, and is never checked for being true, only for being one of the candidates. Base-branch results are trusted only when the run's `event` is `push`, its `head_repository` is the base repository and its branch is the base branch. Configuration is trusted and is never read from the pull request head.
 
@@ -170,7 +170,7 @@ id      = suite key + "\u{1f}" + classname + "\u{1f}" + name, after whitespace n
 
 `detail` is capped at 16 KiB per case at parse time and `message` at 1 KiB, and names, class names and paths at 1 KiB. Suites with the same name across files merge, so a matrix of jobs that each upload part of a suite shows as one.
 
-As built in `pr-results-core`: a `Report` holds `Suite`s (`name`, `flavour`, `cases`, `time_ms`), and a `Case` holds `name`, `classname`, `file`, `line`, `status`, `time_ms`, `attempts`, `attempts_omitted` (how many retries past `max_attempts` were not kept, always shown when not zero), `message`, `detail`, and the captured `system_out` and `system_err`. Every string is an `Untrusted`, which cannot be formatted except through `Safe`. `id` is computed by `Case::identity` rather than stored. `schema`, `tool_version`, `key`, `display_name` and `source_files` belong to the serialized report and the settings layer, and arrive with them.
+As built in `pr-results-core`: a `Report` holds `Suite`s (`name`, `project`, `flavour`, `cases`, `time_ms`; `project` is Playwright's `hostname`, part of the merge key and shown in brackets after the name, and empty for every other flavour), and a `Case` holds `name`, `classname`, `file`, `line`, `status`, `time_ms`, `attempts`, `attempts_omitted` (how many retries past `max_attempts` were not kept, always shown when not zero), `message`, `detail`, and the captured `system_out` and `system_err`. Every string is an `Untrusted`, which cannot be formatted except through `Safe`. `id` is computed by `Case::identity` rather than stored. `schema`, `tool_version`, `key`, `display_name` and `source_files` belong to the serialized report and the settings layer, and arrive with them.
 
 ### The step-results contract
 
@@ -287,7 +287,7 @@ check = "Example Rust tests"
 artifact = "rust-test-results"
 files = ["**/junit.xml"]
 flavour = "nextest"
-path_prefix = ""                 # added to file paths for annotations, e.g. "apps/web/" for vitest
+path_prefix = ""                 # put in front of every path a report names, e.g. "apps/web/" for vitest
 ```
 
 | Setting | Default | Meaning |
@@ -307,7 +307,9 @@ path_prefix = ""                 # added to file paths for annotations, e.g. "ap
 | `baseline.slower_percent`, `baseline.slower_min_seconds` | `25`, `5` | When a suite or step counts as slower |
 | `limits.*` | as above | Download and parse limits |
 
-A setting for a later version is an error, not a setting that does nothing: `comment.mode` of `changes` or `failures`, `comment.other_checks = true`, `checks.per_suite = false`, a non-empty `checks.combined` (v0.3), and a non-empty `suite.path_prefix` (v0.2). The `[baseline]` keys are checked and have no effect until v0.3. `suite.format` must be `junit`. Numbers are limited: `max_failures` and `excerpt_lines` to 1000, `annotations.max_per_suite` to 500, `limits.max_files` to 10 000, `limits.max_file_bytes` to 256 MiB, `limits.max_cases` to a million and `limits.max_artifact_bytes` to a gibibyte. A title, a suite name and a check name are 1 to 100 printable characters, two suites may not share a check name, and there are at most 50 suites. The limits map to the downloads and the parser: `max_artifact_bytes` bounds the bytes downloaded for a run and the inflated bytes of an artefact, `max_files` the entries of an artefact, and `max_file_bytes` the inflated size of one file and the parser's input.
+`suite.path_prefix` is a relative path inside the repository, such as `apps/web/` (backslashes and `./` are tidied, and an absolute path, `..`, a drive letter, a URL or a control character is an error). It is put in front of every path the suite's reports name, whether it came from an attribute, a class name, a panic or a stack frame, because the JavaScript reporters write paths relative to where they ran (vitest's root, the directory `bun test` ran in, jest's root, Playwright's `testDir`). A frame's leading `..` climbs out of the prefix and never past the repository's root (`../src/x.js` with `e2e/` is `src/x.js`), and the result is checked again as a repository path. It applies to every flavour, nextest's panic paths included. The stack-frame rules are in [docs/inputs.md](docs/inputs.md#stack-frames).
+
+A setting for a later version is an error, not a setting that does nothing: `comment.mode` of `changes` or `failures`, `comment.other_checks = true`, `checks.per_suite = false`, and a non-empty `checks.combined` (v0.3). The `[baseline]` keys are checked and have no effect until v0.3. `suite.format` must be `junit`. Numbers are limited: `max_failures` and `excerpt_lines` to 1000, `annotations.max_per_suite` to 500, `limits.max_files` to 10 000, `limits.max_file_bytes` to 256 MiB, `limits.max_cases` to a million and `limits.max_artifact_bytes` to a gibibyte. A title, a suite name and a check name are 1 to 100 printable characters, two suites may not share a check name, and there are at most 50 suites. The limits map to the downloads and the parser: `max_artifact_bytes` bounds the bytes downloaded for a run and the inflated bytes of an artefact, `max_files` the entries of an artefact, and `max_file_bytes` the inflated size of one file and the parser's input.
 
 Defaults when there is no file: `title` is the repository name in title case, and suites are inferred from artefacts matching `*-test-results*`, one suite per artefact, named from the artefact (`rust-test-results` becomes "Rust tests", `frontend-test-results` becomes "Frontend tests"), with `flavour = "auto"` and `required = false`, and the check named `<title> <suite name>`. The part before `-test-results` names the suite, so `e2e-test-results-1` and `e2e-test-results-2` are one suite, "E2e tests", read from `e2e-test-results*`. Only artefact names of letters, digits, `.`, `_` and `-` are used, because whoever wrote the workflow chose them (a fork included) and they become check names, and at most 20 suites are inferred. The suites are inferred at publish time from the run's artefact list, so they depend on the run.
 
@@ -468,11 +470,11 @@ If the build proves not reproducible, fall back to a two-commit release (tag, bu
 
 ### Fixtures
 
-`tests/fixtures/`, real outputs trimmed and hostnames replaced:
+`tests/fixtures/`, hand-written from each reporter's format, plus `real-*.xml` written by the reporters for the sample projects in `tests/sample-projects` by `scripts/gen-js-fixtures.sh` (decision D63):
 
 - `nextest/{pass,fail,flaky,retries-exhausted,panic-location}.xml`
 - `steps/{pass,step-fail,groups-split-a,groups-split-b,desk-job}.xml`
-- `vitest/{pass,fail-with-stack,describe-nesting}.xml`, `bun/{pass,fail-file-line,nested}.xml`, `jest-junit/default.xml`, `playwright/{shard-1-of-2,shard-2-of-2,attachments}.xml`, `python/{xmlrunner,pytest}.xml` and `generic/{gradle,gut}.xml`
+- `vitest/{pass,fail-with-stack,describe-nesting}.xml`, `bun/{pass,fail-file-line,nested}.xml`, `jest-junit/default.xml`, `playwright/{shard-1-of-2,shard-2-of-2,attachments}.xml`, `{vitest,bun,jest,playwright}/real-*.xml`, `python/{xmlrunner,pytest}.xml` and `generic/{gradle,gut}.xml`
 - `events/{workflow_run-pr,workflow_run-fork,workflow_run-push,uploaded-event-forged}.json`
 
 ### Goldens

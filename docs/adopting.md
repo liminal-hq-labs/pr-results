@@ -122,7 +122,7 @@ To try the publisher itself, add `args: --dry-run out` to a publisher step in a 
 
 ## Recipes for each test runner
 
-Each recipe is the upload step to add to your CI and, where the defaults do not fit, the suite for `.github/pr-results.toml`. The publisher is the same for all of them. The JavaScript flavours (vitest, bun, jest, Playwright) are parsed in v0.1 and tuned in v0.2: results, failures and times show, and annotations at the file and line, path mapping and Playwright's retries follow in v0.2.
+Each recipe is the upload step to add to your CI and, where the defaults do not fit, the suite for `.github/pr-results.toml`. The publisher is the same for all of them. The JavaScript flavours (vitest, bun, jest, Playwright) were tuned against reports the reporters wrote ([docs/inputs.md](inputs.md#what-the-reporters-write)). Their paths are relative to where the tests ran, so a project below the repository root sets `path_prefix` on its suite (the directory, such as `apps/web/`), and an annotation lands on the right file. vitest, bun, jest-junit and Playwright do not write a test that failed and then passed as anything but a pass, so a retry never shows as flaky for them; only nextest does.
 
 ### Rust: nextest
 
@@ -237,6 +237,58 @@ artifact = "e2e-test-results-*"
 files = ["**/junit.xml"]
 flavour = "playwright"
 ```
+
+A monorepo package gets its own suite and the directory its paths are relative to:
+
+```toml
+# pr-results settings: a vitest package below the repository root.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+title = "Example checks"
+
+[[suite]]
+name = "Web tests"
+check = "Example web tests"
+artifact = "frontend-test-results"
+files = ["**/junit.xml"]
+flavour = "vitest"
+path_prefix = "apps/web/"
+```
+
+For Playwright, `path_prefix` is the repository path of `testDir`. A suite whose spec runs in several projects shows one line for each project, the project in brackets after the spec.
+
+### JavaScript: jest
+
+Add jest-junit with `addFileAttribute`, which gives each case its file (jest writes absolute paths in its stacks, and the file is what lets the line be used):
+
+```js
+// jest settings: write JUnit with the file of each test.
+//
+// (c) Copyright 2026 Liminal HQ, Scott Morris
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+module.exports = {
+	reporters: ['default', ['jest-junit', { outputDirectory: 'test-results', outputName: 'junit.xml', addFileAttribute: 'true' }]],
+};
+```
+
+```yaml
+- name: Run the tests
+  run: npx jest --ci
+
+- name: Upload JavaScript test results
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: js-test-results
+    path: test-results/junit.xml
+    if-no-files-found: ignore
+```
+
+If the `suiteName` option is set, add `flavour = "jest"` to the suite: the file no longer says which reporter wrote it.
 
 ### JavaScript: bun
 

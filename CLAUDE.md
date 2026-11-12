@@ -24,6 +24,8 @@ bash scripts/check-headers.sh
 bash scripts/check-pins.sh        # tag and digests agree, every action pinned
 bash scripts/check-doc-yaml.sh   # actionlint over the documents' YAML
 bash scripts/check-banner.sh     # add --shots /tmp/shots for review frames
+bash scripts/gen-js-fixtures.sh  # rewrite the real-*.xml JavaScript fixtures (Docker, network for installs)
+bash scripts/anonymize-junit.sh --salt S IN.xml OUT.xml   # share a private report: docs/anonymizing-reports.md
 docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.24.0 "**/*.md"
 # once there are crates:
 cargo nextest run --workspace --locked
