@@ -288,8 +288,8 @@ jobs:
           test -s "$SMOKE/checks/0.md"
           grep -q '^<!-- pr-results:1 key=ci ' "$SMOKE/comment.md"
           grep -qF '### Smoke: 1 failure in 1 suite' "$SMOKE/comment.md"
-          grep -qF '| `Smoke tests` | **Failed** | 4 | 1 | 1 | 0 | 2.2 s |' "$SMOKE/comment.md"
-          grep -qF '`junit::sums_suite_time`' "$SMOKE/comment.md"
+          grep -qF "| \`Smoke tests\` | **Failed** | 4 | 1 | 1 | 0 | 2.2 s |" "$SMOKE/comment.md"
+          grep -qF "\`junit::sums_suite_time\`" "$SMOKE/comment.md"
           grep -qF 'conclusion: failure' "$SMOKE/checks/0.md"
           grep -qF 'title: 1 failed, 4 passed, 1 skipped' "$SMOKE/checks/0.md"
 
@@ -318,13 +318,12 @@ jobs:
 
   # The release binary, built twice from two copies of the tree at different paths, must give the
   # same bytes. The digest it prints is the one the release pull request writes into `action.yml`
-  # and `publish.yml`, and `release.yml` rebuilds and compares at the tag. The aarch64 build is a
-  # trial for v0.2: it reports whether it reproduces and cannot fail the workflow.
+  # and `publish.yml`, and `release.yml` rebuilds and compares at the tag. Each target builds on a
+  # runner of its own architecture.
   reproducible:
     name: Reproducible build (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
@@ -332,11 +331,9 @@ jobs:
           - name: x86_64
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
-            experimental: false
           - name: aarch64
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
-            experimental: true
     container:
       image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
     steps:

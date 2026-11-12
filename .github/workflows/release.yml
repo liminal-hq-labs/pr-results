@@ -1,13 +1,13 @@
-# Builds the release binary from a version tag, checks it against the pinned digests and publishes it.
+# Builds the release binaries from a version tag, checks them against the pinned digests and publishes them.
 #
 # (c) Copyright 2026 Liminal HQ, Scott Morris
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 #
 # The tag is pushed by the owner after the release pull request has merged. The build job rebuilds
-# the binary in the same pinned image as the `Reproducible build` job and stops if its SHA-256 is
-# not the one `action.yml` and `publish.yml` already carry, because those pins are what consumers
-# trust. Only then does the release job attest the files and create the release. See
-# `docs/releasing.md`.
+# each binary, on a runner of its own architecture, in the same pinned image as the `Reproducible
+# build` job and stops if its SHA-256 is not the one `action.yml` and `publish.yml` already carry,
+# because those pins are what consumers trust. Only when both targets match does the release job
+# attest the files and create the release. See `docs/releasing.md`.
 
 name: Release
 
@@ -26,16 +26,25 @@ defaults:
   run:
     shell: bash
 
-env:
-  PR_RESULTS_TARGET: x86_64-unknown-linux-musl
-
 jobs:
   build:
-    name: Build and verify
-    runs-on: ubuntu-24.04
+    name: Build and verify (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     permissions:
       contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            pin: PR_RESULTS_SHA256_X86_64
+          - name: aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            pin: PR_RESULTS_SHA256_AARCH64
     container:
       image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
     steps:
@@ -66,7 +75,8 @@ jobs:
             echo "::error::The tagged commit is not on $DEFAULT_BRANCH."
             exit 1
           fi
-          bash scripts/check-pins.sh
+          # Offline: the container has no `gh`, and the `Release pins` job asks GitHub.
+          bash scripts/check-pins.sh --offline
 
       - name: Install the musl C compiler
         run: |
@@ -75,21 +85,24 @@ jobs:
 
       - name: Build
         env:
+          TARGET: ${{ matrix.target }}
           CARGO_TARGET_DIR: ${{ runner.temp }}/target
           OUT_DIR: ${{ runner.temp }}/release
-        run: bash scripts/build-release.sh "$PR_RESULTS_TARGET" "$OUT_DIR"
+        run: bash scripts/build-release.sh "$TARGET" "$OUT_DIR"
 
       # The digest the consumers pin must be the digest of what is about to be released. A mismatch
       # fails the job, and nothing is published.
       - name: Compare with the pinned digests
         env:
+          TARGET: ${{ matrix.target }}
+          PIN: ${{ matrix.pin }}
           OUT_DIR: ${{ runner.temp }}/release
         run: |
           set -euo pipefail
-          got="$(sha256sum "$OUT_DIR/pr-results-$PR_RESULTS_TARGET" | cut -d ' ' -f 1)"
+          got="$(sha256sum "$OUT_DIR/pr-results-$TARGET" | cut -d ' ' -f 1)"
           status=0
           for file in action.yml .github/workflows/publish.yml; do
-            want="$(sed -n 's/^[[:space:]]*PR_RESULTS_SHA256_X86_64:[[:space:]]*//p' "$file")"
+            want="$(sed -n "s/^[[:space:]]*${PIN}:[[:space:]]*//p" "$file")"
             if [ "$want" != "$got" ]; then
               echo "::error file=$file::The rebuilt binary is $got but $file pins '$want'."
               status=1
@@ -100,23 +113,17 @@ jobs:
           fi
           echo "The rebuilt binary matches the pins: $got"
 
-      - name: Write the checksums
+      - name: Run the binary
         env:
+          TARGET: ${{ matrix.target }}
           OUT_DIR: ${{ runner.temp }}/release
-        run: |
-          set -euo pipefail
-          cd "$OUT_DIR"
-          "./pr-results-$PR_RESULTS_TARGET" --version
-          sha256sum "pr-results-$PR_RESULTS_TARGET" > SHA256SUMS
-          cat SHA256SUMS
+        run: '"$OUT_DIR/pr-results-$TARGET" --version'
 
-      - name: Upload the release files
+      - name: Upload the binary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-files
-          path: |
-            ${{ runner.temp }}/release/pr-results-x86_64-unknown-linux-musl
-            ${{ runner.temp }}/release/SHA256SUMS
+          name: release-${{ matrix.name }}
+          path: ${{ runner.temp }}/release/pr-results-${{ matrix.target }}
           if-no-files-found: error
           retention-days: 14
 
@@ -130,16 +137,25 @@ jobs:
       id-token: write # sign the attestation with a short-lived certificate
       attestations: write # store the attestation for the repository
     steps:
-      - name: Download the release files
+      - name: Download the binaries
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-files
+          pattern: release-*
+          merge-multiple: true
           path: release
 
-      - name: Check the checksums
+      # One checksum file for both binaries. Each was compared with its pin in the build job.
+      - name: Write the checksums
         run: |
           set -euo pipefail
           cd release
+          binaries=(pr-results-*)
+          if [ "${#binaries[@]}" != 2 ]; then
+            echo "::error::Expected two binaries, found: ${binaries[*]}"
+            exit 1
+          fi
+          sha256sum pr-results-aarch64-unknown-linux-musl pr-results-x86_64-unknown-linux-musl > SHA256SUMS
+          cat SHA256SUMS
           sha256sum -c SHA256SUMS
 
       - name: Attest build provenance
@@ -161,5 +177,6 @@ jobs:
             --verify-tag \
             --title "$TAG" \
             --generate-notes \
-            "release/pr-results-$PR_RESULTS_TARGET" \
+            release/pr-results-aarch64-unknown-linux-musl \
+            release/pr-results-x86_64-unknown-linux-musl \
             release/SHA256SUMS

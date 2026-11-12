@@ -57,6 +57,7 @@ jobs:
         env:
           PR_RESULTS_TAG: v0.1.0
           PR_RESULTS_SHA256_X86_64: 9ecb200c50c68e93e06a7cf906867fd045a59dfdb0f0f0c0fa89c3cdb05909f7
+          PR_RESULTS_SHA256_AARCH64: 73d43820740196b90ce463e84473423de8af356ccd93c27d3e6620117bbcda1c
         run: |
           set -euo pipefail
           case "$(uname -m)" in
@@ -64,8 +65,12 @@ jobs:
               target=x86_64-unknown-linux-musl
               want="$PR_RESULTS_SHA256_X86_64"
               ;;
+            aarch64 | arm64)
+              target=aarch64-unknown-linux-musl
+              want="$PR_RESULTS_SHA256_AARCH64"
+              ;;
             *)
-              echo "::error::pr-results has no release binary for $(uname -m) yet (v0.1 ships x86_64 only)."
+              echo "::error::pr-results has no release binary for $(uname -m)."
               exit 1
               ;;
           esac

@@ -55,8 +55,7 @@ workflow=.github/workflows/publish.yml
 # ---- the tag and the digests ---------------------------------------------------------------
 
 # Every key must be in both files, so deleting a target's pin from both cannot pass.
-# v0.1 ships the x86_64 binary only, so there is no aarch64 key.
-expected_keys=(PR_RESULTS_TAG PR_RESULTS_SHA256_X86_64)
+expected_keys=(PR_RESULTS_TAG PR_RESULTS_SHA256_X86_64 PR_RESULTS_SHA256_AARCH64)
 
 pins() {
 	grep -E '^[[:space:]]*PR_RESULTS_(TAG|SHA256_[A-Z0-9_]+):[[:space:]]' "$1" | sed -E 's/^[[:space:]]+//' | sort || true

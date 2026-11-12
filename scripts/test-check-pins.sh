@@ -20,7 +20,7 @@ failures=0
 # request before its reproducible build) is judged with --unreleased, so the mutations test what
 # they say; a tree with a real digest is judged strictly.
 flags=(--offline)
-if grep -q 'PR_RESULTS_SHA256_X86_64: PLACEHOLDER' action.yml; then
+if grep -q 'PR_RESULTS_SHA256_[A-Z0-9_]*: PLACEHOLDER' action.yml; then
 	flags+=(--unreleased)
 fi
 
@@ -59,6 +59,11 @@ fi
 mutation 'sha256sum -c replaced by true (action)' action.yml 's/| sha256sum -c -$/| true/'
 mutation 'sha256sum -c replaced by true (workflow)' .github/workflows/publish.yml 's/| sha256sum -c -$/| true/'
 mutation 'x86_64 pin deleted from the action' action.yml '/PR_RESULTS_SHA256_X86_64:/d'
+mutation 'aarch64 pin deleted from the action' action.yml '/PR_RESULTS_SHA256_AARCH64:/d'
+mutation 'aarch64 pin deleted from the workflow' .github/workflows/publish.yml '/PR_RESULTS_SHA256_AARCH64:/d'
+mutation 'aarch64 digest differs between the copies' .github/workflows/publish.yml 's/\(PR_RESULTS_SHA256_AARCH64: .\{63\}\)./\10/'
+mutation 'aarch64 digest is the x86_64 one' action.yml 's/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: 9ecb200c50c68e93e06a7cf906867fd045a59dfdb0f0f0c0fa89c3cdb05909f7/'
+mutation 'aarch64 key renamed in the script of the action' action.yml 's/want="$PR_RESULTS_SHA256_AARCH64"/want="$PR_RESULTS_SHA256_X86_64"/'
 mutation 'tag pin deleted from the workflow' .github/workflows/publish.yml '/PR_RESULTS_TAG:/d'
 mutation 'digest regex check removed' action.yml 's/\^\[0-9a-f\]{64}\$/^.*$/'
 mutation 'https-only removed from curl' .github/workflows/publish.yml "s/--proto '=https' //"
@@ -98,6 +103,11 @@ placeholder='s/PR_RESULTS_SHA256_X86_64: .*/PR_RESULTS_SHA256_X86_64: PLACEHOLDE
 realdigest="s/PR_RESULTS_SHA256_X86_64: .*/PR_RESULTS_SHA256_X86_64: $real/"
 badtag='s/PR_RESULTS_TAG: .*/PR_RESULTS_TAG: v9.9.9/'
 nothex='s/PR_RESULTS_SHA256_X86_64: .*/PR_RESULTS_SHA256_X86_64: nothing/'
+aplaceholder='s/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: PLACEHOLDER/'
+anothex='s/PR_RESULTS_SHA256_AARCH64: .*/PR_RESULTS_SHA256_AARCH64: nothing/'
+verdict 'an aarch64 placeholder in a release version' reject "$aplaceholder"
+verdict 'an aarch64 placeholder with --unreleased' accept "$aplaceholder" --unreleased
+verdict 'an aarch64 digest that is not hex with --unreleased' reject "$anothex" --unreleased
 verdict 'a placeholder in a release version' reject "$placeholder"
 verdict 'a placeholder with --unreleased' accept "$placeholder" --unreleased
 verdict 'a real digest in a release version' accept "$realdigest"
