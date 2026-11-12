@@ -357,3 +357,19 @@ fn every_kept_attempt_is_charged() {
 		ParseError::TooMuchText { limit: 1726 }
 	);
 }
+
+#[test]
+fn debug_output_shows_a_size_and_never_the_text() {
+	let secret = Untrusted::new("@octocat token=hunter2 <script>");
+	let shown = format!("{secret:?}");
+	assert_eq!(shown, "Untrusted(31 bytes)");
+	let cut = Untrusted::capped("0123456789", 4);
+	assert_eq!(format!("{cut:?}"), "Untrusted(4 bytes, +6 omitted)");
+	// Anything that holds one prints the same way.
+	let suite = suite("hunter2", Flavour::Generic, &["@octocat"]);
+	let shown = format!("{suite:?}");
+	assert!(
+		!shown.contains("hunter2") && !shown.contains("octocat"),
+		"{shown}"
+	);
+}

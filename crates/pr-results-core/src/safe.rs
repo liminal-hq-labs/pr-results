@@ -362,7 +362,8 @@ impl Safe {
 	}
 
 	/// The message part of a workflow command such as `::error::message`: `%`, CR and LF are
-	/// escaped, as the runner expects.
+	/// escaped, as the runner expects. `@` and `#` are left alone on purpose: an annotation is not
+	/// Markdown, so nothing in it mentions anyone or links an issue.
 	pub fn workflow_data<S: Source + ?Sized>(source: &S, max_chars: usize) -> Self {
 		Self::workflow(source, max_chars, false)
 	}

@@ -23,6 +23,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - `Limits` gains `max_suites` (10,000) and `max_text_bytes` (64 MiB of kept text plus a fixed overhead per piece of text, case and attempt, so it bounds the report's memory and not only its bytes of text), each refused with an error that names the limit, and `max_bytes` also applies after invalid UTF-8 is replaced.
 - `Safe::text` also writes a hyphen between a letter or digit and a digit (`GH-123`) as the fullwidth U+FF0D, because a backslash escape is decoded before GitHub's reference filter.
 - `Safe::text` and `Safe::log_line` write `@` and `#` as the fullwidth U+FF20 and U+FF03 instead of HTML entities, which GitHub probably decodes before its mention filters run. This is not verified against GitHub.
+- `Debug` for `Untrusted` prints its size only, never the text.
 - Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
 
 There is no released version, action or binary yet, and the tool does not post anything.

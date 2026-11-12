@@ -103,7 +103,9 @@ impl TextBuf {
 
 impl fmt::Debug for Untrusted {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Untrusted({:?}", &*self.text)?;
+		// Only the size: raw report text must not reach a log or an assertion message through
+		// `{:?}`, which would bypass `Safe`.
+		write!(f, "Untrusted({} bytes", self.text.len())?;
 		if self.omitted > 0 {
 			write!(f, ", +{} omitted", self.omitted)?;
 		}
