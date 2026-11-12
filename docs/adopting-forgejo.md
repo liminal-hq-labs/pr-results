@@ -2,17 +2,27 @@
 
 Forgejo has no `workflow_run` trigger. A final job can download earlier jobs' result artefacts into a directory with one subdirectory per artefact and run `pr-results publish --from results --forge forgejo`. Run the job after all test jobs, including when tests fail, and keep it separate from the required CI status. Set `GITHUB_TOKEN` or `FORGEJO_TOKEN` to the job token; add no other secrets. Configure suites in `.forgejo/pr-results.toml`, or pass `--config` explicitly. The action can be pinned to a release commit and receives the same arguments through `args`.
 
-This mode accepts same-repository pull requests and pushes. A fork pull request is skipped, and `pull_request_target` is refused. Forgejo ignores workflow `permissions:`, so review the runner's token access and trust the code in jobs that have it. The publisher verifies the pull request before commenting, and writes commit statuses in place of check runs. A direct CLI probe against a disposable Forgejo instance with a personal-token bot account created and updated one comment and wrote success and failure statuses over HTTPS with a private CA. A Forgejo runner, its automatic job token and the full workflow have not been verified.
+This mode accepts same-repository pull requests and pushes. A fork pull request is skipped, and `pull_request_target` is refused. Forgejo ignores workflow `permissions:`, so review the runner's token access and trust the code in jobs that have it. The publisher verifies the pull request before commenting, and writes commit statuses in place of check runs. A direct CLI probe against a disposable Forgejo instance with a personal-token bot account created and updated one comment and wrote success and failure statuses over HTTPS with a private CA. A disposable Forgejo runner has also run a two-job workflow with its automatic job token, downloaded a result and published a status and comment.
 
 Build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results --locked pr-results` when a release binary does not fit the runner. In-job file collection requires Unix; Windows builds and paths have not been tested.
 
 ## A final results job
 
-After a release that includes in-job publishing, pin its action to the release commit. The following steps assume earlier jobs uploaded artefacts and the final job runs even if those jobs failed. Replace `<sha>` with the full release commit SHA. The download action is Forgejo's v4.1.4; use the matching upload action in the test jobs.
+After a release that includes in-job publishing, pin its action to the release commit. The following steps assume earlier jobs uploaded artefacts and the final job runs even if those jobs failed. Replace `<sha>` with the full release commit SHA. Forgejo's `v3-node20` artefact actions were verified against Forgejo 17; the v4.1.4 download action refused that server. Use the matching upload action in the test jobs:
+
+```yaml
+- name: Upload results
+  uses: https://code.forgejo.org/forgejo/upload-artifact@97a0fba1372883ab732affbe8f94b823f91727db # v3-node20
+  with:
+    name: tests-test-results
+    path: reports/
+```
+
+In the final job:
 
 ```yaml
 - name: Download results
-  uses: https://code.forgejo.org/forgejo/download-artifact@c850b930e6ba138125429b7e5c93fc707a7f8427 # v4.1.4
+  uses: https://code.forgejo.org/forgejo/download-artifact@7472b11854edc6c65b5924934f0904d64f5e1f38 # v3-node20
   with:
     path: results
 - name: Publish results
