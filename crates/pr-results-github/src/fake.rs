@@ -579,7 +579,16 @@ impl State {
 					.comments
 					.iter()
 					.filter(|c| c.pr == n)
-					.map(|c| json!({ "id": c.id, "body": c.body, "user": { "login": c.login } }))
+					.map(|c| {
+						json!({
+							"id": c.id, "body": c.body,
+							"created_at": "2026-11-02T14:40:00Z",
+							"user": {
+								"login": c.login,
+								"type": if c.login.ends_with("[bot]") { "Bot" } else { "User" },
+							},
+						})
+					})
 					.collect();
 				self.page(&path, &query, items, None)
 			}

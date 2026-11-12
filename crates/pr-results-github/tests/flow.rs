@@ -1213,3 +1213,57 @@ fn a_pull_request_from_another_head_repository_does_not_verify() {
 	assert!(report.notes.contains(&Note::NoPullRequest));
 	assert!(env.fake.comments(13).is_empty());
 }
+
+#[test]
+fn paging_comments_keeps_only_a_prefix_of_each_body() {
+	// One hundred pages of 64 KiB bodies: 6.4 MB on the wire, a few kilobytes held.
+	let env = env_with_results();
+	env.fake.set_page_size(1);
+	let big = "x".repeat(64 * 1024);
+	for i in 0..98 {
+		env.fake
+			.add_comment(7, "someone", &format!("comment {i}\n{big}"));
+	}
+	let marker = format!("<!-- pr-results:1 key=ci sha={SHA} run=1 -->\n{big}");
+	let ours = env.fake.add_comment(7, BOT, &marker);
+	let accents = "\u{e9}".repeat(1000);
+	env.fake.add_comment(7, "accented", &accents);
+	let listed = env.gh.comments(7).unwrap();
+	assert_eq!(listed.len(), 100);
+	let limit = pr_results_github::BODY_PREFIX_BYTES;
+	assert!(listed.iter().all(|c| c.body.len() <= limit));
+	let held: usize = listed.iter().map(|c| c.body.len()).sum();
+	assert!(held <= 100 * limit, "{held} bytes held");
+	let found = listed.iter().find(|c| c.id == ours).unwrap();
+	assert_eq!(
+		(found.login.as_str(), found.user_type.as_str()),
+		(BOT, "Bot")
+	);
+	assert_eq!(found.created_at, "2026-11-02T14:40:00Z");
+	assert!(found.body.starts_with("<!-- pr-results:1 key=ci"));
+	let accented = listed.iter().find(|c| c.login == "accented").unwrap();
+	assert_eq!(
+		accented.body.len(),
+		256,
+		"cut at a character boundary: 128 two-byte letters"
+	);
+	assert_eq!(accented.user_type, "User");
+
+	// The publisher still finds its comment by the marker in that prefix.
+	let report = env.publish();
+	assert_eq!(report.comments[0].action, CommentAction::Updated);
+	assert_eq!(report.comments[0].id, ours);
+}
+
+#[test]
+fn a_hundred_and_first_page_is_an_error() {
+	let env = env_with_results();
+	env.fake.set_page_size(1);
+	for i in 0..101 {
+		env.fake.add_comment(7, "someone", &format!("c{i}"));
+	}
+	assert!(matches!(
+		env.gh.comments(7),
+		Err(pr_results_github::ForgeError::Decode(_))
+	));
+}

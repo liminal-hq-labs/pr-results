@@ -55,11 +55,27 @@ pub struct Pull {
 	pub base_repo: Option<String>,
 }
 
+/// A comment as listed: its body is only the first [`BODY_PREFIX_BYTES`] bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comment {
 	pub id: u64,
 	pub login: String,
+	/// `User`, `Bot` and so on, as GitHub reports the account.
+	pub user_type: String,
+	pub created_at: String,
 	pub body: String,
+}
+
+/// How much of a comment's body is kept while listing.
+pub const BODY_PREFIX_BYTES: usize = 256;
+
+/// The first `BODY_PREFIX_BYTES` bytes of `s`, cut at a character boundary.
+fn prefix(s: &str) -> String {
+	let mut end = s.len().min(BODY_PREFIX_BYTES);
+	while !s.is_char_boundary(end) {
+		end -= 1;
+	}
+	s.get(..end).unwrap_or("").to_owned()
 }
 
 /// The paths in a commit's tree.
@@ -247,18 +263,23 @@ impl<F: Forge> GitHub<F> {
 	}
 
 	/// Every item of a list, following `Link` headers for at most 100 pages. `key` names the
-	/// array when the list is wrapped, as the artefacts are.
-	fn paged(
+	/// array when the list is wrapped, as the artefacts are. Each item is reduced by `keep` as its
+	/// page is read and the page is dropped, so what is held is what the caller asked to keep and
+	/// not a hundred pages of other people's text.
+	fn paged<T>(
 		&self,
 		first: ApiRequest,
 		key: Option<&str>,
 		op: &'static str,
-	) -> Result<Vec<Value>, ForgeError> {
+		keep: impl Fn(&Value) -> Option<T>,
+	) -> Result<Vec<T>, ForgeError> {
 		let mut items = Vec::new();
 		let mut req = first;
 		for _ in 0..MAX_PAGES {
 			let resp = Self::ok(self.request(&req)?, op)?;
+			let next = resp.next.clone();
 			let body = resp.json()?;
+			drop(resp);
 			let page = match key {
 				Some(k) => body.get(k),
 				None => Some(&body),
@@ -266,8 +287,8 @@ impl<F: Forge> GitHub<F> {
 			let page = page
 				.and_then(Value::as_array)
 				.ok_or(ForgeError::Decode("a list was expected"))?;
-			items.extend(page.iter().cloned());
-			match resp.next {
+			items.extend(page.iter().filter_map(&keep));
+			match next {
 				Some(next) => req = ApiRequest::get(next),
 				None => return Ok(items),
 			}
@@ -281,18 +302,14 @@ impl<F: Forge> GitHub<F> {
 		let req = self
 			.get(&format!("actions/runs/{}/artifacts", run.0))?
 			.with_query("per_page", PER_PAGE);
-		let items = self.paged(req, Some("artifacts"), "listing artefacts")?;
-		Ok(items
-			.iter()
-			.filter_map(|a| {
-				Some(Artifact {
-					id: a.get("id")?.as_u64()?,
-					name: a.get("name")?.as_str()?.to_owned(),
-					size_in_bytes: a.get("size_in_bytes")?.as_u64()?,
-					expired: a.get("expired").and_then(Value::as_bool).unwrap_or(false),
-				})
+		self.paged(req, Some("artifacts"), "listing artefacts", |a| {
+			Some(Artifact {
+				id: a.get("id")?.as_u64()?,
+				name: a.get("name")?.as_str()?.to_owned(),
+				size_in_bytes: a.get("size_in_bytes")?.as_u64()?,
+				expired: a.get("expired").and_then(Value::as_bool).unwrap_or(false),
 			})
-			.collect())
+		})
 	}
 
 	/// Downloads an artefact's zip: the API answers with a redirect to a presigned URL, which is
@@ -327,8 +344,7 @@ impl<F: Forge> GitHub<F> {
 		let req = self
 			.get(&format!("commits/{sha}/pulls", sha = sha.as_str()))?
 			.with_query("per_page", PER_PAGE);
-		let items = self.paged(req, None, "listing a commit's pull requests")?;
-		Ok(items.iter().filter_map(pull_from).collect())
+		self.paged(req, None, "listing a commit's pull requests", pull_from)
 	}
 
 	/// Open pull requests from `owner`'s branch `branch`, which is how a fork's pull request is
@@ -339,8 +355,7 @@ impl<F: Forge> GitHub<F> {
 			.with_query("head", format!("{owner}:{branch}"))
 			.with_query("state", "open")
 			.with_query("per_page", PER_PAGE);
-		let items = self.paged(req, None, "listing pull requests by head")?;
-		Ok(items.iter().filter_map(pull_from).collect())
+		self.paged(req, None, "listing pull requests by head", pull_from)
 	}
 
 	pub fn tree_paths(&self, sha: &Sha) -> Result<Tree, ForgeError> {
@@ -374,11 +389,12 @@ impl<F: Forge> GitHub<F> {
 			.with_query("check_name", spec.name)
 			.with_query("filter", "latest")
 			.with_query("per_page", PER_PAGE);
-		let items = self.paged(req, Some("check_runs"), "listing check runs")?;
-		Ok(items
-			.iter()
-			.find(|c| c.get("external_id").and_then(Value::as_str) == Some(spec.external_id))
-			.and_then(|c| c.get("id").and_then(Value::as_u64)))
+		let items = self.paged(req, Some("check_runs"), "listing check runs", |c| {
+			(c.get("external_id").and_then(Value::as_str) == Some(spec.external_id))
+				.then(|| c.get("id").and_then(Value::as_u64))
+				.flatten()
+		})?;
+		Ok(items.first().copied())
 	}
 
 	/// Creates or updates the check run for `spec.external_id` on the commit, with the first 50
@@ -490,25 +506,32 @@ impl<F: Forge> GitHub<F> {
 
 	// ---- the sticky comment ------------------------------------------------------------------
 
-	fn comments(&self, pr: u64) -> Result<Vec<Comment>, ForgeError> {
+	/// The comments of a pull request, each reduced to what finding ours needs: the id, the
+	/// login, the account type, when it was made and the first `BODY_PREFIX_BYTES` bytes of the
+	/// body (the marker is on its first line). A hundred pages of large comments is therefore a
+	/// few kilobytes, not hundreds of megabytes.
+	pub fn comments(&self, pr: u64) -> Result<Vec<Comment>, ForgeError> {
 		let req = self
 			.get(&format!("issues/{pr}/comments"))?
 			.with_query("per_page", PER_PAGE);
-		let items = self.paged(req, None, "listing comments")?;
-		Ok(items
-			.iter()
-			.filter_map(|c| {
-				Some(Comment {
-					id: c.get("id")?.as_u64()?,
-					login: c.get("user")?.get("login")?.as_str()?.to_owned(),
-					body: c
-						.get("body")
-						.and_then(Value::as_str)
-						.unwrap_or("")
-						.to_owned(),
-				})
+		self.paged(req, None, "listing comments", |c| {
+			let user = c.get("user")?;
+			Some(Comment {
+				id: c.get("id")?.as_u64()?,
+				login: user.get("login")?.as_str()?.to_owned(),
+				user_type: user
+					.get("type")
+					.and_then(Value::as_str)
+					.unwrap_or("")
+					.to_owned(),
+				created_at: c
+					.get("created_at")
+					.and_then(Value::as_str)
+					.unwrap_or("")
+					.to_owned(),
+				body: prefix(c.get("body").and_then(Value::as_str).unwrap_or("")),
 			})
-			.collect())
+		})
 	}
 
 	/// The bot's comments for `key`, oldest first. A user's comment that copies the marker is not
