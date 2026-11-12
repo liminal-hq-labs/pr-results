@@ -1,0 +1,249 @@
+<testsuites id="" name="" tests="10" failures="1" skipped="2" errors="2" time="2.302324">
+<!--
+  Real output of Playwright Test 1.65.0 on node 26.13.1, run by scripts/gen-js-fixtures.sh on the sample project
+  tests/sample-projects/playwright (variant: shard-2-of-2). Only the run timestamps are replaced
+  (with 2026-01-01T00:00:00.000Z); the host name is the container's fixed sample-host.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuite name="math.spec.js" timestamp="2026-01-01T00:00:00.000Z" hostname="firefox" tests="7" failures="1" skipped="2" time="0.016" errors="0">
+<testcase name="math › adds" classname="math.spec.js" time="0.002">
+</testcase>
+<testcase name="math › division › divides" classname="math.spec.js" time="0.002">
+</testcase>
+<testcase name="math › division › rounding › rounds down" classname="math.spec.js" time="0">
+</testcase>
+<testcase name="math › division › rounding › fails with a stack" classname="math.spec.js" time="0.01">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../test-results/math-math-division-rounding-fails-with-a-stack-firefox/error-context.md]]
+
+[[ATTACHMENT|../test-results/math-math-division-rounding-fails-with-a-stack-firefox-retry1/error-context.md]]
+
+[[ATTACHMENT|../test-results/math-math-division-rounding-fails-with-a-stack-firefox-retry2/error-context.md]]
+]]>
+</system-out>
+<failure message="expect(received).toBe(expected) // Object.is equality" type="expect.toBe">
+<![CDATA[  [firefox] › math.spec.js:24:4 › math › division › rounding › fails with a stack ──────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 5
+    Received: 4
+
+      24 | 			test('fails with a stack', async ({}, testInfo) => {
+      25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+    > 26 | 				expect(add(2, 2)).toBe(5);
+         | 				                  ^
+      27 | 			});
+      28 | 		});
+      29 | 	});
+        at /work/test/math.spec.js:26:23
+
+    attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+    a note for the report
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-firefox/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 5
+    Received: 4
+
+      24 | 			test('fails with a stack', async ({}, testInfo) => {
+      25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+    > 26 | 				expect(add(2, 2)).toBe(5);
+         | 				                  ^
+      27 | 			});
+      28 | 		});
+      29 | 	});
+        at /work/test/math.spec.js:26:23
+
+    attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+    a note for the report
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-firefox-retry1/error-context.md
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 5
+    Received: 4
+
+      24 | 			test('fails with a stack', async ({}, testInfo) => {
+      25 | 				await testInfo.attach('note', { body: 'a note for the report', contentType: 'text/plain' });
+    > 26 | 				expect(add(2, 2)).toBe(5);
+         | 				                  ^
+      27 | 			});
+      28 | 		});
+      29 | 	});
+        at /work/test/math.spec.js:26:23
+
+    attachment #1: note (text/plain) ───────────────────────────────────────────────────────────────
+    a note for the report
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../test-results/math-math-division-rounding-fails-with-a-stack-firefox-retry2/error-context.md
+]]>
+</failure>
+</testcase>
+<testcase name="math › is skipped" classname="math.spec.js">
+<properties>
+<property name="skip" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="math › is still to do" classname="math.spec.js">
+<properties>
+<property name="fixme" value="">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+<testcase name="works outside any describe" classname="math.spec.js" time="0.002">
+</testcase>
+</testsuite>
+<testsuite name="sub/retry.spec.js" timestamp="2026-01-01T00:00:00.000Z" hostname="firefox" tests="3" failures="0" skipped="0" time="0.01" errors="2">
+<testcase name="retries › passes on the second try" classname="sub/retry.spec.js" time="0.003">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../test-results/sub-retry-retries-passes-on-the-second-try-firefox/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="retries › never passes" classname="sub/retry.spec.js" time="0.004">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../test-results/sub-retry-retries-never-passes-firefox/error-context.md]]
+
+[[ATTACHMENT|../test-results/sub-retry-retries-never-passes-firefox-retry1/error-context.md]]
+
+[[ATTACHMENT|../test-results/sub-retry-retries-never-passes-firefox-retry2/error-context.md]]
+]]>
+</system-out>
+<error message="always broken" type="Error">
+<![CDATA[  [firefox] › sub/retry.spec.js:14:2 › retries › never passes ──────────────────────────────────────
+
+    Error: always broken
+
+      13 |
+      14 | 	test('never passes', () => {
+    > 15 | 		throw new Error('always broken');
+         | 		      ^
+      16 | 	});
+      17 |
+      18 | 	test('throws from the source', () => {
+        at /work/test/sub/retry.spec.js:15:9
+
+    Error Context: ../test-results/sub-retry-retries-never-passes-firefox/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: always broken
+
+      13 |
+      14 | 	test('never passes', () => {
+    > 15 | 		throw new Error('always broken');
+         | 		      ^
+      16 | 	});
+      17 |
+      18 | 	test('throws from the source', () => {
+        at /work/test/sub/retry.spec.js:15:9
+
+    Error Context: ../test-results/sub-retry-retries-never-passes-firefox-retry1/error-context.md
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: always broken
+
+      13 |
+      14 | 	test('never passes', () => {
+    > 15 | 		throw new Error('always broken');
+         | 		      ^
+      16 | 	});
+      17 |
+      18 | 	test('throws from the source', () => {
+        at /work/test/sub/retry.spec.js:15:9
+
+    Error Context: ../test-results/sub-retry-retries-never-passes-firefox-retry2/error-context.md
+]]>
+</error>
+</testcase>
+<testcase name="retries › throws from the source" classname="sub/retry.spec.js" time="0.003">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../test-results/sub-retry-retries-throws-from-the-source-firefox/error-context.md]]
+
+[[ATTACHMENT|../test-results/sub-retry-retries-throws-from-the-source-firefox-retry1/error-context.md]]
+
+[[ATTACHMENT|../test-results/sub-retry-retries-throws-from-the-source-firefox-retry2/error-context.md]]
+]]>
+</system-out>
+<error message="division by zero" type="RangeError">
+<![CDATA[  [firefox] › sub/retry.spec.js:18:2 › retries › throws from the source ────────────────────────────
+
+    RangeError: division by zero
+
+       at ../src/math.js:12
+
+      10 | export function divide(a, b) {
+      11 | 	if (b === 0) {
+    > 12 | 		throw new RangeError('division by zero');
+         | 		      ^
+      13 | 	}
+      14 | 	return a / b;
+      15 | }
+        at divide (/work/src/math.js:12:9)
+        at /work/test/sub/retry.spec.js:19:10
+
+    Error Context: ../test-results/sub-retry-retries-throws-from-the-source-firefox/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    RangeError: division by zero
+
+       at ../src/math.js:12
+
+      10 | export function divide(a, b) {
+      11 | 	if (b === 0) {
+    > 12 | 		throw new RangeError('division by zero');
+         | 		      ^
+      13 | 	}
+      14 | 	return a / b;
+      15 | }
+        at divide (/work/src/math.js:12:9)
+        at /work/test/sub/retry.spec.js:19:10
+
+    Error Context: ../test-results/sub-retry-retries-throws-from-the-source-firefox-retry1/error-context.md
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    RangeError: division by zero
+
+       at ../src/math.js:12
+
+      10 | export function divide(a, b) {
+      11 | 	if (b === 0) {
+    > 12 | 		throw new RangeError('division by zero');
+         | 		      ^
+      13 | 	}
+      14 | 	return a / b;
+      15 | }
+        at divide (/work/src/math.js:12:9)
+        at /work/test/sub/retry.spec.js:19:10
+
+    Error Context: ../test-results/sub-retry-retries-throws-from-the-source-firefox-retry2/error-context.md
+]]>
+</error>
+</testcase>
+</testsuite>
+</testsuites>

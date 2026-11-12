@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Real output of jest 30.5.2 with jest-junit 17.0.0 on node 22.23.5, run by scripts/gen-js-fixtures.sh on the sample project
+  tests/sample-projects/jest (variant: templates). Only the run timestamps are replaced
+  (with 2026-01-01T00:00:00.000Z); the host name is the container's fixed sample-host.
+
+  (c) Copyright 2026 Liminal HQ, Scott Morris
+  SPDX-License-Identifier: Apache-2.0 OR MIT
+-->
+<testsuites name="sample jest" tests="10" failures="3" errors="0" time="0.288">
+  <testsuite name="math" errors="0" failures="1" skipped="1" timestamp="2026-01-01T00:00:00.000Z" time="0.125" tests="7">
+    <testcase classname="test/math.test.js math" name="adds" time="0.002" file="test/math.test.js">
+    </testcase>
+    <testcase classname="test/math.test.js math division" name="divides" time="0" file="test/math.test.js">
+    </testcase>
+    <testcase classname="test/math.test.js math division" name="rejects zero" time="0.002" file="test/math.test.js">
+    </testcase>
+    <testcase classname="test/math.test.js math division rounding" name="rounds down" time="0" file="test/math.test.js">
+    </testcase>
+    <testcase classname="test/math.test.js math division rounding" name="fails with a stack" time="0.001" file="test/math.test.js">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: 5
+Received: 4
+    at Object.toBe (/work/test/math.test.js:28:23)
+    at Promise.finally.completed (/work/node_modules/jest-circus/build/jestAdapterInit.js:1834:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (/work/node_modules/jest-circus/build/jestAdapterInit.js:1774:10)
+    at _callCircusTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:1167:40)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at _runTestInContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:1103:3)
+    at runTestWithContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:996:5)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1008:11)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at run (/work/node_modules/jest-circus/build/jestAdapterInit.js:789:3)
+    at runAndTransformResultsToJestFormat (/work/node_modules/jest-circus/build/jestAdapterInit.js:2300:21)
+    at jestAdapter (/work/node_modules/jest-circus/build/runner.js:111:19)
+    at runTestInternal (/work/node_modules/jest-runner/build/testWorker.js:247:16)
+    at runTest (/work/node_modules/jest-runner/build/testWorker.js:315:7)
+    at Object.worker (/work/node_modules/jest-runner/build/testWorker.js:479:12)</failure>
+    </testcase>
+    <testcase classname="test/math.test.js math" name="is skipped" time="0" file="test/math.test.js">
+      <skipped/>
+    </testcase>
+    <testcase classname="test/math.test.js math" name="is still to do" time="0" file="test/math.test.js">
+    </testcase>
+    <testcase classname="test/math.test.js " name="works outside any describe" time="0" file="test/math.test.js">
+    </testcase>
+  </testsuite>
+  <testsuite name="retries" errors="0" failures="2" skipped="0" timestamp="2026-01-01T00:00:00.000Z" time="0.127" tests="3">
+    <testcase classname="test/sub/retry.test.js retries" name="passes on the second try" time="0.001" file="test/sub/retry.test.js">
+    </testcase>
+    <testcase classname="test/sub/retry.test.js retries" name="never passes" time="0" file="test/sub/retry.test.js">
+      <failure>Error: always broken
+    at Object.&lt;anonymous&gt; (/work/test/sub/retry.test.js:22:9)
+    at Promise.finally.completed (/work/node_modules/jest-circus/build/jestAdapterInit.js:1834:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (/work/node_modules/jest-circus/build/jestAdapterInit.js:1774:10)
+    at _callCircusTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:1167:40)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at _runTestInContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:1103:3)
+    at rerunTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:977:7)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1033:5)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at run (/work/node_modules/jest-circus/build/jestAdapterInit.js:789:3)
+    at runAndTransformResultsToJestFormat (/work/node_modules/jest-circus/build/jestAdapterInit.js:2300:21)
+    at jestAdapter (/work/node_modules/jest-circus/build/runner.js:111:19)
+    at runTestInternal (/work/node_modules/jest-runner/build/testWorker.js:247:16)
+    at runTest (/work/node_modules/jest-runner/build/testWorker.js:315:7)
+    at Object.worker (/work/node_modules/jest-runner/build/testWorker.js:479:12)</failure>
+    </testcase>
+    <testcase classname="test/sub/retry.test.js retries" name="throws from the source" time="0" file="test/sub/retry.test.js">
+      <failure>RangeError: division by zero
+    at divide (/work/src/math.js:12:9)
+    at Object.divide (/work/test/sub/retry.test.js:26:10)
+    at Promise.finally.completed (/work/node_modules/jest-circus/build/jestAdapterInit.js:1834:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (/work/node_modules/jest-circus/build/jestAdapterInit.js:1774:10)
+    at _callCircusTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:1167:40)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at _runTestInContext (/work/node_modules/jest-circus/build/jestAdapterInit.js:1103:3)
+    at rerunTest (/work/node_modules/jest-circus/build/jestAdapterInit.js:977:7)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1033:5)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at _runTestsForDescribeBlockOnce (/work/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+    at _runTestsForDescribeBlock (/work/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at run (/work/node_modules/jest-circus/build/jestAdapterInit.js:789:3)
+    at runAndTransformResultsToJestFormat (/work/node_modules/jest-circus/build/jestAdapterInit.js:2300:21)
+    at jestAdapter (/work/node_modules/jest-circus/build/runner.js:111:19)
+    at runTestInternal (/work/node_modules/jest-runner/build/testWorker.js:247:16)
+    at runTest (/work/node_modules/jest-runner/build/testWorker.js:315:7)
+    at Object.worker (/work/node_modules/jest-runner/build/testWorker.js:479:12)</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
