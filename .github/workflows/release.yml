@@ -1,0 +1,165 @@
+# Builds the release binary from a version tag, checks it against the pinned digests and publishes it.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+#
+# The tag is pushed by the owner after the release pull request has merged. The build job rebuilds
+# the binary in the same pinned image as the `Reproducible build` job and stops if its SHA-256 is
+# not the one `action.yml` and `publish.yml` already carry, because those pins are what consumers
+# trust. Only then does the release job attest the files and create the release. See
+# `docs/releasing.md`.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PR_RESULTS_TARGET: x86_64-unknown-linux-musl
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # every branch, to see that the tag is on the default branch
+          persist-credentials: false
+
+      # A release comes from reviewed code: the tag must be a plain version and its commit must be
+      # on the default branch.
+      - name: Check the tag
+        env:
+          TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The tag $TAG is not a plain version such as v0.1.0."
+            exit 1
+          fi
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::The tag is $TAG but Cargo.toml says $version."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"; then
+            echo "::error::The tagged commit is not on $DEFAULT_BRANCH."
+            exit 1
+          fi
+          bash scripts/check-pins.sh
+
+      - name: Install the musl C compiler
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends musl-tools
+
+      - name: Build
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target
+          OUT_DIR: ${{ runner.temp }}/release
+        run: bash scripts/build-release.sh "$PR_RESULTS_TARGET" "$OUT_DIR"
+
+      # The digest the consumers pin must be the digest of what is about to be released. A mismatch
+      # fails the job, and nothing is published.
+      - name: Compare with the pinned digests
+        env:
+          OUT_DIR: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          got="$(sha256sum "$OUT_DIR/pr-results-$PR_RESULTS_TARGET" | cut -d ' ' -f 1)"
+          status=0
+          for file in action.yml .github/workflows/publish.yml; do
+            want="$(sed -n 's/^[[:space:]]*PR_RESULTS_SHA256_X86_64:[[:space:]]*//p' "$file")"
+            if [ "$want" != "$got" ]; then
+              echo "::error file=$file::The rebuilt binary is $got but $file pins '$want'."
+              status=1
+            fi
+          done
+          if [ "$status" != 0 ]; then
+            exit 1
+          fi
+          echo "The rebuilt binary matches the pins: $got"
+
+      - name: Write the checksums
+        env:
+          OUT_DIR: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          cd "$OUT_DIR"
+          "./pr-results-$PR_RESULTS_TARGET" --version
+          sha256sum "pr-results-$PR_RESULTS_TARGET" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload the release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          path: |
+            ${{ runner.temp }}/release/pr-results-x86_64-unknown-linux-musl
+            ${{ runner.temp }}/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Attest and publish
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release and upload its files
+      id-token: write # sign the attestation with a short-lived certificate
+      attestations: write # store the attestation for the repository
+    steps:
+      - name: Download the release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: release
+
+      - name: Check the checksums
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum -c SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: release/SHA256SUMS
+
+      # The notes come from the pull requests since the previous tag, grouped by the categories in
+      # `.github/release.yml`.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --verify-tag \
+            --title "$TAG" \
+            --generate-notes \
+            "release/pr-results-$PR_RESULTS_TARGET" \
+            release/SHA256SUMS
