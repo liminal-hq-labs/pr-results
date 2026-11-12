@@ -1,6 +1,6 @@
 # Adopting pr-results
 
-> **Planned.** `pr-results` is not released yet: there is no action, reusable workflow or binary to pin. This page describes the intended setup so the CI of a product can be prepared now. The behaviour is specified in [SPEC.md](../SPEC.md).
+> **Planned.** `pr-results` is not released yet: there is no action, reusable workflow or binary to pin. This page describes the intended setup so the CI of a product can be prepared now. The publisher exists as a library and is tested against an in-memory GitHub, but the command line does not call it yet. The behaviour is specified in [SPEC.md](../SPEC.md).
 
 The publisher runs after your CI finishes, in a `workflow_run` workflow, so it works for pull requests from forks and from Dependabot, where a `pull_request` job's token is read-only. Your CI only needs to upload the results as artefacts.
 
@@ -91,6 +91,16 @@ pr-results render target/nextest/ci/junit.xml --out out/
 ```
 
 `pr-results publish --dry-run DIR` runs the whole flow without writing and saves the would-be API requests in `DIR`.
+
+## What the publisher does with a run
+
+It lists the run's artefacts, downloads the ones your suites name (an expired artefact, one over the download limit and one it will not read are skipped with a line in the log), and writes a check run per suite on the commit. Then it finds the pull request and writes the comment.
+
+- **Finding the pull request.** It never takes the number from the uploaded `event-file` on its own. It re-reads the pull requests that GitHub names for the run, or lists the commit's pull requests, or, for a fork, the open pull requests from that fork's branch, and keeps those that are open, at this run's commit, from this run's repository and into yours. When more than one verifies, the number in `event.json` chooses among them; if it chooses none, the comment goes on each, up to five, and the log says so.
+- **A push gets check runs and no comment.** A run that was cancelled or skipped gets nothing.
+- **One comment, kept in place.** The comment is found by its hidden first line and by its author, `github-actions[bot]`, so a user's comment that copies the marker is ignored. A re-run updates it, a late run for the same commit never overwrites a later one, and a second comment left by two runs at once is deleted.
+- **When something is refused.** The check runs are written first. If GitHub refuses the comment (a read-only token, a locked conversation), the checks stay posted and the publisher exits non-zero so the failure is visible. A result too large for GitHub is written again in a shorter form and the log says so. An annotation on a file that is not in the commit is left out, and a batch GitHub refuses is left out and counted, not retried into a failure.
+- **What the log shows.** Counts and fixed phrases, and the title of a section; never a test name, a message or a header.
 
 ## What the comment looks like
 

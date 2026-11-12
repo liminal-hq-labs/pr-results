@@ -10,7 +10,7 @@
 
 pr-results will read the test and check results your CI produces and post them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It is planned to understand JUnit from nextest, vitest, bun, jest and Playwright as well as step reports from shell-script projects, and to be safe on pull requests from forks by design.
 
-> **Status:** experimental and **barely built**. The data model, the escaping type, the JUnit parsers and the renderer that writes the comment, check runs and annotations exist and are tested, but the tool reads nothing from GitHub and **posts nothing**. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
+> **Status:** experimental and **barely built**. The data model, the escaping type, the JUnit parsers, the renderer that writes the comment, check runs and annotations, and the GitHub client and publish flow exist and are tested against an in-memory GitHub, but the command line does not call them, nothing has talked to the real API, and the tool **posts nothing**. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
 
 ## What it's for
 
@@ -22,7 +22,7 @@ pr-results will read the test and check results your CI produces and post them t
 
 ## What the comment will look like
 
-This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The renderer exists, but the tool does not post it yet.
+This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The renderer and the publish flow exist, but the command line does not post it yet.
 
 > ### Example checks: 1 failure in 2 suites
 >

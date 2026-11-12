@@ -20,6 +20,11 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - Goldens for 20 scenarios in `tests/golden/` (`PR_RESULTS_BLESS=1` rewrites them) with an inert check on each, budget tests at 2 000, 10 000 and 60 000 characters, and tests that the source never joins fragments except through `cat` and spells nothing the American way.
 - The `mention_probe` example, which writes the Markdown that tests whether GitHub turns names into mentions or links, for the sandbox test of decision Q9.
 - A `steps/desk-job.xml` fixture: Desk's one suite per job, with the group in the class name. The steps reader accepts a suite per group or per job.
+- The `pr-results-github` crate: the `Forge` trait (the only way to the network), `UreqForge` on `ureq` with `rustls` and `ring`, `FakeForge`, an in-memory GitHub that follows the REST documentation and imposes GitHub's size limits, and `DryRun`, which keeps the writes it would have made. `GitHub<F>` reads artefacts, pull requests and the commit's tree and writes check runs (found by `external_id`, annotations 50 to a request) and the sticky comment (found by marker and author, duplicates removed so concurrent runs converge), and `publish` runs the whole flow with the pull request verified from the trusted event, retries with backoff, `retry-after` and rate limits honoured, no blind POST retries, and a minimal form retried once on a 422.
+- A zip reader of our own on `miniz_oxide` for artefacts: central directory only, stored and deflated entries, every offset checked, CRC-32 verified, and zip64, encryption, split archives, other methods, hostile names, links, devices, bombs and lying headers refused. A real artefact written by `actions/upload-artifact` is read in a test.
+- `Glob` in `pr-results-core` (`*`, `**` and `?`), for artefact names and file paths.
+- `pr_results_render::check_with_paths`, which leaves out annotations for paths the commit's tree lacks.
+- New dependencies, recorded with licences, crate count and binary size in decision D43: `ureq` `=3.5.1` (`rustls` with `ring`, no `aws-lc`), `serde_json` `=1.0.154` and `miniz_oxide` `=0.9.1`. `deny.toml` allows ISC, BSD-3-Clause and CDLA-Permissive-2.0 for the crates that need them.
 
 ### Changed
 
@@ -33,4 +38,4 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - `Debug` for `Untrusted` prints its size only, never the text.
 - Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
 
-There is no released version, action or binary yet, and the tool does not post anything. Whether GitHub turns the fullwidth forms into mentions has not been tested (decision Q9).
+There is no released version, action or binary yet, and the command line does not post anything: the publisher exists as a library, tested against an in-memory GitHub and loopback servers, and has not talked to the real API. Whether GitHub turns the fullwidth forms into mentions has not been tested (decision Q9).
