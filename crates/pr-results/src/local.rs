@@ -15,7 +15,7 @@ pub(crate) type LocalFile = (String, String, Vec<u8>);
 /// Open every component relative to an already opened directory, without following links.
 #[cfg(unix)]
 pub(crate) fn files(root: &Path, plan: &Plan) -> Result<(Vec<LocalFile>, usize), CliError> {
-	use rustix::fs::{openat, Dir, Mode, OFlags};
+	use rustix::fs::{openat, statat, AtFlags, Dir, FileType, Mode, OFlags};
 	let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK;
 	let root = open_root(root, flags)?;
 	let root_dir =
@@ -47,6 +47,15 @@ pub(crate) fn files(root: &Path, plan: &Plan) -> Result<(Vec<LocalFile>, usize),
 		let fd = dir
 			.fd()
 			.map_err(|_| CliError::usage("an input directory cannot be read"))?;
+		let observed = statat(fd, entry.file_name(), AtFlags::SYMLINK_NOFOLLOW)
+			.map_err(|_| CliError::usage("an input entry cannot be inspected"))?;
+		if !matches!(
+			FileType::from_raw_mode(observed.st_mode),
+			FileType::RegularFile | FileType::Directory
+		) {
+			skipped += 1;
+			continue;
+		}
 		let file = match openat(fd, entry.file_name(), flags, Mode::empty()) {
 			Ok(fd) => std::fs::File::from(fd),
 			Err(rustix::io::Errno::LOOP) => {
@@ -301,5 +310,29 @@ mod tests {
 		let result = files(&root, &plan);
 		std::fs::remove_dir_all(root).unwrap();
 		assert_eq!(result.unwrap().0.len(), 80);
+	}
+	#[cfg(unix)]
+	#[test]
+	fn sockets_and_fifos_are_skipped_without_opening() {
+		use std::os::unix::net::UnixListener;
+		let root =
+			std::env::temp_dir().join(format!("pr-results-socket-test-{}", std::process::id()));
+		let artifact = root.join("suite");
+		std::fs::create_dir_all(&artifact).unwrap();
+		let socket = UnixListener::bind(artifact.join("socket")).unwrap();
+		rustix::fs::mkfifoat(
+			rustix::fs::CWD,
+			artifact.join("fifo"),
+			rustix::fs::Mode::from_raw_mode(0o600),
+		)
+		.unwrap();
+		std::fs::write(artifact.join("test.xml"), b"<testsuite/>").unwrap();
+		let plan = Plan::new("App", CommentKey::parse("ci").unwrap(), vec![], "test");
+		let result = files(&root, &plan);
+		drop(socket);
+		std::fs::remove_dir_all(root).unwrap();
+		let (files, skipped) = result.unwrap();
+		assert_eq!(files.len(), 1);
+		assert_eq!(skipped, 2);
 	}
 }
