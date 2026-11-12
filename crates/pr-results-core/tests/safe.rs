@@ -62,6 +62,7 @@ fn assert_inert(out: &str, input: &str) {
 		);
 	}
 	assert_no_bare_mention_marks(out, input);
+	assert_no_reference_hyphen(out, input);
 	for needle in ["::", "://", "](", "![", "www."] {
 		assert!(
 			!out.contains(needle),
@@ -88,6 +89,27 @@ fn assert_no_bare_mention_marks(out: &str, input: &str) {
 		!stripped.contains('@') && !stripped.contains('#'),
 		"bare @ or # in {out:?} from {input:?}"
 	);
+}
+
+/// A hyphen between a letter or digit and a digit is how `GH-123` and `ABC-123` link. The check
+/// looks through a backslash, because the renderer has decoded it before it looks for references.
+fn assert_no_reference_hyphen(out: &str, input: &str) {
+	let chars: Vec<char> = out.chars().collect();
+	for (i, &c) in chars.iter().enumerate() {
+		if c != '-' {
+			continue;
+		}
+		let before = match i.checked_sub(1).map(|j| chars[j]) {
+			Some('\\') => i.checked_sub(2).map(|j| chars[j]),
+			other => other,
+		};
+		let after = chars.get(i + 1).copied();
+		assert!(
+			!(before.is_some_and(char::is_alphanumeric)
+				&& after.is_some_and(|a| a.is_ascii_digit())),
+			"reference-like hyphen in {out:?} from {input:?}"
+		);
+	}
 }
 
 fn strip_numeric_entities(s: &str) -> String {
@@ -118,7 +140,10 @@ fn text_escapes_each_class() {
 	assert_eq!(Safe::text("fix #12").as_str(), "fix \u{ff03}12");
 	assert_eq!(Safe::text("@org/team").as_str(), "\u{ff20}org/team");
 	assert_eq!(Safe::text("org/repo#123").as_str(), "org/repo\u{ff03}123");
-	assert_eq!(Safe::text("GH-1 \u{ff20}x").as_str(), "GH\\-1 \u{ff20}x");
+	assert_eq!(
+		Safe::text("GH-1 \u{ff20}x").as_str(),
+		"GH\u{ff0d}1 \u{ff20}x"
+	);
 	assert_eq!(
 		Safe::text("crate::module::test").as_str(),
 		"crate:&#58;module:&#58;test"
@@ -519,4 +544,20 @@ fn code_span_is_cut_and_says_so() {
 		Safe::code_span(&capped, 100).as_str(),
 		"`abc` \u{2026} (3 more characters omitted)"
 	);
+}
+
+#[test]
+fn issue_style_references_are_broken_with_a_fullwidth_hyphen() {
+	for (input, want) in [
+		("GH-123", "GH\u{ff0d}123"),
+		("see ABC-7.", "see ABC\u{ff0d}7\\."),
+		("x9-1", "x9\u{ff0d}1"),
+		("a-b", "a\\-b"),
+		("1-a", "1\\-a"),
+		("--1", "\\-\\-1"),
+		("a--1", "a\\-\\-1"),
+		("-1", "\\-1"),
+	] {
+		assert_eq!(Safe::text(input).as_str(), want, "{input:?}");
+	}
 }

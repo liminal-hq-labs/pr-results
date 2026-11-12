@@ -54,7 +54,7 @@ Names, class names, paths, messages and bodies longer than their caps (1 KiB, 1 
 
 ## How report text is shown
 
-Names, paths and failure text from a report reach a comment only through `Safe`, and the renderer must put them in `Safe::code_span` (inline, one line, the delimiter adapts to backticks) or `Safe::code_block` (adaptive fence), because GitHub does not look for mentions or issue references in code. `Safe::text` is a fallback for the fixed words around them: it writes `@` and `#` as the fullwidth U+FF20 and U+FF03, which is visible and is not verified to stop mentions (Q9).
+Names, paths and failure text from a report reach a comment only through `Safe`, and the renderer must put them in `Safe::code_span` (inline, one line, the delimiter adapts to backticks) or `Safe::code_block` (adaptive fence), because GitHub does not look for mentions or issue references in code. `Safe::text` is a fallback for the fixed words around them: it writes `@` and `#` as the fullwidth U+FF20 and U+FF03, and a hyphen between a letter or digit and a digit (`GH-123`) as U+FF0D, which are visible and are not verified to stop mentions and references (Q9).
 
 ## Event and baseline inputs
 

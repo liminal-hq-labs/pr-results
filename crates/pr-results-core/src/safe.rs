@@ -154,6 +154,13 @@ fn push_markdown(
 		// would be decoded back before GitHub's filters run, so it is no defence.
 		'@' => out.push('\u{ff20}'),
 		'#' => out.push('\u{ff03}'),
+		// A reference such as `GH-123` or `ABC-123` links on the rendered text, where a backslash
+		// escape has already gone, so the hyphen is replaced by a fullwidth one.
+		'-' if prev.is_some_and(char::is_alphanumeric)
+			&& next.is_some_and(|n| n.is_ascii_digit()) =>
+		{
+			out.push('\u{ff0d}');
+		}
 		' ' if at_start => out.push_str("&#32;"),
 		':' if prev == Some(':') || next == Some('/') => out.push_str("&#58;"),
 		'\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '(' | ')' | '+' | '-' | '.' | '!'
