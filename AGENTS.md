@@ -102,6 +102,7 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 - `bash scripts/check-headers.sh` — SPDX headers
 - `bash scripts/check-pins.sh` — the release tag and binary digests agree between `action.yml` and `publish.yml`, and every action and image is pinned
 - `bash scripts/check-doc-yaml.sh` — actionlint over the workflows and steps the documents show
+- `bash scripts/gen-js-fixtures.sh [flavour…]` — rewrites the `real-*.xml` fixtures from the sample projects (needs Docker and the network for the installs; durations change on every run, so review the diff and run `PR_RESULTS_BLESS=1 cargo nextest run -p pr-results-core --test real` to refresh the models)
 - `bash scripts/check-banner.sh` — hero banner rules and text fit (needs `xmllint`, `rsvg-convert`, `python3` and Chromium; `--shots DIR` writes frames to look at)
 - `docker run --rm -v "$PWD:/workdir" davidanson/markdownlint-cli2:v0.24.0 "**/*.md"` — markdown
 - `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable scripts/*.sh` — shell scripts
@@ -129,9 +130,9 @@ State exactly what was and was not run when reporting results.
 README.md SPEC.md AGENTS.md CLAUDE.md CHANGELOG.md LICENSE-APACHE LICENSE-MIT
 .editorconfig .markdownlint.jsonc .lychee.toml .gitignore rustfmt.toml
 assets/        animated hero banner
-docs/          decisions, adopting, inputs, security and releasing, and the sandbox probe workflow
-scripts/       header check, banner check and its Chromium text-fit harness
+docs/          decisions, adopting, inputs, anonymizing reports, security and releasing, and the sandbox probe workflow
+scripts/       header check, banner check and its Chromium text-fit harness, the JavaScript fixture generator and the report anonymizer
 .github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
 
-Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, commit statuses for Forgejo, and the `mention_probe` example), `crates/pr-results-forge/` (the `Forge` trait, its real, fake and dry-run forges, `Client`, the `Host` trait with its GitHub implementation, the zip reader and the publish flow, with request goldens in its `tests/golden/`), `crates/pr-results/` (the command line: `publish`, `render` and `validate-config`, and the settings file), `action.yml` (the composite action), `.github/workflows/` (CI, the reusable `publish.yml`, the dogfood `publish-test-results.yml`), `.github/pr-results.toml`, `tests/fixtures/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. `scripts/build-release.sh` (the reproducible musl build), `.github/workflows/release.yml` (the tag workflow) and `docs/releasing.md` carry the release.
+Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, commit statuses for Forgejo, and the `mention_probe` example), `crates/pr-results-forge/` (the `Forge` trait, its real, fake and dry-run forges, `Client`, the `Host` trait with its GitHub implementation, the zip reader and the publish flow, with request goldens in its `tests/golden/`), `crates/pr-results/` (the command line: `publish`, `render` and `validate-config`, and the settings file), `action.yml` (the composite action), `.github/workflows/` (CI, the reusable `publish.yml`, the dogfood `publish-test-results.yml`), `.github/pr-results.toml`, `tests/fixtures/` (the `real-*.xml` ones are generated from `tests/sample-projects/` by `scripts/gen-js-fixtures.sh`), `tests/models/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. `scripts/build-release.sh` (the reproducible musl build), `.github/workflows/release.yml` (the tag workflow) and `docs/releasing.md` carry the release.
