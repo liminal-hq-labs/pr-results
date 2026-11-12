@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::CliError;
-use pr_results_core::{parse_junit, Report};
+use pr_results_core::{parse_junit_in, Report};
 use pr_results_forge::{Inputs, Plan};
 
 pub(crate) type LocalFile = (String, String, Vec<u8>);
@@ -110,7 +110,12 @@ pub(crate) fn read(files: &[LocalFile], plan: &Plan) -> Inputs {
 		for (_, _, data) in files.iter().filter(|(a, n, _)| {
 			section.artifact.is_match(a) && section.files.iter().any(|g| g.is_match(n))
 		}) {
-			match parse_junit(data, section.flavour, &plan.parse) {
+			match parse_junit_in(
+				data,
+				section.flavour,
+				&plan.parse,
+				section.path_prefix.as_ref(),
+			) {
 				Ok(parsed) => report.suites.extend(parsed.suites),
 				Err(_) => skipped += 1,
 			}
@@ -120,4 +125,37 @@ pub(crate) fn read(files: &[LocalFile], plan: &Plan) -> Inputs {
 		out.skipped.push(skipped);
 	}
 	out
+}
+
+#[cfg(test)]
+mod tests {
+	#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+	use super::*;
+	use pr_results_core::{CommentKey, Flavour, Glob, RepoPath};
+	use pr_results_forge::SectionPlan;
+
+	#[test]
+	fn local_reports_apply_the_suite_path_prefix() {
+		let section = SectionPlan {
+			title: "Web".into(),
+			check_name: "Web".into(),
+			required: false,
+			artifact: Glob::new("web").unwrap(),
+			files: vec![Glob::new("**/*.xml").unwrap()],
+			flavour: Flavour::Generic,
+			path_prefix: RepoPath::parse("apps/web/"),
+		};
+		let plan = Plan::new(
+			"App",
+			CommentKey::parse("ci").unwrap(),
+			vec![section],
+			"test",
+		);
+		let xml = br#"<testsuite name="suite"><testcase name="case" file="src/a.js" line="2"><failure>failed</failure></testcase></testsuite>"#.to_vec();
+		let inputs = read(&[("web".into(), "test.xml".into(), xml)], &plan);
+		assert_eq!(
+			inputs.suites[0][0].cases[0].file.as_ref().unwrap().as_str(),
+			"apps/web/src/a.js"
+		);
+	}
 }

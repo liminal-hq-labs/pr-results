@@ -607,3 +607,42 @@ fn http_opt_in_does_not_change_the_api_port_or_scheme() {
 		refused(&vars, &["publish", "--config", &cfg], &forgejo_world(), api);
 	}
 }
+
+#[test]
+fn in_job_allows_explicit_same_host_http_for_forgejo() {
+	let dir = scratch("fj-in-job-http");
+	let mut vars = runner_env(&dir);
+	let event = format!(
+		r#"{{"repository":{{"full_name":"{REPO}"}},"number":7,"pull_request":{{"number":7,"head":{{"sha":"{SHA}","ref":"feature","repo":{{"full_name":"{REPO}"}}}},"base":{{"repo":{{"full_name":"{REPO}"}}}}}}}}"#
+	);
+	std::fs::write(dir.join("event.json"), event).unwrap();
+	vars.insert("GITHUB_EVENT_NAME".into(), "pull_request".into());
+	vars.insert("GITHUB_RUN_ID".into(), "5000".into());
+	vars.insert("GITHUB_SERVER_URL".into(), "http://forge.example".into());
+	vars.insert(
+		"GITHUB_API_URL".into(),
+		"http://forge.example/api/v1".into(),
+	);
+	let cfg = write_config(
+		&dir,
+		"http.toml",
+		"[forge]\nkind = \"forgejo\"\nallow_http = true\n",
+	);
+	let input = dir.join("results/rust-test-results");
+	std::fs::create_dir_all(&input).unwrap();
+	std::fs::write(input.join("junit.xml"), fixture("nextest/fail.xml")).unwrap();
+	let fake = forgejo_world();
+	let out = invoke(
+		&[
+			"publish",
+			"--config",
+			&cfg,
+			"--from",
+			dir.join("results").to_str().unwrap(),
+		],
+		&vars,
+		&Factory::new(&fake.forge()),
+	);
+	assert_eq!(out.code, 0, "{}", out.err);
+	assert!(out.out.contains("Commit status written"));
+}
