@@ -114,6 +114,13 @@ impl BlobUrl {
 		Self::check(s, rest)
 	}
 
+	/// For loopback tests only: the same rules for a plain `http://` URL.
+	#[cfg(test)]
+	pub(crate) fn parse_http_for_tests(s: &str) -> Option<Self> {
+		let rest = s.strip_prefix("http://")?;
+		Self::check(s, rest)
+	}
+
 	fn check(whole: &str, rest: &str) -> Option<Self> {
 		if whole.len() > 4096 {
 			return None;
@@ -308,6 +315,36 @@ impl ForgeError {
 			Self::Status { status, .. } => Some(*status),
 			_ => None,
 		}
+	}
+}
+
+/// The token, held so that it cannot be printed. It has no `Display`, and `Debug` writes a
+/// placeholder.
+#[derive(Clone)]
+pub struct Token(String);
+
+impl Token {
+	/// Printable ASCII with no spaces, 1 to 512 bytes: what a GitHub token is.
+	pub fn new(s: &str) -> Option<Self> {
+		(!s.is_empty() && s.len() <= 512 && s.bytes().all(|b| b.is_ascii_graphic()))
+			.then(|| Self(s.to_owned()))
+	}
+
+	/// For the `Authorization` header and nothing else.
+	pub(crate) fn expose(&self) -> &str {
+		&self.0
+	}
+
+	/// The workflow command that makes the runner hide the token in its logs. `Token::new` accepts
+	/// printable characters only, so there is no CR or LF to escape, and a `%` is written `%25`.
+	pub fn mask_command(&self) -> String {
+		format!("::add-mask::{}", self.0.replace('%', "%25"))
+	}
+}
+
+impl fmt::Debug for Token {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str("Token(<redacted>)")
 	}
 }
 

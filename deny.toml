@@ -14,7 +14,16 @@ targets = [
 yanked = "deny"
 
 [licenses]
-allow = ["MIT", "Apache-2.0"]
+allow = [
+	"MIT",
+	"Apache-2.0",
+	# `ring` (Apache-2.0 AND ISC), `rustls-webpki` and `untrusted`, under `rustls` for `ureq`.
+	"ISC",
+	# `subtle`, under `rustls` for `ureq`.
+	"BSD-3-Clause",
+	# `webpki-roots` (the Mozilla root certificates as data), for `ureq`.
+	"CDLA-Permissive-2.0",
+]
 confidence-threshold = 0.9
 
 [bans]

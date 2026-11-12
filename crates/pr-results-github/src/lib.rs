@@ -16,10 +16,14 @@ mod dry;
 mod fake;
 mod github;
 mod publish;
+mod ureq_forge;
+
+#[cfg(test)]
+mod http_tests;
 
 pub use api::{
 	percent_decode, percent_encode, ApiPath, ApiRequest, ApiResponse, BlobUrl, Forge, ForgeError,
-	Method,
+	Method, Token,
 };
 pub use archive::{read_zip, ArchiveError, ArchiveLimits, Entry};
 pub use dry::{requests_to_json, DryRun};
@@ -32,3 +36,4 @@ pub use publish::{
 	publish, CheckReport, CommentReport, Failure, Note, Plan, PublishError, PublishReport,
 	SectionPlan, WorkflowRun,
 };
+pub use ureq_forge::UreqForge;
