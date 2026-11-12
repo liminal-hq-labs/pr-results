@@ -18,7 +18,7 @@
 
 ## Project status
 
-pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental** and not released (the model, `Safe`, the JUnit parsers, the renderer, the GitHub client with the publish flow, the command line, the action and the workflows are built and tested against an in-memory GitHub; none has run on GitHub or been released), so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
+pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental**; v0.1.0 is the first release (the model, `Safe`, the JUnit parsers, the renderer, the GitHub client with the publish flow, the command line, the action and the workflows are built and tested against an in-memory GitHub; none has run on GitHub before the first release), so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
 
 ## Spelling and writing
 
@@ -128,9 +128,9 @@ State exactly what was and was not run when reporting results.
 README.md SPEC.md AGENTS.md CLAUDE.md CHANGELOG.md LICENSE-APACHE LICENSE-MIT
 .editorconfig .markdownlint.jsonc .lychee.toml .gitignore rustfmt.toml
 assets/        animated hero banner
-docs/          decisions, adopting, inputs and security
+docs/          decisions, adopting, inputs, security and releasing
 scripts/       header check, banner check and its Chromium text-fit harness
 .github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
 
-Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, and the `mention_probe` example), `crates/pr-results-github/` (the `Forge` trait, its real, fake and dry-run forges, the zip reader and the publish flow, with request goldens in its `tests/golden/`), `crates/pr-results/` (the command line: `publish`, `render` and `validate-config`, and the settings file), `action.yml` (the composite action), `.github/workflows/` (CI, the reusable `publish.yml`, the dogfood `publish-test-results.yml`), `.github/pr-results.toml`, `tests/fixtures/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. Still to come with the code that needs them: the release workflow and the reproducible build.
+Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, and the `mention_probe` example), `crates/pr-results-github/` (the `Forge` trait, its real, fake and dry-run forges, the zip reader and the publish flow, with request goldens in its `tests/golden/`), `crates/pr-results/` (the command line: `publish`, `render` and `validate-config`, and the settings file), `action.yml` (the composite action), `.github/workflows/` (CI, the reusable `publish.yml`, the dogfood `publish-test-results.yml`), `.github/pr-results.toml`, `tests/fixtures/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. `scripts/build-release.sh` (the reproducible musl build), `.github/workflows/release.yml` (the tag workflow) and `docs/releasing.md` carry the release.

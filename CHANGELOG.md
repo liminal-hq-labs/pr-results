@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+## 0.1.0 — 2026-11-12
+
+The first release: experimental, with a Linux `x86_64` binary.
+
 ### Added
 
 - The project skeleton: the specification in `SPEC.md`, the decisions in `docs/decisions.md`, the adoption, input and security guides, and the animated hero.
@@ -33,9 +37,15 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - Adoption recipes for nextest, vitest, Playwright shards, bun and Desk in `docs/adopting.md`, and fixtures for the `workflow_run` event and a forged uploaded event file.
 - Review fixes to the GitHub crate: a cap on inflated bytes across a run with each archive dropped once parsed (`read_zip_filtered`), comments kept as a 256-byte prefix while paging, a ten-minute budget for waiting to retry, annotations sent in separate requests that are read back rather than repeated, check runs matched by app as well as `external_id`, and blobs fetched only from GitHub's storage hosts (`UreqForge::with_blob_hosts` for GitHub Enterprise Server).
 - New dependencies, recorded with licences, crate count and binary size in decision D44: `ureq` `=3.5.1` (`rustls` with `ring`, no `aws-lc`), `serde_json` `=1.0.154`, `miniz_oxide` `=0.9.1` and `toml` `=1.2.1` (decision D51). `deny.toml` allows ISC, BSD-3-Clause and CDLA-Permissive-2.0 for the crates that need them.
+- The release: `scripts/build-release.sh`, a reproducible `x86_64-unknown-linux-musl` build (remapped paths, a constant `SOURCE_DATE_EPOCH`, `musl-tools` for `ring`), the `Reproducible build` CI job that builds it twice from two paths, compares the digests, prints them and uploads the binary, and `release.yml`, which on a `v*` tag rebuilds, fails if the digest is not the one `action.yml` and `publish.yml` pin, attests build provenance and creates the GitHub release with the binary, `SHA256SUMS` and generated notes (decisions D55 and D56). `docs/releasing.md` says how a release is cut and verified.
+- `[profile.release]`: `opt-level = "z"`, fat LTO, one codegen unit, `panic = "abort"` and stripped symbols, which take the `x86_64` binary from 3 646 360 to 2 167 632 bytes.
+- `scripts/check-pins.sh --unreleased`, which allows `PLACEHOLDER` digests in a release version.
+- An experimental `Reproducible build (aarch64)` job on an Arm runner, which reports whether the `aarch64` binary reproduces and cannot fail the workflow.
 
 ### Changed
 
+- The workspace version is `0.1.0`.
+- `action.yml` and `publish.yml` carry one binary digest, `PR_RESULTS_SHA256_X86_64`: there is no `aarch64` release binary in v0.1 (an `aarch64` runner is told to use `build: source`), and the `aarch64` binary stays on the v0.2 roadmap.
 - Decision D17 is amended: until v0.1.0 the dogfood publisher runs the default branch's reviewed source (`build: source`), and a follow-up after the tag pins the release.
 - An annotation title is at most 255 characters and its message at most 65 535 bytes, the omitted-characters marker included (a 1,000-character name used to render 286), and the comment, summary and text limits are held to 65 535 whatever the setting.
 - `Marker::parse` accepts a first line that ends in `\r\n`, as `Marker::prefix_matches` already did.
@@ -49,4 +59,4 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - `Debug` for `Untrusted` prints its size only, never the text.
 - Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
 
-There is no released version or binary yet, and the action and the reusable workflow stop with a message until a release fills in the digests. The publisher, the command line, the action and the workflows are tested against an in-memory GitHub and loopback servers, and none of them has talked to the real API or run on GitHub Actions. The mention and link forms were tested in one sandbox (decision D43); real teams, cross-repository references, notifications, annotations and the heading have not been.
+Not verified: the first run of the workflows on GitHub Actions and of the release workflow, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), real team mentions, cross-repository references and notifications (decision D43 covers one sandbox), the `aarch64` binary, and artifact attestation end to end. The vitest, bun, jest and Playwright readers are parsed but not tuned until v0.2.

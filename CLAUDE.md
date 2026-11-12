@@ -4,7 +4,7 @@ A summary of [AGENTS.md](AGENTS.md), which is canonical. Keep the two in sync.
 
 ## What this is
 
-pr-results is a Liminal HQ Labs experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental and not released (the model, `Safe`, the JUnit parsers, the renderer, the GitHub client with the publish flow, the command line, the action and the workflows are built and tested against an in-memory GitHub; none has run on GitHub), so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
+pr-results is a Liminal HQ Labs experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental; v0.1.0 is the first release (the model, `Safe`, the JUnit parsers, the renderer, the GitHub client with the publish flow, the command line, the action and the workflows are built and tested against an in-memory GitHub; none had run on GitHub before it), so anything may change. `docs/releasing.md` says how a release is cut. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
 
 ## Rules to remember
 

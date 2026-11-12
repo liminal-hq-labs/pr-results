@@ -1,6 +1,6 @@
 # Adopting pr-results
 
-> **Not released.** pr-results has no release yet, so there is no binary to pin: the reusable workflow and the composite action stop with a message that says so until a release writes its SHA-256 into them, and `build: source` in the composite action builds the checkout instead. The command line, the action and the workflows are built and tested against an in-memory GitHub, but none of them has run on GitHub. The behaviour is specified in [SPEC.md](../SPEC.md).
+> **Experimental.** v0.1.0 is the first release, with a Linux `x86_64` binary only: on an `aarch64` runner use `build: source` in the composite action. The command line, the action and the workflows are tested against an in-memory GitHub, and none has yet run on GitHub Actions. The behaviour is specified in [SPEC.md](../SPEC.md).
 
 The publisher runs after your CI finishes, in a `workflow_run` workflow, so it works for pull requests from forks and from Dependabot, where a `pull_request` job's token is read-only. Your CI only needs to upload the results as artefacts.
 

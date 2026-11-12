@@ -10,7 +10,7 @@
 
 pr-results reads the test and check results your CI produces and posts them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It reads JUnit from nextest (tuned) and step reports from shell-script projects (tuned), and from vitest, bun, jest and Playwright (parsed, tuned in v0.2), and it is safe on pull requests from forks by design.
 
-> **Status:** experimental and **not released**. The data model, the escaping type, the JUnit parsers, the renderer, the GitHub client and publish flow, the command line (`publish`, `render` and `validate-config`), the settings file, the composite action and the reusable workflow are built and tested against an in-memory GitHub. Nothing has talked to the real API or run on GitHub Actions yet, and there is no release or binary: the action and the reusable workflow stop with a message until a release fills in the binary digests, and the action's `build: source` builds the checkout. Interfaces and formats may change between any two commits.
+> **Status:** experimental. v0.1.0 is the first release: a Linux `x86_64` binary built reproducibly, with the nextest and step JUnit readers tuned and the vitest, bun, jest and Playwright readers parsed but untuned. It is tested against an in-memory GitHub and loopback servers, and a sandbox repository showed that the comment's text forms make no mentions or links. **Not verified:** the first run of the workflows on GitHub Actions, the real GitHub API (the fork pull request fallback, rate-limit bodies, redirects), real team mentions and notifications, and the `aarch64` binary, which waits for v0.2. Interfaces and formats may change between any two minor versions, and [CHANGELOG.md](CHANGELOG.md) says what.
 
 ## What it's for
 
@@ -49,7 +49,7 @@ The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks
 
 ## Install and run
 
-**Not released yet.** The setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. The SHA below is a placeholder, because there is no release to pin yet, and the workflow stops with a message until there is:
+The setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. Look the SHA of the release up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.1.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation:
 
 ```yaml
 # .github/workflows/publish-test-results.yml
@@ -81,6 +81,7 @@ Your CI uploads its results as artefacts (`rust-test-results`, `frontend-test-re
 - [docs/adopting.md](docs/adopting.md) — setting it up in a repository
 - [docs/inputs.md](docs/inputs.md) — the formats it reads
 - [docs/security.md](docs/security.md) — how it treats untrusted input
+- [docs/releasing.md](docs/releasing.md) — cutting and verifying a release
 - [docs/decisions.md](docs/decisions.md) — decisions and why
 - [CHANGELOG.md](CHANGELOG.md) — what changed
 - [AGENTS.md](AGENTS.md) — contributor and agent rules
