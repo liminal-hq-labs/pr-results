@@ -90,7 +90,7 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 ## Architecture rules
 
 - **Untrusted input is escaped only through `Safe`.** Everything from an artefact (names, messages, paths, the event file) is untrusted. The renderer accepts only `Safe` fragments, so no raw string reaches Markdown or HTML. Do not add a second escaping path.
-- **No network outside `pr-results-github`.** The core and render crates are pure and tested offline. Anything that talks to GitHub sits behind the `Forge` trait, with an in-memory fake for tests.
+- **No network outside `pr-results-forge`.** The core and render crates are pure and tested offline. Anything that talks to a forge sits behind the `Forge` trait, and the publisher asks a forge only through the `Host` trait, with an in-memory fake for tests. The token is added only in `UreqForge::send`. Every host passes the comment conformance suite (`crates/pr-results-forge/tests/common/conformance.rs`).
 - **No pull request code in privileged workflows.** A workflow that holds a write token never checks out or runs code from a pull request head, and takes no secret beyond `GITHUB_TOKEN`. The publisher uses the latest release pinned by SHA, never the pull request's own build.
 - **Deterministic output.** The same inputs give byte-identical Markdown: stable ordering, no clocks beyond the run times in the inputs.
 - **No unsafe code.** Each crate has `#![forbid(unsafe_code)]`.
