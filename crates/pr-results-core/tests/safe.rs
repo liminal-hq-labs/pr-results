@@ -325,6 +325,13 @@ const INVISIBLE: &[(u32, u32, &str)] = &[
 	(0x890, 0x891, "Arabic pound and piastre marks"),
 	(0x8e2, 0x8e2, "Arabic disputed end of ayah"),
 	(0xfeff, 0xfeff, "byte order mark"),
+	(0xa0, 0xa0, "no-break space"),
+	(0x1680, 0x1680, "Ogham space mark"),
+	(0x2000, 0x200a, "en quad to hair space"),
+	(0x202f, 0x202f, "narrow no-break space"),
+	(0x205f, 0x205f, "medium mathematical space"),
+	(0x3000, 0x3000, "ideographic space"),
+	(0x2800, 0x2800, "Braille pattern blank"),
 	(0xfff0, 0xfff8, "unassigned default-ignorables"),
 	(0x110bd, 0x110bd, "Kaithi number sign"),
 	(0x110cd, 0x110cd, "Kaithi number sign above"),
@@ -560,4 +567,22 @@ fn issue_style_references_are_broken_with_a_fullwidth_hyphen() {
 	] {
 		assert_eq!(Safe::text(input).as_str(), want, "{input:?}");
 	}
+}
+
+#[test]
+fn code_span_turns_tab_vertical_tab_and_form_feed_into_spaces_not_marks() {
+	assert_eq!(
+		Safe::code_span("a\tb\u{b}c\u{c}d", 100).as_str(),
+		"`a b c d`"
+	);
+}
+
+#[test]
+fn look_alike_spaces_are_spelled_out_but_a_plain_space_is_not() {
+	assert_eq!(Safe::code_span("a b", 100).as_str(), "`a b`");
+	assert_eq!(Safe::code_span("a\u{a0}b", 100).as_str(), "`a\\u{a0}b`");
+	assert_eq!(
+		Safe::code_span("\u{2800}\u{2800}", 100).as_str(),
+		"`\\u{2800}\\u{2800}`"
+	);
 }

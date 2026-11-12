@@ -373,3 +373,22 @@ fn debug_output_shows_a_size_and_never_the_text() {
 		"{shown}"
 	);
 }
+
+#[test]
+fn merging_does_not_join_names_that_were_cut_differently() {
+	let mut cut_short = suite("name", Flavour::Generic, &["1"]);
+	cut_short.name = Untrusted::capped("name and then some", 4);
+	let mut cut_more = suite("name", Flavour::Generic, &["2"]);
+	cut_more.name = Untrusted::capped("name and a very long tail", 4);
+	let mut report = Report {
+		suites: vec![
+			cut_short.clone(),
+			cut_more,
+			suite("name", Flavour::Generic, &["3"]),
+			cut_short,
+		],
+	};
+	report.merge_same_named();
+	let cases: Vec<usize> = report.suites.iter().map(|s| s.cases.len()).collect();
+	assert_eq!(cases, [2, 1, 1]);
+}

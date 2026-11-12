@@ -71,8 +71,10 @@ fn classify(c: char) -> Clean {
 	}
 }
 
-/// Characters that draw nothing, or change how their neighbours are drawn or ordered, so text
-/// containing them can look different from what it is. They are written out as `\u{…}`.
+/// Characters that draw nothing, or draw as a blank, or change how their neighbours are drawn or
+/// ordered, so text containing them can look different from what it is. The blanks are the `Zs`
+/// spaces other than U+0020 and the Braille blank U+2800, which can make two different names look
+/// the same. They are written out as `\u{…}`.
 ///
 /// This is the Unicode general category `Cf` (format), the `Default_Ignorable_Code_Point`
 /// property and the object replacement character, as a hand-written table so the crate needs no
@@ -103,6 +105,18 @@ pub(crate) fn is_invisible(c: char) -> bool {
 		| 0x17b4 | 0x17b5
 		// Mongolian free variation selectors and vowel separator.
 		| 0x180b..=0x180f
+		// No-break space (Zs): looks like a space, is not one.
+		| 0xa0
+		// Ogham space mark (Zs).
+		| 0x1680
+		// En quad to hair space (Zs).
+		| 0x2000..=0x200a
+		// Narrow no-break space and medium mathematical space (Zs).
+		| 0x202f | 0x205f
+		// Ideographic space (Zs).
+		| 0x3000
+		// Braille pattern blank (So): draws as blank space.
+		| 0x2800
 		// Zero-width characters, bidirectional marks, embeddings and overrides (Cf).
 		| 0x200b..=0x200f | 0x202a..=0x202e
 		// Word joiner, invisible operators, the unassigned U+2065, isolates and the deprecated
@@ -253,8 +267,9 @@ impl Safe {
 	///
 	/// The delimiter is one backtick longer than the longest backtick run in the content, and the
 	/// content is padded with a space on each side when it starts or ends with a backtick, or
-	/// starts and ends with a space, so it reads back exactly. Line breaks become `\u{23ce}` and
-	/// other control characters are dropped or spelled out like everywhere else. A pipe is written
+	/// starts and ends with a space, so it reads back exactly. Line breaks (LF, CR, NEL and the
+	/// line and paragraph separators) become `\u{23ce}`, while tab, vertical tab and form feed
+	/// become a space. Other control characters are dropped or spelled out like everywhere else. A pipe is written
 	/// `\|`, which a table cell renders as a pipe and any other place shows with its backslash.
 	/// Empty content is a single space. Cutting is the same as in [`Safe::text_max`]: the budget
 	/// counts characters of content after the above, and the marker follows the closing delimiter.

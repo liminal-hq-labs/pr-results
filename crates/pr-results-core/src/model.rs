@@ -251,7 +251,7 @@ pub struct Report {
 }
 
 impl Report {
-	/// Merges suites that share a name and flavour, keeping the order in which each was first
+	/// Merges suites that share a name (with the same number of characters cut from it) and flavour, keeping the order in which each was first
 	/// seen, so a matrix of jobs that each upload part of a suite shows as one.
 	///
 	/// The lookup is an ordered map, so the work grows with the number of suites times the log of
@@ -259,15 +259,14 @@ impl Report {
 	pub fn merge_same_named(&mut self) {
 		let suites = std::mem::take(&mut self.suites);
 		// Where each suite ends up: the position of the first suite with its name and flavour.
-		let mut first: BTreeMap<(&str, Flavour), usize> = BTreeMap::new();
+		// The count of characters cut from the name is part of the key: two names that are equal
+		// after a cut are not known to be the same name.
+		let mut first: BTreeMap<(&str, usize, Flavour), usize> = BTreeMap::new();
 		let mut slots = Vec::with_capacity(suites.len());
 		for suite in &suites {
 			let next = first.len();
-			slots.push(
-				*first
-					.entry((suite.name.as_str(), suite.flavour))
-					.or_insert(next),
-			);
+			let key = (suite.name.as_str(), suite.name.omitted(), suite.flavour);
+			slots.push(*first.entry(key).or_insert(next));
 		}
 		drop(first);
 		let mut merged: Vec<Suite> = Vec::with_capacity(slots.iter().max().map_or(0, |m| m + 1));
