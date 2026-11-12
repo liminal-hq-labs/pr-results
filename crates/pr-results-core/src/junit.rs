@@ -23,6 +23,8 @@ pub struct Limits {
 	pub max_depth: usize,
 	/// Test cases across all suites.
 	pub max_cases: usize,
+	/// Suites across the input, counting each top-level `testsuite` once.
+	pub max_suites: usize,
 	/// Retry attempts kept per case; the rest are dropped.
 	pub max_attempts: usize,
 	/// Names, class names and file paths, in bytes.
@@ -39,6 +41,7 @@ impl Default for Limits {
 			max_bytes: 50 * 1024 * 1024,
 			max_depth: 64,
 			max_cases: 200_000,
+			max_suites: 10_000,
 			max_attempts: 100,
 			max_name_bytes: 1024,
 			max_message_bytes: 1024,
@@ -409,6 +412,11 @@ impl<'l> Parser<'l> {
 				self.files.pop();
 				if self.files.is_empty() {
 					if let Some(done) = self.suite.take() {
+						if self.suites.len() >= self.limits.max_suites {
+							return Err(ParseError::TooManySuites {
+								limit: self.limits.max_suites,
+							});
+						}
 						let sum = done
 							.cases
 							.iter()

@@ -3,6 +3,7 @@
 // (c) Copyright 2026 Liminal HQ, Scott Morris
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 /// The schema name of the model when it is written out.
@@ -146,7 +147,7 @@ fn collapse_ws(s: &str) -> String {
 }
 
 /// Which reporter wrote the file. It decides how names and locations are read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Flavour {
 	/// Pick from the file: the root name, `assertions` attributes and Playwright attachments.
 	Auto,
@@ -220,13 +221,26 @@ pub struct Report {
 impl Report {
 	/// Merges suites that share a name and flavour, keeping the order in which each was first
 	/// seen, so a matrix of jobs that each upload part of a suite shows as one.
+	///
+	/// The lookup is an ordered map, so the work grows with the number of suites times the log of
+	/// that number, however hostile the input, and the result does not depend on hashing.
 	pub fn merge_same_named(&mut self) {
-		let mut merged: Vec<Suite> = Vec::with_capacity(self.suites.len());
-		for suite in std::mem::take(&mut self.suites) {
-			match merged
-				.iter_mut()
-				.find(|m| m.name == suite.name && m.flavour == suite.flavour)
-			{
+		let suites = std::mem::take(&mut self.suites);
+		// Where each suite ends up: the position of the first suite with its name and flavour.
+		let mut first: BTreeMap<(&str, Flavour), usize> = BTreeMap::new();
+		let mut slots = Vec::with_capacity(suites.len());
+		for suite in &suites {
+			let next = first.len();
+			slots.push(
+				*first
+					.entry((suite.name.as_str(), suite.flavour))
+					.or_insert(next),
+			);
+		}
+		drop(first);
+		let mut merged: Vec<Suite> = Vec::with_capacity(slots.iter().max().map_or(0, |m| m + 1));
+		for (suite, slot) in suites.into_iter().zip(slots) {
+			match merged.get_mut(slot) {
 				Some(existing) => existing.merge(suite),
 				None => merged.push(suite),
 			}

@@ -23,6 +23,8 @@ pub enum ParseError {
 	TooDeep { limit: usize },
 	/// The input holds more test cases than the limit.
 	TooManyCases { limit: usize },
+	/// The input holds more suites than the limit.
+	TooManySuites { limit: usize },
 	/// An element has more attributes than the limit.
 	TooManyAttributes { limit: usize },
 	/// A named entity other than the five predefined ones, or an invalid character reference.
@@ -54,6 +56,7 @@ impl fmt::Display for ParseError {
 			}
 			Self::TooDeep { limit } => write!(f, "elements are nested deeper than {limit} levels"),
 			Self::TooManyCases { limit } => write!(f, "the input has more than {limit} test cases"),
+			Self::TooManySuites { limit } => write!(f, "the input has more than {limit} suites"),
 			Self::TooManyAttributes { limit } => {
 				write!(f, "an element has more than {limit} attributes")
 			}
