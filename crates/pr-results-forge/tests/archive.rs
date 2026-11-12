@@ -13,7 +13,7 @@
 mod common;
 
 use common::zip::{build, build_with_comment, eocd, patch16, patch32, Spec};
-use pr_results_github::{read_zip, ArchiveError, ArchiveLimits};
+use pr_results_forge::{read_zip, ArchiveError, ArchiveLimits};
 
 fn read(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, ArchiveError> {
 	read_zip(bytes, &ArchiveLimits::default())
@@ -509,7 +509,7 @@ fn a_filtered_read_inflates_only_what_it_keeps() {
 		..ArchiveLimits::default()
 	};
 	let got =
-		pr_results_github::read_zip_filtered(&bytes, &limits, &|n| n.ends_with(".xml")).unwrap();
+		pr_results_forge::read_zip_filtered(&bytes, &limits, &|n| n.ends_with(".xml")).unwrap();
 	assert_eq!(got.len(), 1);
 	assert_eq!(got[0].name, "a.xml");
 	// Asked for everything, the same archive is refused.
@@ -523,7 +523,7 @@ fn a_filtered_read_inflates_only_what_it_keeps() {
 		Spec::stored("a.xml", b"<a/>"),
 	]);
 	assert_eq!(
-		pr_results_github::read_zip_filtered(&hostile, &limits, &|n| n.ends_with(".xml"))
+		pr_results_forge::read_zip_filtered(&hostile, &limits, &|n| n.ends_with(".xml"))
 			.unwrap_err(),
 		ArchiveError::BadPath
 	);

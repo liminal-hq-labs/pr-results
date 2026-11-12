@@ -14,8 +14,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use pr_results_core::{Flavour, Glob, Limits as ParseLimits, RepoSlug, ServerUrl};
-use pr_results_github::{
-	publish, requests_to_json, ApiRequest, ArchiveLimits, DryRun, Forge, GitHub, Method, Plan,
+use pr_results_forge::{
+	publish, requests_to_json, ApiRequest, ArchiveLimits, DryRun, GitHub, Host, Method, Plan,
 	PublishReport, SectionPlan, Token, WorkflowRun, DEFAULT_BOT_LOGIN,
 };
 use pr_results_render::Conclusion;
@@ -189,8 +189,8 @@ fn load_settings(explicit: Option<&Path>) -> Result<Settings, CliError> {
 	config::read(path).map_err(CliError::usage)
 }
 
-fn execute<F: Forge>(
-	gh: &GitHub<F>,
+fn execute<H: Host>(
+	gh: &H,
 	run: &WorkflowRun,
 	env: &Environment,
 	settings: &Settings,
@@ -268,8 +268,8 @@ fn configured_sections(settings: &Settings, title: &str) -> Result<Vec<SectionPl
 /// With no `[[suite]]`, one suite for each `<stem>-test-results*` artefact. Artefact names are
 /// chosen by whoever wrote the workflow, a fork included, and become check names, so only plain
 /// names are used: letters, digits, `.`, `_` and `-`.
-fn inferred_sections<F: Forge>(
-	gh: &GitHub<F>,
+fn inferred_sections<H: Host>(
+	gh: &H,
 	run: &WorkflowRun,
 	title: &str,
 	io: &mut Streams<'_>,

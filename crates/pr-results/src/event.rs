@@ -7,7 +7,7 @@
 //! which is untrusted and read by the publish flow as a hint only. Errors are fixed phrases.
 
 use pr_results_core::{RepoSlug, RunId, Sha};
-use pr_results_github::WorkflowRun;
+use pr_results_forge::WorkflowRun;
 use serde_json::Value;
 
 /// A `workflow_run` event is read to at most this many bytes.

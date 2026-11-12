@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use pr_results_core::{CommentKey, Flavour, Glob, RepoSlug, RunId, ServerUrl, Sha};
-use pr_results_github::{
+use pr_results_forge::{
 	publish, ApiRequest, FakeForge, FakePull, GitHub, Plan, PublishReport, SectionPlan,
 	WorkflowRun, DEFAULT_BOT_LOGIN,
 };
@@ -89,7 +89,7 @@ impl Env {
 		);
 	}
 
-	pub fn bot_comments(&self, pr: u64) -> Vec<pr_results_github::FakeComment> {
+	pub fn bot_comments(&self, pr: u64) -> Vec<pr_results_forge::FakeComment> {
 		self.fake
 			.comments(pr)
 			.into_iter()
@@ -165,7 +165,7 @@ pub fn golden_dir() -> PathBuf {
 
 /// How the request list is compared with its golden file.
 pub fn check_golden(name: &str, requests: &[ApiRequest]) {
-	let text = pr_results_github::requests_to_json(requests);
+	let text = pr_results_forge::requests_to_json(requests);
 	let path = golden_dir().join(format!("{name}.json"));
 	if std::env::var_os("PR_RESULTS_BLESS").is_some() {
 		std::fs::create_dir_all(path.parent().unwrap()).unwrap();

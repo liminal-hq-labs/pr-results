@@ -21,9 +21,9 @@ use pr_results_render::{
 };
 use serde_json::Value;
 
-use crate::api::{Forge, ForgeError};
+use crate::api::ForgeError;
 use crate::archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
-use crate::github::{Artifact, CheckSpec, CommentAction, CommentSpec, GitHub, Pull, Tree};
+use crate::host::{Artifact, CheckSpec, CommentAction, CommentSpec, Host, Pull, Tree};
 
 /// A pull request is commented on this many times at most when several verify.
 const MAX_PULLS: usize = 5;
@@ -341,8 +341,8 @@ struct Loaded {
 
 /// Posts the results of `run`: a check run per section, then the sticky comment on each pull
 /// request that verifies. See the specification's "Finding and verifying the pull request".
-pub fn publish<F: Forge>(
-	gh: &GitHub<F>,
+pub fn publish<H: Host>(
+	gh: &H,
 	run: &WorkflowRun,
 	server: &ServerUrl,
 	plan: &Plan,
@@ -404,8 +404,8 @@ pub fn publish<F: Forge>(
 /// parsed and dropped before the next is fetched, so memory holds one archive and what it yields.
 /// The inflated bytes of everything kept are capped across the whole run by
 /// `plan.archive.max_total_bytes`.
-fn load<F: Forge>(
-	gh: &GitHub<F>,
+fn load<H: Host>(
+	gh: &H,
 	artifacts: &[Artifact],
 	plan: &Plan,
 	report: &mut PublishReport,
@@ -519,8 +519,8 @@ enum Fetched {
 
 /// One artefact's wanted entries, or why it cannot be used. `inflated` is what the run has
 /// already kept, and the archive may add only what is left of the cap.
-fn fetch<F: Forge>(
-	gh: &GitHub<F>,
+fn fetch<H: Host>(
+	gh: &H,
 	artifact: &Artifact,
 	plan: &Plan,
 	downloaded: &mut u64,
@@ -552,8 +552,8 @@ fn fetch<F: Forge>(
 }
 
 /// The commit's tree, read once and only when some case could be annotated.
-fn read_tree<F: Forge>(
-	gh: &GitHub<F>,
+fn read_tree<H: Host>(
+	gh: &H,
 	run: &WorkflowRun,
 	loaded: &Loaded,
 	report: &mut PublishReport,
@@ -581,8 +581,8 @@ fn read_tree<F: Forge>(
 
 // ---- check runs ----------------------------------------------------------------------------
 
-fn post_checks<F: Forge>(
-	gh: &GitHub<F>,
+fn post_checks<H: Host>(
+	gh: &H,
 	run: &WorkflowRun,
 	plan: &Plan,
 	input: &Input<'_>,
@@ -614,7 +614,7 @@ fn post_checks<F: Forge>(
 			external_id: &external_id,
 			output: &output,
 		};
-		let mut result = gh.upsert_check(&spec);
+		let mut result = gh.upsert_result(&spec);
 		let shortened;
 		if matches!(result, Err(ForgeError::Status { status: 422, .. })) {
 			// Over the size limit, or something GitHub will not take: say less.
@@ -632,7 +632,7 @@ fn post_checks<F: Forge>(
 				shortened = minimal;
 				spec.output = &shortened;
 				report.notes.push(Note::CheckMinimal { section: index });
-				result = gh.upsert_check(&spec);
+				result = gh.upsert_result(&spec);
 			}
 		}
 		match result {
@@ -662,7 +662,7 @@ fn post_checks<F: Forge>(
 
 // ---- the comment ---------------------------------------------------------------------------
 
-fn verifies<F: Forge>(gh: &GitHub<F>, run: &WorkflowRun, p: &Pull) -> bool {
+fn verifies<H: Host>(gh: &H, run: &WorkflowRun, p: &Pull) -> bool {
 	p.open
 		&& p.head_sha == run.head_sha.as_str()
 		&& same_repo(p.head_repo.as_deref(), &run.head_repo.to_string())
@@ -676,8 +676,8 @@ fn same_repo(found: Option<&str>, want: &str) -> bool {
 
 /// The pull requests this run belongs to, from the trusted event and the API, never from the
 /// uploaded event file alone.
-fn find_pulls<F: Forge>(
-	gh: &GitHub<F>,
+fn find_pulls<H: Host>(
+	gh: &H,
 	run: &WorkflowRun,
 	hint: impl FnOnce() -> Option<u64>,
 ) -> Result<(Vec<Pull>, Option<Note>), ForgeError> {
@@ -729,7 +729,7 @@ fn find_pulls<F: Forge>(
 
 /// The pull request number in the uploaded event file, if there is one. It is a hint to choose
 /// among pull requests that already verified, and is believed for nothing else.
-fn event_hint<F: Forge>(gh: &GitHub<F>, artifacts: &[Artifact], name: &str) -> Option<u64> {
+fn event_hint<H: Host>(gh: &H, artifacts: &[Artifact], name: &str) -> Option<u64> {
 	let artifact = artifacts
 		.iter()
 		.find(|a| a.name == name && !a.expired && a.size_in_bytes <= 2 * EVENT_FILE_BYTES)?;
@@ -745,8 +745,8 @@ fn event_hint<F: Forge>(gh: &GitHub<F>, artifacts: &[Artifact], name: &str) -> O
 	doc.get("pull_request")?.get("number")?.as_u64()
 }
 
-fn post_comments<F: Forge>(
-	gh: &GitHub<F>,
+fn post_comments<H: Host>(
+	gh: &H,
 	run: &WorkflowRun,
 	plan: &Plan,
 	input: &Input<'_>,

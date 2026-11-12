@@ -16,7 +16,7 @@ use common::{
 	artifact, fixture, github_with_pr, invoke, publisher_env, scratch, Factory, DESK_TOML, REPO,
 	SHA, TOKEN,
 };
-use pr_results_github::{FakeForge, FakePull};
+use pr_results_forge::{FakeForge, FakePull};
 
 fn pr_event() -> String {
 	fixture("events/workflow_run-pr.json")
@@ -147,10 +147,10 @@ fn a_refused_comment_leaves_the_checks_and_exits_one() {
 	let fake = github_with_pr();
 	artifact(&fake, "rust-test-results", &[("junit.xml", &failing_xml())]);
 	fake.fail(
-		pr_results_github::Method::Post,
+		pr_results_forge::Method::Post,
 		"/issues/7/comments",
 		1,
-		pr_results_github::Fault::status(403),
+		pr_results_forge::Fault::status(403),
 	);
 	let vars = publisher_env(&dir, &pr_event());
 
