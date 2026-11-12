@@ -328,8 +328,11 @@ jobs:
   # The release binary, built twice from two copies of the tree at different paths, must give the
   # same bytes. The digest it prints is the one the release pull request writes into `action.yml`
   # and `publish.yml`, and `release.yml` rebuilds and compares at the tag. Each target builds on a
-  # runner of its own architecture. The job also fails if the digest is not the one pinned in
-  # `action.yml`, so a change that invalidates a pin fails on the pull request.
+  # runner of its own architecture. The pins in `action.yml` are those of the last release, so any
+  # change under `crates/` makes the built digest differ from them by design: an ordinary pull
+  # request, a push to `main` and a manual run only prove that the two builds agree and print the
+  # digest. The comparison with the pinned digest is strict on a release pull request (a head branch
+  # named `release/*` or `chore/release-*`) and on a tag, so a release cannot merge with a stale pin.
   #
   # Two builds on one runner prove that the bytes do not depend on the checkout path, the target
   # directory or the run. They cannot prove independence from the time, the state of `apt` or the
@@ -392,6 +395,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           PIN: ${{ matrix.pin }}
+          STRICT: ${{ (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'chore/release-'))) || startsWith(github.ref, 'refs/tags/') }}
           ONE: ${{ runner.temp }}/one
           TWO: ${{ runner.temp }}/two
         run: |
@@ -410,13 +414,18 @@ jobs:
             echo "::error::The two builds differ, so the binary is not reproducible."
             exit 1
           fi
-          # Strict: the pinned digest must be this tree's digest.
+          # Strict on a release pull request and a tag: the pinned digest must be this tree's digest.
+          # Elsewhere the pins are the last release's and are expected to differ.
           for file in action.yml .github/workflows/publish.yml; do
             pinned="$(sed -n "s/^[[:space:]]*${PIN}:[[:space:]]*//p" "$file")"
-            if [ "$pinned" != "$one" ]; then
+            if [ "$pinned" = "$one" ]; then
+              continue
+            fi
+            if [ "$STRICT" = true ]; then
               echo "::error file=$file::$PIN is '$pinned' but this tree builds $one. Rebuild and re-pin (docs/releasing.md)."
               exit 1
             fi
+            echo "::notice file=$file::$PIN is '$pinned' and this tree builds $one; the comparison is strict only on a release pull request and a tag."
           done
           "$ONE/pr-results-$TARGET" --version
 
