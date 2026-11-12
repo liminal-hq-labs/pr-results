@@ -15,15 +15,12 @@ updates:
     labels:
       - 'ci'
 
-  # Enable with the change that adds Cargo.toml; Dependabot reports a failed run when it finds no
-  # manifest to update.
-  #
-  # - package-ecosystem: 'cargo'
-  #   directory: '/'
-  #   schedule:
-  #     interval: 'weekly'
-  #   open-pull-requests-limit: 5
-  #   cooldown:
-  #     default-days: 7
-  #   labels:
-  #     - 'build'
+  - package-ecosystem: 'cargo'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    labels:
+      - 'build'
