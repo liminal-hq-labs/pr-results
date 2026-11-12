@@ -94,40 +94,49 @@ pr-results render target/nextest/ci/junit.xml --out out/
 
 ## What the comment looks like
 
-Layout rules: a heading with the product's title and a one-phrase outcome, one table row per suite, failures first, everything long collapsed, no emoji. This is the Markdown the comment would carry for a product with one failing step and a flaky Rust test (a mock; the hash and run id are placeholders):
+Layout rules: a heading with the product's title and a one-phrase outcome, one table row per suite, failures first, everything long collapsed, no emoji. This is the Markdown the comment carries for a product with one failing step and a flaky Rust test (a hand-made example in the shape of the outputs in `tests/golden/`; the hash and run id are placeholders):
 
 `````markdown
-<!-- pr-results:1 key=ci sha=3f9c2e1d… run=19283746 -->
+<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=19283746 -->
 ### Example checks: 1 failure in 2 suites
 
-| Suite | Result | Passed | Failed | Skipped | Flaky | Time | Against `main` |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `check.sh` steps | **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s | 1 new failure · 41 s slower |
-| Rust tests | Passed | 672 | 0 | 0 | 1 | 47 s | no change |
+| Suite | Result | Passed | Failed | Skipped | Flaky | Time |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `Desk steps` | **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s |
+| `Rust tests` | Passed | 672 | 0 | 0 | 1 | 47.0 s |
 
 #### Failures
 
-<details open><summary><code>dos</code> › Example binary in a headless emulator</summary>
+<details open>
+<summary>Failure 1 of 1</summary>
 
-exit status 1 · [`tools/check.sh`](https://github.com/example/app/blob/3f9c2e1d…/tools/check.sh) · 18.2 s
+`Desk steps` › `check (dos)` › `Emulator` › `Example binary in a headless emulator`
+
+`exit status 1` · 18.2 s
+
+Last 3 of 31 lines:
 
 ````text
 emulator: program exited with code 3
 expected frame 12 to match dist/frames/0012.png
-```
 (a triple backtick in the log does not end this block)
 ````
 
 </details>
 
-<details><summary>Flaky: passed after a retry (1)</summary>
+<details>
+<summary>Flaky: passed after a retry (1)</summary>
 
-- `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
+- `Rust tests` › `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
 
 </details>
 
-Commit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d…) · [workflow run](https://github.com/example/app/actions/runs/19283746) · [artefacts](https://github.com/example/app/actions/runs/19283746#artifacts) · compared with `main` at [`a1b2c3d`](https://github.com/example/app/commit/a1b2c3d…) · pr-results 0.1.0
+Commit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/19283746) · [artefacts](https://github.com/example/app/actions/runs/19283746#artifacts) · pr-results 0.1.0
 `````
+
+Two rules shape it. A raw HTML line (`<details>`, `<summary>`, `</details>`) holds only fixed words and numbers, because Markdown inside it is not rendered, so every name sits on a Markdown line of its own, in a code span. And the names are the suite's title, the test suite, its group and the test, with the section's title in front only when the comment has more than one section. A column comparing each suite with the base branch arrives with baseline comparison in v0.3.
+
+When the comment is too long for GitHub it gives things up in a fixed order and says what it left out in a line of its own: the flaky list becomes a count, failure excerpts shrink to 8 and then 3 lines, failures are listed up to 20, then 5, then not at all, passing suites become one row, and last of all only the heading, the totals and the footer remain.
 
 When everything passes, the comment shrinks to the heading, the table and the footer. When no results were uploaded it says so and links the run. When the CI run was cancelled or skipped, nothing is posted.
 

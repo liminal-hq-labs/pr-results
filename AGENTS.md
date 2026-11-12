@@ -18,7 +18,7 @@
 
 ## Project status
 
-pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental** and only partly built (the model, `Safe` and the JUnit parsers; it posts nothing yet), so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
+pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental** and only partly built (the model, `Safe`, the JUnit parsers and the renderer; it posts nothing yet), so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
 
 ## Spelling and writing
 
@@ -110,7 +110,7 @@ Once the crates exist, add:
 
 - `cargo nextest run --workspace --locked` — tests
 - `cargo deny check` — dependency policy
-- `PR_RESULTS_BLESS=1 cargo nextest run` — rewrite the goldens in `tests/golden/`, then review the diff as Markdown. CI fails on any difference.
+- `PR_RESULTS_BLESS=1 cargo nextest run` — rewrite the goldens in `tests/golden/`, then review the diff as Markdown. CI fails on any difference. The goldens are exact output, so markdownlint and lychee skip them.
 
 State exactly what was and was not run when reporting results.
 
@@ -131,4 +131,4 @@ scripts/       header check, banner check and its Chromium text-fit harness
 .github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
 
-Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe` and the parsers), `crates/pr-results/` (the command line), `tests/fixtures/`, `deny.toml` and `.config/nextest.toml`. Still to come with the code that needs them: `crates/pr-results-{render,github}/`, `tests/golden/`, `action.yml`, and the reusable, publishing and release workflows.
+Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe`, the trusted values and the parsers), `crates/pr-results-render/` (the comment, check runs and annotations, and the `mention_probe` example), `crates/pr-results/` (the command line), `tests/fixtures/`, `tests/golden/`, `deny.toml` and `.config/nextest.toml`. Still to come with the code that needs them: `crates/pr-results-github/`, `action.yml`, and the reusable, publishing and release workflows.

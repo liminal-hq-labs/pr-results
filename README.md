@@ -10,7 +10,7 @@
 
 pr-results will read the test and check results your CI produces and post them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It is planned to understand JUnit from nextest, vitest, bun, jest and Playwright as well as step reports from shell-script projects, and to be safe on pull requests from forks by design.
 
-> **Status:** experimental and **barely built**. The data model, the escaping type and the JUnit parsers exist and are tested, but the tool reads nothing from GitHub and **posts nothing**. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
+> **Status:** experimental and **barely built**. The data model, the escaping type, the JUnit parsers and the renderer that writes the comment, check runs and annotations exist and are tested, but the tool reads nothing from GitHub and **posts nothing**. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
 
 ## What it's for
 
@@ -22,28 +22,28 @@ pr-results will read the test and check results your CI produces and post them t
 
 ## What the comment will look like
 
-This is a **mock** of the comment, written by hand to show the intended layout. It is not output from the tool, which does not exist yet.
+This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The renderer exists, but the tool does not post it yet.
 
 > ### Example checks: 1 failure in 2 suites
 >
-> | Suite | Result | Passed | Failed | Skipped | Flaky | Time | Against `main` |
-> | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-> | `check.sh` steps | **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s | 1 new failure · 41 s slower |
-> | Rust tests | Passed | 672 | 0 | 0 | 1 | 47 s | no change |
+> | Suite | Result | Passed | Failed | Skipped | Flaky | Time |
+> | --- | --- | ---: | ---: | ---: | ---: | ---: |
+> | `Desk steps` | **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s |
+> | `Rust tests` | Passed | 672 | 0 | 0 | 1 | 47.0 s |
 >
 > #### Failures
 >
-> <details open><summary><code>dos</code> › Example binary in a headless emulator</summary>
+> Failure 1 of 1
 >
-> exit status 1 · `tools/check.sh` · 18.2 s
+> `Desk steps` › `check (dos)` › `Emulator` › `Example binary in a headless emulator`
 >
-> </details>
+> `exit status 1` · 18.2 s
 >
-> <details><summary>Flaky: passed after a retry (1)</summary>
+> Flaky: passed after a retry (1)
 >
-> - `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
->
-> </details>
+> - `Rust tests` › `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
+
+In the real comment each failure is a `<details open>` block and the flaky list is a collapsed `<details>`.
 
 The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks-like).
 

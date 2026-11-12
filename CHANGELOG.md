@@ -14,6 +14,12 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - Per-producer fixtures in `tests/fixtures/`, hostile-input and truncation tests, and continuous integration for format, clippy and tests in the pinned `ci-rust` image, with a nextest `ci` profile.
 - A `pr-results` command line with `--version` and `--help` only.
 - `Safe::code_span`, inline code on one line with an adaptive delimiter, as the form for test names and paths, since GitHub does not look for mentions in code.
+- The trusted values a renderer needs, in `pr-results-core`: `Sha`, `RepoSlug`, `RunId`, `CommentKey`, `ServerUrl`, `RepoPath`, `TrustedUrl` (made only from a server, repository, commit or run) and `Marker`, which reads back only the exact line the tool writes. `Safe` gains `link`, `grouped` (`1 978`), `duration_ms` (`18.2 s`, `1 m 47 s`), `sha_short`, `path`, `plain_text`, `plain_block` and `after_first_line`.
+- The `pr-results-render` crate: the sticky comment, a check run (title, summary, text) per suite with annotations, the no-results comment and the job summary, all built from `Safe` with no new external crate. Failures are `<details open>` blocks with names on Markdown lines, flaky tests are a collapsed list, and attempts the report could not keep are always shown.
+- A size budget that counts the larger of characters and UTF-16 units and gives things up in a fixed order (flaky list to a count, excerpts of 8 then 3 lines, failures capped at 20, 5, none, passing suites in one row, then only the heading, totals and footer), saying in a line each what it left out.
+- Goldens for 20 scenarios in `tests/golden/` (`PR_RESULTS_BLESS=1` rewrites them) with an inert check on each, budget tests at 2 000, 10 000 and 60 000 characters, and tests that the source never joins fragments except through `cat` and spells nothing the American way.
+- The `mention_probe` example, which writes the Markdown that tests whether GitHub turns names into mentions or links, for the sandbox test of decision Q9.
+- A `steps/desk-job.xml` fixture: Desk's one suite per job, with the group in the class name. The steps reader accepts a suite per group or per job.
 
 ### Changed
 
@@ -21,10 +27,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - `Safe` now spells out every format and default-ignorable character, including the tag block, variation selectors, the soft hyphen and the fillers, as `\u{…}`.
 - A suite's `file` is stored once and shared by its cases: 200,000 cases under a 1 KiB path peak at 64 MiB instead of 273 MiB.
 - `Limits` gains `max_suites` (10,000) and `max_text_bytes` (64 MiB of kept text plus a fixed overhead per piece of text, case and attempt, so it bounds the report's memory and not only its bytes of text), each refused with an error that names the limit, and `max_bytes` also applies after invalid UTF-8 is replaced.
-- `Safe::text` also writes a hyphen between a letter or digit and a digit (`GH-123`) as the fullwidth U+FF0D, because a backslash escape is decoded before GitHub's reference filter.
+- `Safe::text` also writes a hyphen between a letter or digit and a digit (`GH-123`) as the fullwidth U+FF0D, because a backslash escape is decoded before GitHub's reference filter. This also changes dates and versions in text outside code (`2026-11-02` and `v1-2` come out with fullwidth hyphens), which is why the renderer puts names in code.
 - `Safe::text` and `Safe::log_line` write `@` and `#` as the fullwidth U+FF20 and U+FF03 instead of HTML entities, which GitHub probably decodes before its mention filters run. This is not verified against GitHub.
 - `Safe` also spells out the `Zs` spaces other than U+0020 and the Braille blank U+2800, which can make two names look alike, and `merge_same_named` no longer joins names that were cut differently.
 - `Debug` for `Untrusted` prints its size only, never the text.
 - Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
 
-There is no released version, action or binary yet, and the tool does not post anything.
+There is no released version, action or binary yet, and the tool does not post anything. Whether GitHub turns the fullwidth forms into mentions has not been tested (decision Q9).

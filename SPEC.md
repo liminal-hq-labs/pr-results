@@ -2,7 +2,7 @@
 
 The source of truth for behaviour. A change that alters behaviour updates this file in the same change. Why each choice was made is in [docs/decisions.md](docs/decisions.md); the per-format input notes are in [docs/inputs.md](docs/inputs.md), the threat model in [docs/security.md](docs/security.md) and the adoption guide in [docs/adopting.md](docs/adopting.md).
 
-The data model, `Safe` and the JUnit parsers exist (see the notes in [Components](#components) and [the normalized model](#the-normalized-model)); everything else described here is not built yet. Where a decision is still the owner's, the text says **Open question** and names its number in the [list at the end](#open-questions).
+The data model, `Safe`, the trusted values a renderer needs, the JUnit parsers and the renderer (the comment, the check runs, their annotations and the size budget) exist (see the notes in [Components](#components) and [the normalized model](#the-normalized-model)); everything else described here is not built yet. Where a decision is still the owner's, the text says **Open question** and names its number in the [list at the end](#open-questions).
 
 ## Contents
 
@@ -80,7 +80,7 @@ Liminal HQ products run their tests in several languages and report them in seve
 
 ### Could
 
-- **C1.** Read a `CHECK_TIMES` tab-separated file directly (`format = "steps-times"`), so shell projects need no converter. **Open question Q10.**
+- **C1.** Read a `CHECK_TIMES` tab-separated file directly (`format = "steps-times"`), so shell projects need no converter. Decided against for v0.1: a shell-step product keeps its own converter ([D40](docs/decisions.md)).
 - **C2.** A generic step-results JSON (`pr-results-steps/1`) for projects that write steps from a script.
 - **C3.** Trends over the last N base-branch runs: flaky rate and duration drift per test.
 - **C4.** Playwright attachments (`[[ATTACHMENT|path]]`) linked to the run's artefacts.
@@ -94,8 +94,8 @@ A Cargo workspace, added crate by crate with the code that needs it:
 
 | Crate | Role | I/O |
 | --- | --- | --- |
-| `pr-results-core` | The normalized model (below), the `Safe` type, and the JUnit and step-results parsers with flavour detection and location derivation | none, pure |
-| `pr-results-render` | Markdown from the model, built only from `Safe`, with budgets (not built yet) | none, pure |
+| `pr-results-core` | The normalized model (below), the `Safe` type, the trusted values (`Sha`, `RepoSlug`, `RunId`, `CommentKey`, `ServerUrl`, `RepoPath`, `TrustedUrl`, `Marker`) and the text built from them (`Safe::link`, `grouped`, `duration_ms`), and the JUnit and step-results parsers with flavour detection and location derivation | none, pure |
+| `pr-results-render` | The comment, the check runs and their annotations from the model, built only from `Safe`, with budgets | none, pure |
 | `pr-results-github` | A `Forge` trait and its `ureq` implementation, the artefact download (not built yet) | network |
 | `pr-results` | The command line: configuration, wiring and `main` | files and network |
 
@@ -155,21 +155,21 @@ As built in `pr-results-core`: a `Report` holds `Suite`s (`name`, `flavour`, `ca
 For shell-step projects, a converter in the product (Desk's `tools/steps-junit`, once it exists) writes JUnit that `pr-results` reads as the `steps` flavour. The two sides must stay in step.
 
 - Root `<testsuites name="…" time="…">`.
-- One `<testsuite name="<group>">` per group of steps that ran, in script order, with `tests`, `failures`, `skipped` and `time` in seconds with millisecond precision.
-- One `<testcase classname="<script>:<group>" name="<step title>" time="…">` per step, in order.
-- The failing step has `<failure message="exit status N">` whose body is the last 200 lines of that step's log (the CI captures the log; the converter tails it). Steps after the failure in the same run are `<skipped message="not run: an earlier step failed"/>`.
+- One `<testsuite name="<group>">` per group of steps that ran, or one `<testsuite name="<job>">` per job, in script order, with `tests`, `failures`, `skipped` and `time` in seconds with millisecond precision. Both shapes are read.
+- One `<testcase classname="<script>:<group>" name="<step title>" time="…">` per step, in order. Desk's converter writes `classname="check.<group>"`. The group is what follows the last colon of the class name, or failing that its last full stop.
+- The failing step has `<failure message="exit status N">` whose body is the tail of that step's log (the CI captures the log; the converter tails it: 200 lines in this contract, 80 in Desk's converter, which may add `type="step"`). Steps after the failure in the same run are `<skipped message="not run: an earlier step failed"/>`, or are simply absent, as in Desk's converter.
 - Groups not selected for this job are absent, not skipped, so a matrix of group jobs merges cleanly.
 - No `hostname`, no absolute paths outside the workspace.
 
-`pr-results` renders a `steps` suite with step titles as written and no `classname` prefix, and treats `time` as the main signal for duration tracking.
+`pr-results` renders a `steps` suite with step titles as written and no `classname` prefix, and treats `time` as the main signal for duration tracking. A step's excerpt is the last lines of its log, where a test's is the first lines of its failure. A configured suite spans many `<testsuite>` elements and many artefacts, because a job can upload several files (Desk's are `results-<job>`, holding `steps.xml` and `nextest-*.xml`), so the unit the renderer works on is the section: one configured suite, one check run, one row of the table, holding all the suites read for it.
 
 ## Outputs
 
 ### The sticky comment
 
-Layout rules: a heading with the product's title and a one-phrase outcome; one table row per suite; failures first and expanded only as far as the budget allows; everything long inside `<details>`; no emoji. Status is in words, with an optional `symbols = "glyphs"` setting that adds ✓ ✗ ↻ – before them. Times are written `1 m 47 s` and `0.4 s`. Numbers use a thin space as the thousands separator (`1 978`), as Canadian style allows. Deltas against the base branch go in a final column only when a baseline was found.
+Layout rules: a heading with the product's title and a one-phrase outcome; one table row per suite; failures first and expanded only as far as the budget allows; everything long inside `<details>`; no emoji. Status is in words, with an optional `symbols = "glyphs"` setting that adds ✓ ✗ ↻ – before them. Times are written `1 m 47 s` and `0.4 s`. Numbers use a thin space as the thousands separator (`1 978`), as Canadian style allows. A column of deltas against the base branch is added only when a baseline was found, which arrives with baseline comparison in v0.3 and does not exist before it.
 
-The full layout, with a worked example, is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks-like). When everything passes, the comment shrinks to the heading (`All 696 passed`), the table and the footer. When no results were uploaded it says `No results were uploaded for this run.` and links the run. When the CI run was cancelled or skipped, the publisher does nothing.
+The full layout, with a worked example, is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks-like). Each failure is a `<details open>` block: `<summary>Failure N of M</summary>`, then on Markdown lines the name as `` `suite` › `group` › `name` `` (the section's title in front when the comment has more than one section, and a group that repeats the suite's name left out), the message and the time, the number of earlier attempts and of attempts the report could not keep, and the excerpt in a code block, headed "First N of M lines" or "Last N of M lines" when it is cut. **A raw HTML line holds only trusted words and numbers**, because Markdown inside a raw HTML line is not rendered: names are never put in a `<summary>`, but on a Markdown line after a blank line. Flaky tests are a collapsed section, one line each. Every name, message and path is shown in a code span or a code block. The footer links the commit, the workflow run, its artefacts and shows the version. When everything passes, the comment shrinks to the heading (`All 696 passed`), the table and the footer. When no results were uploaded it says `No results were uploaded for this run.` and links the run. When the CI run was cancelled or skipped, the publisher does nothing.
 
 **Marker.** The first line is `<!-- pr-results:1 key=<comment key> sha=<head sha> run=<run id> -->`. `key` lets one repository keep two comments (for example `ci` and `e2e`). `pr-results` finds the comment whose body starts with the marker `<!-- pr-results:1 key=<key>` and a space **and** whose author is the token's own identity (`github-actions[bot]` for `GITHUB_TOKEN`). It paginates all comments.
 
@@ -178,32 +178,32 @@ The full layout, with a worked example, is in [docs/adopting.md](docs/adopting.m
 - One per suite, named by `suite.check` (default `"<title> <suite name>"`, for example `Example Rust tests`), so it never collides with a job name. The job summary warns when a configured check name equals a job name in the triggering run.
 - `head_sha` is `workflow_run.head_sha`, `status` is `completed`, and `conclusion` is `failure` if any case failed or errored, `success` if all passed or were skipped, and `neutral` if the suite has no results and `required = false`. With `required = true` and no results it is `failure` with "No results were uploaded".
 - `output.title` reads like `672 passed, 1 flaky` or `1 failed, 23 passed, 4 skipped`.
-- `output.summary` is the suite's row, its failures (same rendering as the comment, larger budget) and a link back to the pull request comment.
-- `output.text` is every failure's full detail up to the budget, then the slowest ten cases.
+- `output.summary` is the suite's row, a table of its `<testsuite>` elements with their times (the step durations of a steps suite, at most 50 rows), its failures (same rendering as the comment, with its own budget), the flaky list, and a line stating how many annotations were sent and how many were not. A link back to the pull request comment is not part of v0.1.
+- `output.text` is every failure's full detail up to the budget, with "…and N more failures" when some do not fit, then the slowest ten cases.
 - The optional combined check (`[checks] combined = "…"`) carries the comment's table and the worst conclusion.
 
 ### Annotations
 
-- One per failed or errored case with a known repository path, `annotation_level: failure`. Flaky cases are `warning` when `annotations.flaky = true`.
+- One per failed or errored case with a known repository path, `annotation_level: failure`, in the order of the report. Flaky cases follow as `warning` when `annotations.flaky = true`. A path that is not whole, or breaks the location rules, is dropped.
 - `path` must exist in the commit's tree. `pr-results` checks paths with one `GET /repos/{o}/{r}/git/trees/{sha}?recursive=1` per run and drops annotations for paths that do not exist, rather than letting the API reject the batch.
-- `start_line` comes from the input or a derived location, and is `1` when only the file is known. `title` is the case name (plain text, capped at 255 characters) and `message` is the first 64 KiB of message and detail.
+- `start_line` comes from the input or a derived location, and is `1` when only the file is known. `title` is the case name (plain text through `Safe::plain_text`, capped at 255 characters) and `message` is the message and detail as plain text (`Safe::plain_block`, which keeps line breaks), cut visibly at 16 000 characters, well inside the 64 KiB GitHub allows.
 - Sent 50 per request, and capped at `annotations.max_per_suite` (default 50, hard maximum 500). The cap and the count dropped are stated in the check summary.
 
 ### Size budget and degradation
 
-Every renderer writes into a `Budget` with a character limit (comment 60 000, summary 60 000, text 60 000). The 5 000-character headroom covers the marker, the footer and GitHub's own counting of multi-byte characters. Rendering degrades in this order until it fits, and each step adds one line saying what was left out and where to find it:
+Every renderer works to a limit (comment 60 000, summary 60 000, text 60 000). A size is the larger of the text's characters and its UTF-16 units, because GitHub may count either; the 5 000-character headroom covers the marker and the footer. Rendering degrades in this order until it fits, each step adds one line saying what was left out and where to find it, and a step that would change nothing is not taken and not recorded (`Comment::steps_taken` lists the ones that were):
 
-1. Drop the slower-than-base and flaky sections to their counts.
+1. Drop the flaky list to its count (the slower-than-base section joins it with v0.3).
 2. Shorten each failure excerpt from `excerpt_lines` (default 20) to 8, then to 3.
-3. Show at most `max_failures` failures (default 20), then 5, then none, with "…and N more failures in the check runs."
+3. Show at most `max_failures` failures (default 20) from the start, then at most 20 if `max_failures` is higher, then 5, then none, with "…and N more failures in the check runs."
 4. Collapse passing suites into one line: "12 other suites passed".
-5. As a last resort, the heading, the totals and the footer, which always fit.
+5. As a last resort, the marker, the heading, the totals and the footer, which fit in any limit worth setting. A check run's summary takes steps 1 to 3 and the last one. Its text is filled failure by failure and its tail is the slowest ten.
 
 Truncation cuts at a `char` boundary and never inside an escape sequence, because escaping happens before measuring.
 
 ### Job summary
 
-The publisher writes the comment body (without the marker) to `GITHUB_STEP_SUMMARY`, capped at 900 KiB, plus a short diagnostics block: inputs found per suite, files skipped and why, annotations dropped and the baseline run used.
+The publisher writes the comment body (without the marker, which is `job_summary`) to `GITHUB_STEP_SUMMARY`, plus a short diagnostics block: inputs found per suite, files skipped and why, annotations dropped and the baseline run used. The comment is far under the 900 KiB the summary allows. The diagnostics block is written by the publisher, which knows what it read.
 
 ### Limits
 
@@ -339,7 +339,9 @@ Everything from artefacts is untrusted: file names, XML content, artefact names 
 - **XML.** `quick-xml` with DTDs rejected (`<!DOCTYPE` is an input error), no entity expansion beyond the five predefined and numeric references, a depth limit of 64, and attribute and text caps applied while streaming.
 - **Archives.** Artefact zips are read in memory or in a temporary directory under `RUNNER_TEMP`. Entries with absolute paths, `..` components or symlink modes are rejected. The uncompressed total and the per-entry size are checked against `limits` before and during extraction (a zip-bomb guard), and at most `max_files` entries are read.
 - **Text.** Invalid UTF-8 is replaced with U+FFFD. C0 and C1 controls other than tab and newline are removed. Unicode bidirectional controls (U+202A–U+202E, U+2066–U+2069) and U+200B–U+200F and U+FEFF are shown as `\u{…}`, so a name cannot visually reorder a line.
-- **One escaping type.** The renderer accepts only `Safe` fragments. `Safe::text(&str)` escapes for inline Markdown inside HTML-capable contexts: the five HTML specials (ampersand, less-than, greater-than, both quotes) become entities, and the Markdown specials (backslash, backtick, asterisk, underscore, braces, brackets, parentheses, hash, plus, minus, full stop, exclamation mark, pipe, tilde, equals) are backslash-escaped wherever they could start syntax, with newlines replaced by a space. `@` is rendered as the fullwidth U+FF20 and `#` as the fullwidth U+FF03, and a hyphen between a letter or digit and a digit (`GH-123`) as the fullwidth U+FF0D, so text outside code carries no mention or issue reference (**Open question Q9**: unverified, and entities were rejected because GitHub probably decodes them before its filters run). `Safe::code_span` writes inline code on one line, with a delimiter one backtick longer than the longest run in the content, and GitHub does not look for mentions in code. The renderer puts test names, file paths and failure text in `code_span` or `code_block`, and uses `text` only for the fixed words around them. `Safe::code_block(&str)` picks a fence one backtick longer than the longest run in the content (at least four) with the `text` info string. `Safe::link(url, text)` accepts only URLs built from trusted parts (repository, SHA, run id, repository-relative paths that were checked against the tree).
+- **One escaping type.** The renderer accepts only `Safe` fragments. `Safe::text(&str)` escapes for inline Markdown inside HTML-capable contexts: the five HTML specials (ampersand, less-than, greater-than, both quotes) become entities, and the Markdown specials (backslash, backtick, asterisk, underscore, braces, brackets, parentheses, hash, plus, minus, full stop, exclamation mark, pipe, tilde, equals) are backslash-escaped wherever they could start syntax, with newlines replaced by a space. `@` is rendered as the fullwidth U+FF20 and `#` as the fullwidth U+FF03, and a hyphen between a letter or digit and a digit (`GH-123`) as the fullwidth U+FF0D, so text outside code carries no mention or issue reference (**Open question Q9**: unverified, and entities were rejected because GitHub probably decodes them before its filters run). Because that depends on GitHub's filters, the renderer does not rely on it: it puts test names, file paths and failure text in `code_span` or `code_block`, and uses `text` only for the heading's title. `Safe::code_span` writes inline code on one line, with a delimiter one backtick longer than the longest run in the content, and GitHub does not look for mentions in code. `Safe::code_block(&str)` picks a fence one backtick longer than the longest run in the content (at least four) with the `text` info string. `Safe::link(url, label)` accepts only a `TrustedUrl`, which can be made only from the server, repository, commit hash and run id (`commit`, `run`, `run_artifacts`), each parsed with strict rules. Annotation titles and messages are plain text (`plain_text`, `plain_block`), because an annotation is not Markdown.
+- **HTML lines hold only trusted words and numbers.** The renderer writes `<details>`, `<summary>` and `</details>` from literals and counts, never around a name, because Markdown inside a raw HTML line shows literally and untrusted text there would be markup.
+- **Fragments never join into a reference.** `Safe::text` breaks `GH-123` inside one fragment, but `Safe::concat` can build it from `GH` and `-123`. Every line of the renderer is joined by `cat`, which puts a space between two fragments that would form a reference across the join, and a test fails if the renderer calls `Safe::concat` or `Safe::join` anywhere else.
 - **Paths for annotations** are normalized, must be relative, must not contain `..`, and must exist in the commit's tree.
 - **No hostnames, timestamps, properties or environment values** from the inputs are rendered.
 - **Secrets.** `pr-results` reads only `GITHUB_TOKEN` (or `--token-env NAME`), `GITHUB_EVENT_PATH`, `GITHUB_REPOSITORY`, `GITHUB_API_URL`, `GITHUB_SERVER_URL`, `GITHUB_STEP_SUMMARY` and `RUNNER_TEMP`. It sends the token only to `GITHUB_API_URL`, never forwards the `Authorization` header across a cross-host redirect (the artefact download redirects to a presigned blob URL that needs no token), never logs headers, and masks the token with `::add-mask::` defensively.
@@ -398,7 +400,7 @@ The shared `.github` repository holds CI images and a reusable packaging workflo
 
 ### Migration order
 
-1. A shell-step product (v0.1), with the uploads, the publisher and a `pr-results.toml` for its two suites. **Open question Q5** on which product goes first.
+1. A shell-step product (v0.1), with the uploads, the publisher and a `pr-results.toml` for its two suites. Desk goes first, after this repository's own dogfood ([D38](docs/decisions.md)): its CI already produces `results-*`, `event-file` and step JUnit.
 2. Tauri products that run nextest and vitest through `workflow_run` today (v0.2): replace the reporter steps with the reusable workflow, with no configuration file unless names change.
 3. A product that posts its own comment from a script (v0.3, with `other_checks = true`): retire the script.
 4. Products that report in-job today: move to artefacts plus the publisher, which fixes forks and Dependabot for them.
@@ -434,7 +436,7 @@ If the build proves not reproducible, fall back to a two-commit release (tag, bu
 
 - **Parsers.** Each flavour's fixture parses to the expected model: nested suites, bare `<testsuite>` roots, empty files, files with only skipped tests, nextest `flakyFailure` and `rerunFailure`, merged Playwright shards, and step suites merged across group jobs.
 - **Location derivation.** Rust panic lines (`panicked at crates/x/src/lib.rs:12:5`, with and without the thread name), vitest stack frames, bun `file` and `line`, and paths with `path_prefix`.
-- **Rendering.** The `Safe` type, fence selection, number and time formatting, and Canadian spellings in every fixed string (a test greps the binary's string table for `color`, `canceled`, `artifact` in prose and `behavior`).
+- **Rendering.** The `Safe` type, fence selection, number and time formatting, and Canadian spellings in every fixed string (a test scans the renderer's source and every golden for `color`, `canceled`, `artifact` in prose and `behavior`). Every golden passes an inert check: outside code there is no `<img`, no link the tool did not build, no marker after the first line, no `@`, no `#` outside a heading, no URL to autolink, no `GH-123` shape and no HTML but the trusted lines, and every `<details>` is closed.
 - **Budget.** Each degradation step in order. Output never exceeds the limit for any fixture.
 - **Pull request verification.** Same-repository, fork, forged event file, moved head, closed pull request, and two pull requests with the same head.
 - **Marker matching.** A user comment with a forged marker is ignored, the bot's comment is updated, and a stale run does not overwrite a newer one.
@@ -444,13 +446,13 @@ If the build proves not reproducible, fall back to a two-commit release (tag, bu
 `tests/fixtures/`, real outputs trimmed and hostnames replaced:
 
 - `nextest/{pass,fail,flaky,retries-exhausted,panic-location}.xml`
-- `steps/{pass,step-fail,groups-split-a,groups-split-b}.xml` and `steps/check-times.tsv`
+- `steps/{pass,step-fail,groups-split-a,groups-split-b,desk-job}.xml` and `steps/check-times.tsv`
 - `vitest/{pass,fail-with-stack,describe-nesting}.xml`, `bun/{pass,fail-file-line,nested}.xml`, `jest-junit/default.xml`, `playwright/{shard-1-of-2,shard-2-of-2,attachments}.xml`, `python/{xmlrunner,pytest}.xml` and `generic/{gradle,gut}.xml`
 - `events/{workflow_run-pr,workflow_run-fork,workflow_run-push,uploaded-event-forged}.json`
 
 ### Goldens
 
-`tests/golden/<fixture-set>/{comment.md,check-<suite>.md,annotations.json,requests.json}`, produced by `pr-results render` and by `publish --dry-run` against the fake. `PR_RESULTS_BLESS=1 cargo nextest run` rewrites them, and CI fails on any difference. Goldens are reviewed as Markdown in the pull request diff.
+`tests/golden/<scenario>/{comment.md,check-<n>.md,annotations.txt}`, produced by the render crate's tests from scenarios written in Rust (one `truncated-<step>` for each step of the budget). `requests.json` joins them when `publish --dry-run` exists. `PR_RESULTS_BLESS=1 cargo nextest run` rewrites them, and CI fails on any difference. Goldens are reviewed as Markdown in the pull request diff.
 
 ### Fork-safety and hostile-input tests
 
@@ -477,16 +479,16 @@ A manual workflow (`workflow_dispatch`, owner only) publishes the hostile fixtur
 
 Each carries the default this specification assumes. Settled questions are in [docs/decisions.md](docs/decisions.md).
 
-- **Q5. First adopter.** Default: a shell-step product, once its step converter lands. A product that already publishes through `workflow_run` would be a quicker first proof, since it needs no new CI work.
-- **Q8. Base-branch annotations.** Should pushes to the default branch also get check runs (default yes, no comment)?
-- **Q9. Mentions.** Do the fullwidth `@`, `#` and hyphen-before-a-digit of `Safe::text`, and code formatting, stop mentions, issue links and `GH-123`-style autolinks? The sandbox test must cover `@user`, `@org/team`, `#1`, `org/repo#1` and `GH-1`. Entities were dropped because GitHub's filters probably run on rendered text, so an entity decodes back to `@`. A sandbox test with the owner's own account must precede the renderer, and the tool refuses a name that still mentions.
-- **Q10. `steps-junit` or `steps-times`.** Should a shell-step product keep its own converter (default), or should `pr-results` read `CHECK_TIMES` directly so the converter can go?
-- **Q11. Pinning and branch protection.** Should the repository turn on `sha_pinning_required` and add a ruleset for `main` (default yes, once the checks have run green long enough to name as required)?
+- **Q9. Mentions.** Do the fullwidth `@`, `#` and hyphen-before-a-digit of `Safe::text`, and code formatting, stop mentions, issue links and `GH-123`-style autolinks? The renderer puts every name in code, so the answer decides what is left to fix. The sandbox test must cover `@user`, `@org/team`, `@everyone`, `#1`, `org/repo#1`, `GH-1`, a URL and `www.`, through `cargo run -p pr-results-render --example mention_probe` posted as the bot, and must pass before the renderer merges. If a code form fires, such names become "a name that could not be shown safely (N)" and the question returns to the owner. If only `text` fires, `@` is written `(at)` and `#` `No.`, and the probe is repeated. Entities were dropped because GitHub's filters probably run on rendered text, so an entity decodes back to `@`.
+
+Q5, Q8, Q10 and Q11 are answered in [docs/decisions.md](docs/decisions.md) (D38 to D41).
 
 ## What is not verified
 
 - The workflow-command annotation limits per step and per job (GitHub's page does not state them), and the exact comment-body cap of 65 536 characters.
-- Whether the fullwidth `@`, `#` and hyphen, and code formatting, reliably suppress mentions and issue links in GitHub comments. This is to be tested in a sandbox, with the owner's own account, before the renderer is written.
+- Whether the fullwidth `@`, `#` and hyphen, and code formatting, reliably suppress mentions and issue links in GitHub comments. This is to be tested in a sandbox, with the owner's own account, before the renderer merges.
+- Whether GitHub counts a comment's length in characters or in UTF-16 units. The renderer keeps both under the limit.
+- That Desk's converter writes the shape this renderer reads. The `desk-job` fixture is written from its plan, not captured.
 - Whether GitHub Actions resolves `uses:` through a repository transfer redirect, which matters when the project graduates from Labs.
 - Start-up times for the packaging options are estimates, not measurements.
 - Reproducibility of musl release builds in the shared `ci-rust` image was not tried.

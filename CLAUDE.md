@@ -4,7 +4,7 @@ A summary of [AGENTS.md](AGENTS.md), which is canonical. Keep the two in sync.
 
 ## What this is
 
-pr-results is a Liminal HQ Labs experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental and only partly built (the model, `Safe` and the JUnit parsers; it posts nothing yet), so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
+pr-results is a Liminal HQ Labs experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. Experimental and only partly built (the model, `Safe`, the JUnit parsers and the renderer; it posts nothing yet), so anything may change. Behaviour lives in `SPEC.md`, decisions in `docs/decisions.md`.
 
 ## Rules to remember
 
@@ -14,7 +14,7 @@ pr-results is a Liminal HQ Labs experiment: calm test and check results for pull
 - **Formatting.** Tabs everywhere except YAML. Rust uses rustfmt with hard tabs (`rustfmt.toml`).
 - **Headers.** SPDX header on every source, script, YAML, TOML and SVG file: summary line, blank, "(c) Copyright 2026 Liminal HQ, Scott Morris", `SPDX-License-Identifier: Apache-2.0 OR MIT`.
 - **CI.** One job per check. Shared images come from `liminal-hq/.github`, pinned by digest. Every action is pinned by full commit SHA with the version in a comment. Dependabot is on (GitHub Actions, and Cargo once there is a manifest).
-- **Architecture.** Untrusted input is escaped only through `Safe`. No network outside `pr-results-github`. No pull request code in privileged workflows, and no secret beyond `GITHUB_TOKEN`. SPEC first. Deterministic output. No unsafe code.
+- **Architecture.** Untrusted input is escaped only through `Safe`. No network outside `pr-results-github`. No pull request code in privileged workflows, and no secret beyond `GITHUB_TOKEN`. In the renderer, HTML lines hold only trusted literals, names go through `code_span` or `code_block`, and lines are joined by `cat`, never `Safe::concat`. SPEC first. Deterministic output. No unsafe code.
 - **Docs.** Update `SPEC.md` and `docs/decisions.md` in the same change as the behaviour.
 
 ## Commands
