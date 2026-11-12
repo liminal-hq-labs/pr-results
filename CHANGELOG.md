@@ -18,11 +18,14 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - The `pr-results-render` crate: the sticky comment, a check run (title, summary, text) per suite with annotations, the no-results comment and the job summary, all built from `Safe` with no new external crate. Failures are `<details open>` blocks with names on Markdown lines, flaky tests are a collapsed list, and attempts the report could not keep are always shown.
 - A size budget that counts the larger of characters and UTF-16 units and gives things up in a fixed order (flaky list to a count, excerpts of 8 then 3 lines, failures capped at 20, 5, none, passing suites in one row, then only the heading, totals and footer), saying in a line each what it left out.
 - Goldens for 20 scenarios in `tests/golden/` (`PR_RESULTS_BLESS=1` rewrites them) with an inert check on each, budget tests at 2 000, 10 000 and 60 000 characters, and tests that the source never joins fragments except through `cat` and spells nothing the American way.
-- The `mention_probe` example, which writes the Markdown that tests whether GitHub turns names into mentions or links, for the sandbox test of decision Q9.
+- The `mention_probe` example, which writes the Markdown that tests whether GitHub turns names into mentions or links, for the sandbox test of decision Q9. It also puts every target in the heading and adds targets with a pipe, a backtick and an escaped pipe.
+- The result of the Q9 gate (decision D43): in a throwaway repository, the `text`, `code_span`, `code_block` and failure-layout forms made no mention, issue link or autolink, while the raw controls did. Real team mentions, cross-repository references, notifications, annotations, check-run text and the heading remain for v0.2.
 - A `steps/desk-job.xml` fixture: Desk's one suite per job, with the group in the class name. The steps reader accepts a suite per group or per job.
 
 ### Changed
 
+- An annotation title is at most 255 characters and its message at most 65 535 bytes, the omitted-characters marker included (a 1,000-character name used to render 286), and the comment, summary and text limits are held to 65 535 whatever the setting.
+- `Marker::parse` accepts a first line that ends in `\r\n`, as `Marker::prefix_matches` already did.
 - Merging same-named suites no longer takes quadratic time: 100,000 distinct suites went from 10.6 s to 17 ms.
 - `Safe` now spells out every format and default-ignorable character, including the tag block, variation selectors, the soft hyphen and the fillers, as `\u{…}`.
 - A suite's `file` is stored once and shared by its cases: 200,000 cases under a 1 KiB path peak at 64 MiB instead of 273 MiB.
@@ -33,4 +36,4 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - `Debug` for `Untrusted` prints its size only, never the text.
 - Retries past `max_attempts` are counted in `Case::attempts_omitted` instead of being dropped silently.
 
-There is no released version, action or binary yet, and the tool does not post anything. Whether GitHub turns the fullwidth forms into mentions has not been tested (decision Q9).
+There is no released version, action or binary yet, and the tool does not post anything. The mention and link forms were tested in one sandbox (decision D43); real teams, cross-repository references, notifications, annotations and the heading have not been.
