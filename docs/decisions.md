@@ -21,6 +21,7 @@ Each decision is numbered and stays here even when superseded, with a note on wh
 | D15 | Release process | A release pull request records the binaries' digests in `action.yml`. A tagged build must reproduce them or fail. Tags only when the owner asks | Pinning by SHA needs the digest in the pinned commit. If builds prove not reproducible, a two-commit release is the fallback, recorded here |
 | D16 | Exit status | `0` when it published, even if tests failed. Non-zero only when publishing itself failed | The check runs carry the test outcome. `--fail-on-failures` exists for local use |
 | D17 | Dogfood | The tool's own publisher uses the latest release pinned by SHA, never the pull request's build | A pull request must not change the code that holds the write token |
+| D18 | Approving reviews (was Q6) | `can_approve_pull_request_reviews` is `false` for this repository, already set | The workflows hold write tokens, and a workflow that can approve pull requests could approve its own changes. The reference repositories leave it on, which is not a reason to copy them |
 
 ## Open questions
 
@@ -29,10 +30,14 @@ Each has the default the specification assumes. See [SPEC.md](../SPEC.md#open-qu
 | # | Question | Default |
 |---|---|---|
 | Q5 | Which product adopts it first? | A shell-step product, once its step converter lands. A product already on `workflow_run` would be a quicker first proof |
-| Q6 | Should `can_approve_pull_request_reviews` be off, since the workflows hold write tokens? | Left to the owner. The reference repositories leave it on |
 | Q8 | Should pushes to the default branch also get check runs? | Yes, with no comment |
 | Q9 | Is rendering `@` as an entity acceptable in test names, or should the tool refuse to post a name containing `@`? | Render as an entity, after the sandbox test |
 | Q10 | Should a shell-step product keep its step converter, or should `pr-results` read `CHECK_TIMES` directly? | Keep the converter |
+| Q11 | Should the repository turn on `sha_pinning_required` and add a ruleset for `main` (pull request required, status checks, no force pushes)? | Yes for both, once the checks have run green on `main` long enough to name as required |
+
+## To enable before launch
+
+Private vulnerability reporting is disabled while `.github/ISSUE_TEMPLATE/config.yml` and `docs/security.md` point reporters to the repository's `security/advisories/new` page. It is to be enabled in the repository settings (Settings → Code security → Private vulnerability reporting) before launch. Until then that link does not work for outside reporters.
 
 ## What the existing options do
 

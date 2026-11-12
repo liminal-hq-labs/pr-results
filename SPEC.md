@@ -477,10 +477,10 @@ A manual workflow (`workflow_dispatch`, owner only) publishes the hostile fixtur
 Each carries the default this specification assumes. Settled questions are in [docs/decisions.md](docs/decisions.md).
 
 - **Q5. First adopter.** Default: a shell-step product, once its step converter lands. A product that already publishes through `workflow_run` would be a quicker first proof, since it needs no new CI work.
-- **Q6. Approving reviews.** Should `can_approve_pull_request_reviews` be off for this repository, since its workflows hold write tokens? The reference repositories leave it on.
 - **Q8. Base-branch annotations.** Should pushes to the default branch also get check runs (default yes, no comment)?
 - **Q9. Mentions.** Is rendering `@` as an entity acceptable in test names, or should the tool refuse to post a name containing `@`?
 - **Q10. `steps-junit` or `steps-times`.** Should a shell-step product keep its own converter (default), or should `pr-results` read `CHECK_TIMES` directly so the converter can go?
+- **Q11. Pinning and branch protection.** Should the repository turn on `sha_pinning_required` and add a ruleset for `main` (default yes, once the checks have run green long enough to name as required)?
 
 ## What is not verified
 
