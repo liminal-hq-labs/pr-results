@@ -25,7 +25,7 @@ pub use api::{
 	percent_decode, percent_encode, ApiPath, ApiRequest, ApiResponse, BlobUrl, Forge, ForgeError,
 	Method, Token,
 };
-pub use archive::{read_zip, ArchiveError, ArchiveLimits, Entry};
+pub use archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
 pub use dry::{requests_to_json, DryRun};
 pub use fake::{FakeCheck, FakeComment, FakeForge, FakePull, Fault};
 pub use github::{

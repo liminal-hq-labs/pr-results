@@ -116,6 +116,17 @@ impl std::error::Error for ArchiveError {}
 /// Reads every regular file of the zip in `bytes`. Directory entries count towards
 /// `max_files` and are not returned.
 pub fn read_zip(bytes: &[u8], limits: &ArchiveLimits) -> Result<Vec<Entry>, ArchiveError> {
+	read_zip_filtered(bytes, limits, &|_| true)
+}
+
+/// Like [`read_zip`], but only a file that `keep` accepts is inflated, checked against the byte
+/// limits and returned. The names of all entries are still checked, so an archive with a hostile
+/// name is refused whatever it holds, but a large entry nobody asked for costs nothing.
+pub fn read_zip_filtered(
+	bytes: &[u8],
+	limits: &ArchiveLimits,
+	keep: &dyn Fn(&str) -> bool,
+) -> Result<Vec<Entry>, ArchiveError> {
 	let eocd = find_eocd(bytes)?;
 	let dir = Directory::read(bytes, eocd)?;
 	if usize::from(dir.entries) > limits.max_files {
@@ -174,21 +185,20 @@ pub fn read_zip(bytes: &[u8], limits: &ArchiveLimits) -> Result<Vec<Entry>, Arch
 			return Err(ArchiveError::Method(method));
 		}
 
-		if u64::from(size) > limits.max_entry_bytes {
-			return Err(ArchiveError::EntryTooLarge);
-		}
-		total = total
-			.checked_add(u64::from(size))
-			.filter(|t| *t <= limits.max_total_bytes)
-			.ok_or(ArchiveError::TotalTooLarge)?;
-
-		if kind == Kind::File {
+		if kind == Kind::File && keep(name) {
+			if u64::from(size) > limits.max_entry_bytes {
+				return Err(ArchiveError::EntryTooLarge);
+			}
+			total = total
+				.checked_add(u64::from(size))
+				.filter(|t| *t <= limits.max_total_bytes)
+				.ok_or(ArchiveError::TotalTooLarge)?;
 			let data = entry_data(bytes, &dir, name, method, crc, compressed, size, local)?;
 			out.push(Entry {
 				name: name.to_owned(),
 				data,
 			});
-		} else if size != 0 || compressed > 2 {
+		} else if kind == Kind::Directory && (size != 0 || compressed > 2) {
 			// A directory holds nothing. (An empty deflate stream is two bytes.)
 			return Err(ArchiveError::SpecialFile);
 		}

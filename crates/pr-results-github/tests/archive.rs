@@ -492,3 +492,39 @@ fn errors_name_no_entry() {
 		"Debug prints sizes only"
 	);
 }
+
+#[test]
+fn a_filtered_read_inflates_only_what_it_keeps() {
+	let junk = vec![0u8; 20 * 1024 * 1024];
+	let bytes = build(&[
+		Spec {
+			crc: Some(1),
+			..Spec::deflated("junk.bin", &junk)
+		},
+		Spec::stored("a.xml", b"<a/>"),
+	]);
+	let limits = ArchiveLimits {
+		max_entry_bytes: 1024,
+		max_total_bytes: 1024,
+		..ArchiveLimits::default()
+	};
+	let got =
+		pr_results_github::read_zip_filtered(&bytes, &limits, &|n| n.ends_with(".xml")).unwrap();
+	assert_eq!(got.len(), 1);
+	assert_eq!(got[0].name, "a.xml");
+	// Asked for everything, the same archive is refused.
+	assert_eq!(
+		read_zip(&bytes, &limits).unwrap_err(),
+		ArchiveError::EntryTooLarge
+	);
+	// Names are checked whatever is kept.
+	let hostile = build(&[
+		Spec::stored("../x.bin", b"x"),
+		Spec::stored("a.xml", b"<a/>"),
+	]);
+	assert_eq!(
+		pr_results_github::read_zip_filtered(&hostile, &limits, &|n| n.ends_with(".xml"))
+			.unwrap_err(),
+		ArchiveError::BadPath
+	);
+}

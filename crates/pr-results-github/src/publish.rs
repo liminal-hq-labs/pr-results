@@ -10,7 +10,6 @@
 //! few names that reach a log go through [`Safe::log_line`].
 
 use std::cell::Cell;
-use std::collections::BTreeMap;
 use std::fmt;
 
 use pr_results_core::{
@@ -23,7 +22,7 @@ use pr_results_render::{
 use serde_json::Value;
 
 use crate::api::{Forge, ForgeError};
-use crate::archive::{read_zip, ArchiveError, ArchiveLimits, Entry};
+use crate::archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
 use crate::github::{Artifact, CheckSpec, CommentAction, CommentSpec, GitHub, Pull, Tree};
 
 /// A pull request is commented on this many times at most when several verify.
@@ -391,38 +390,88 @@ pub fn publish<F: Forge>(
 
 // ---- reading -------------------------------------------------------------------------------
 
+/// Reads the run's artefacts one at a time. An artefact is downloaded once even when several
+/// sections want it, only the entries some section asked for are inflated, and each archive is
+/// parsed and dropped before the next is fetched, so memory holds one archive and what it yields.
+/// The inflated bytes of everything kept are capped across the whole run by
+/// `plan.archive.max_total_bytes`.
 fn load<F: Forge>(
 	gh: &GitHub<F>,
 	artifacts: &[Artifact],
 	plan: &Plan,
 	report: &mut PublishReport,
 ) -> Result<Loaded, PublishError> {
-	let mut loaded = Loaded {
-		suites: Vec::new(),
-		skipped: Vec::new(),
-	};
-	// An artefact that feeds two sections is downloaded once.
-	let mut cache: BTreeMap<u64, Option<Vec<Entry>>> = BTreeMap::new();
+	let count = plan.sections.len();
+	let mut merged: Vec<Report> = (0..count).map(|_| Report::default()).collect();
+	let mut skipped = vec![0usize; count];
 	let mut downloaded: u64 = 0;
-	for (index, section) in plan.sections.iter().enumerate() {
-		let mut matching: Vec<&Artifact> = artifacts
+	let mut inflated: u64 = 0;
+
+	let mut wanted: Vec<&Artifact> = artifacts
+		.iter()
+		.filter(|a| plan.sections.iter().any(|s| s.artifact.is_match(&a.name)))
+		.collect();
+	wanted.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
+
+	for artifact in wanted {
+		let feeds: Vec<usize> = plan
+			.sections
 			.iter()
-			.filter(|a| section.artifact.is_match(&a.name))
+			.enumerate()
+			.filter(|(_, s)| s.artifact.is_match(&artifact.name))
+			.map(|(i, _)| i)
 			.collect();
-		matching.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
-		let mut skipped = 0usize;
-		let mut merged = Report::default();
-		for artifact in matching {
-			if artifact.expired {
-				report.notes.push(Note::ArtifactExpired { section: index });
-				skipped += 1;
+		let refuse =
+			|report: &mut PublishReport, skipped: &mut [usize], note: &dyn Fn(usize) -> Note| {
+				for i in &feeds {
+					report.notes.push(note(*i));
+					if let Some(n) = skipped.get_mut(*i) {
+						*n += 1;
+					}
+				}
+			};
+		if artifact.expired {
+			refuse(report, &mut skipped, &|section| Note::ArtifactExpired {
+				section,
+			});
+			continue;
+		}
+		let keep = |name: &str| {
+			feeds
+				.iter()
+				.filter_map(|i| plan.sections.get(*i))
+				.any(|s| s.files.iter().any(|g| g.is_match(name)))
+		};
+		let entries = match fetch(gh, artifact, plan, &mut downloaded, inflated, &keep)? {
+			Fetched::Entries(e) => e,
+			Fetched::Expired => {
+				refuse(report, &mut skipped, &|section| Note::ArtifactExpired {
+					section,
+				});
 				continue;
 			}
-			if let std::collections::btree_map::Entry::Vacant(slot) = cache.entry(artifact.id) {
-				slot.insert(fetch(gh, artifact, plan, &mut downloaded, index, report)?);
+			Fetched::TooLarge => {
+				refuse(report, &mut skipped, &|section| Note::ArtifactTooLarge {
+					section,
+				});
+				continue;
 			}
-			let Some(Some(entries)) = cache.get(&artifact.id) else {
-				skipped += 1;
+			Fetched::Refused(why) => {
+				refuse(report, &mut skipped, &|section| Note::ArtifactRefused {
+					section,
+					why,
+				});
+				continue;
+			}
+		};
+		inflated =
+			inflated.saturating_add(entries.iter().map(|e| e.data.len() as u64).sum::<u64>());
+		for i in &feeds {
+			let (Some(section), Some(out), Some(skip)) = (
+				plan.sections.get(*i),
+				merged.get_mut(*i),
+				skipped.get_mut(*i),
+			) else {
 				continue;
 			};
 			for entry in entries
@@ -430,56 +479,66 @@ fn load<F: Forge>(
 				.filter(|e| section.files.iter().any(|g| g.is_match(&e.name)))
 			{
 				match parse_junit(&entry.data, section.flavour, &plan.parse) {
-					Ok(parsed) => merged.suites.extend(parsed.suites),
+					Ok(parsed) => out.suites.extend(parsed.suites),
 					Err(_) => {
-						report.notes.push(Note::InputUnreadable { section: index });
-						skipped += 1;
+						report.notes.push(Note::InputUnreadable { section: *i });
+						*skip += 1;
 					}
 				}
 			}
 		}
-		merged.merge_same_named();
-		loaded.suites.push(merged.suites);
-		loaded.skipped.push(skipped);
+		// `entries` is dropped here, before the next archive is downloaded.
+	}
+
+	let mut loaded = Loaded {
+		suites: Vec::new(),
+		skipped,
+	};
+	for mut r in merged {
+		r.merge_same_named();
+		loaded.suites.push(r.suites);
 	}
 	Ok(loaded)
 }
 
-/// One artefact's entries, or `None` (with a note) when it cannot be used.
+enum Fetched {
+	Entries(Vec<Entry>),
+	Expired,
+	TooLarge,
+	Refused(ArchiveError),
+}
+
+/// One artefact's wanted entries, or why it cannot be used. `inflated` is what the run has
+/// already kept, and the archive may add only what is left of the cap.
 fn fetch<F: Forge>(
 	gh: &GitHub<F>,
 	artifact: &Artifact,
 	plan: &Plan,
 	downloaded: &mut u64,
-	section: usize,
-	report: &mut PublishReport,
-) -> Result<Option<Vec<Entry>>, PublishError> {
+	inflated: u64,
+	keep: &dyn Fn(&str) -> bool,
+) -> Result<Fetched, PublishError> {
 	let room = plan.max_download_bytes.saturating_sub(*downloaded);
 	if artifact.size_in_bytes > room {
-		report.notes.push(Note::ArtifactTooLarge { section });
-		return Ok(None);
+		return Ok(Fetched::TooLarge);
 	}
 	let bytes = match gh.download(artifact, room) {
 		Ok(b) => b,
-		Err(ForgeError::TooLarge { .. }) => {
-			report.notes.push(Note::ArtifactTooLarge { section });
-			return Ok(None);
-		}
+		Err(ForgeError::TooLarge { .. }) => return Ok(Fetched::TooLarge),
 		Err(ForgeError::Status {
 			status: 404 | 410, ..
-		}) => {
-			report.notes.push(Note::ArtifactExpired { section });
-			return Ok(None);
-		}
+		}) => return Ok(Fetched::Expired),
 		Err(e) => return Err(at("downloading an artefact")(e)),
 	};
 	*downloaded = downloaded.saturating_add(bytes.len() as u64);
-	match read_zip(&bytes, &plan.archive) {
-		Ok(entries) => Ok(Some(entries)),
-		Err(why) => {
-			report.notes.push(Note::ArtifactRefused { section, why });
-			Ok(None)
-		}
+	let limits = ArchiveLimits {
+		max_total_bytes: plan.archive.max_total_bytes.saturating_sub(inflated),
+		..plan.archive
+	};
+	match read_zip_filtered(&bytes, &limits, keep) {
+		Ok(entries) => Ok(Fetched::Entries(entries)),
+		Err(ArchiveError::TotalTooLarge) => Ok(Fetched::TooLarge),
+		Err(why) => Ok(Fetched::Refused(why)),
 	}
 }
 

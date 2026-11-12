@@ -1112,3 +1112,69 @@ fn the_report_counts_what_was_written() {
 		.iter()
 		.any(|l| l.starts_with("Comment on pull request 7 created")));
 }
+
+// ---- memory --------------------------------------------------------------------------------
+
+#[test]
+fn inflated_bytes_are_capped_across_the_whole_run() {
+	// Five artefacts that each inflate to 4 MiB from a few kilobytes: the compressed size says
+	// nothing about the memory they need, so the cap counts what they inflate to.
+	let mut env = Env::new();
+	env.plan.sections[0].artifact = pr_results_core::Glob::new("rust-test-results-*").unwrap();
+	env.plan.archive.max_total_bytes = 10 * 1024 * 1024;
+	let zeros = vec![b' '; 4 * 1024 * 1024];
+	for i in 0..5 {
+		env.fake.add_artifact(
+			RUN,
+			&format!("rust-test-results-{i}"),
+			zip::build(&[zip::Spec::deflated("junit.xml", &zeros)]),
+		);
+	}
+	let report = env.publish();
+	let refused = report
+		.notes
+		.iter()
+		.filter(|n| matches!(n, Note::ArtifactTooLarge { section: 0 }))
+		.count();
+	assert_eq!(
+		refused, 3,
+		"two fit in 10 MiB, the other three are refused: {:?}",
+		report.notes
+	);
+	assert!(report
+		.log_lines()
+		.iter()
+		.any(|l| l.contains("went over the download limit")));
+	assert_eq!(
+		env.fake.blob_fetches().len(),
+		5,
+		"each was fetched once and dropped"
+	);
+}
+
+#[test]
+fn only_the_files_a_section_asks_for_are_inflated() {
+	let mut env = Env::new();
+	env.plan.archive.max_total_bytes = 1024 * 1024;
+	// A 50 MiB entry nobody asked for, with a wrong checksum, beside the file that is wanted.
+	let junk = vec![0u8; 50 * 1024 * 1024];
+	let specs = [
+		zip::Spec {
+			crc: Some(1),
+			..zip::Spec::deflated("junk.bin", &junk)
+		},
+		zip::Spec::deflated("junit.xml", passing(2).as_bytes()),
+	];
+	env.fake
+		.add_artifact(RUN, "rust-test-results", zip::build(&specs));
+	let report = env.publish();
+	assert!(
+		!report.notes.iter().any(|n| matches!(
+			n,
+			Note::ArtifactRefused { .. } | Note::ArtifactTooLarge { .. }
+		)),
+		"{:?}",
+		report.notes
+	);
+	assert!(env.bot_comments(7)[0].body.contains("All 2 passed"));
+}
