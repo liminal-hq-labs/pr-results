@@ -27,7 +27,15 @@ else
 	awk '$1 == "amd64" { print $2 " " $3 }' "$STUB_LIST"
 fi
 STUB
-chmod +x "$work/bin/dpkg" "$work/bin/dpkg-query"
+cat >"$work/bin/rustc" <<'STUB'
+#!/bin/sh
+if [ -n "${STUB_RUSTC:-}" ]; then printf '%s\n' "$STUB_RUSTC"; else grep '^rustc ' "$STUB_TOOLCHAIN"; fi
+STUB
+cat >"$work/bin/cargo" <<'STUB'
+#!/bin/sh
+if [ -n "${STUB_CARGO:-}" ]; then printf '%s\n' "$STUB_CARGO"; else grep '^cargo ' "$STUB_TOOLCHAIN"; fi
+STUB
+chmod +x "$work/bin/dpkg" "$work/bin/dpkg-query" "$work/bin/rustc" "$work/bin/cargo"
 
 failures=0
 
@@ -48,7 +56,7 @@ run() {
 		*'above the tree'*) mkdir -p "$top/.cargo" && touch "$top/.cargo/config" ;;
 		*'in the cargo home'*) touch "$top/home/config.toml" ;;
 		esac
-		env -i PATH="$work/bin:$PATH" HOME="$top/home" CARGO_HOME="$top/home" STUB_LIST="$top/repo/scripts/musl-packages.txt" "$@" \
+		env -i PATH="$work/bin:$PATH" HOME="$top/home" CARGO_HOME="$top/home" STUB_LIST="$top/repo/scripts/musl-packages.txt" STUB_TOOLCHAIN="$top/repo/scripts/rust-toolchain.txt" "$@" \
 			bash scripts/check-toolchain.sh
 	) >"$work/out" 2>&1; then
 		got=pass
@@ -63,6 +71,8 @@ run() {
 }
 
 run 'the expected packages' pass
+run 'a drifted Rust version' fail STUB_RUSTC='rustc 0.0.0'
+run 'a drifted Cargo version' fail STUB_CARGO='cargo 0.0.0'
 run 'a drifted musl version' fail STUB_PACKAGES=$'musl 9.9\nmusl-dev 1.2.4-2\nmusl-tools 1.2.4-2'
 run 'a missing package' fail STUB_PACKAGES=$'musl 1.2.4-2\nmusl-tools 1.2.4-2'
 run 'a cargo configuration in the tree' fail
