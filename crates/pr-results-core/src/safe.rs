@@ -66,15 +66,69 @@ fn classify(c: char) -> Clean {
 	match c {
 		'\n' | '\r' | '\t' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}' => Clean::Space,
 		'\0'..='\u{1f}' | '\u{7f}'..='\u{9f}' => Clean::Drop,
-		'\u{200b}'..='\u{200f}'
-		| '\u{202a}'..='\u{202e}'
-		| '\u{2060}'..='\u{2064}'
-		| '\u{2066}'..='\u{2069}'
-		| '\u{061c}'
-		| '\u{180e}'
-		| '\u{feff}' => Clean::Show,
+		c if is_invisible(c) => Clean::Show,
 		_ => Clean::Keep,
 	}
+}
+
+/// Characters that draw nothing, or change how their neighbours are drawn or ordered, so text
+/// containing them can look different from what it is. They are written out as `\u{…}`.
+///
+/// This is the Unicode general category `Cf` (format), the `Default_Ignorable_Code_Point`
+/// property and the object replacement character, as a hand-written table so the crate needs no
+/// Unicode data dependency. It was written from Unicode 15.1 and is deliberately wide: the
+/// unassigned code points inside the default-ignorable blocks are included, so a later Unicode version
+/// cannot turn one of them into something invisible that slips through.
+///
+/// U+200C (zero-width non-joiner) and U+200D (zero-width joiner) are in the table. They are
+/// needed to write some scripts and to join emoji sequences, and a test name that depends on them
+/// is shown with them spelled out rather than with them hidden. Variation selectors are listed for
+/// the same reason: an emoji presentation selector shows as `\u{fe0f}`.
+pub(crate) fn is_invisible(c: char) -> bool {
+	matches!(
+		u32::from(c),
+		// Soft hyphen (Cf).
+		0xad
+		// Combining grapheme joiner (default ignorable).
+		| 0x34f
+		// Arabic number signs, end of ayah, letter mark (Cf).
+		| 0x600..=0x605 | 0x61c | 0x6dd
+		// Syriac abbreviation mark (Cf).
+		| 0x70f
+		// Arabic pound mark above, piastre mark above, disputed end of ayah (Cf).
+		| 0x890 | 0x891 | 0x8e2
+		// Hangul choseong and jungseong fillers (default ignorable).
+		| 0x115f | 0x1160
+		// Khmer inherent vowels (default ignorable).
+		| 0x17b4 | 0x17b5
+		// Mongolian free variation selectors and vowel separator.
+		| 0x180b..=0x180f
+		// Zero-width characters, bidirectional marks, embeddings and overrides (Cf).
+		| 0x200b..=0x200f | 0x202a..=0x202e
+		// Word joiner, invisible operators, the unassigned U+2065, isolates and the deprecated
+		// format characters U+206A to U+206F.
+		| 0x2060..=0x206f
+		// Hangul filler (default ignorable).
+		| 0x3164
+		// Variation selectors 1 to 16.
+		| 0xfe00..=0xfe0f
+		// Byte order mark and zero-width no-break space (Cf).
+		| 0xfeff
+		// Halfwidth Hangul filler (default ignorable).
+		| 0xffa0
+		// Unassigned default-ignorables, interlinear annotation marks and the object
+		// replacement character.
+		| 0xfff0..=0xfffc
+		// Kaithi, Sora Sompeng and Egyptian hieroglyph format characters (Cf).
+		| 0x110bd | 0x110cd | 0x13430..=0x1343f
+		// Shorthand format controls (Cf).
+		| 0x1bca0..=0x1bca3
+		// Musical symbol format characters (Cf).
+		| 0x1d173..=0x1d17a
+		// Tag characters, variation selectors supplement and the unassigned default-ignorables
+		// around them.
+		| 0xe0000..=0xe0fff
+	)
 }
 
 fn shown(c: char) -> String {
