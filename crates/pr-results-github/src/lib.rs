@@ -25,15 +25,15 @@ pub use api::{
 	percent_decode, percent_encode, ApiPath, ApiRequest, ApiResponse, BlobUrl, Forge, ForgeError,
 	Method, Token,
 };
-pub use archive::{read_zip, ArchiveError, ArchiveLimits, Entry};
+pub use archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
 pub use dry::{requests_to_json, DryRun};
 pub use fake::{FakeCheck, FakeComment, FakeForge, FakePull, Fault};
 pub use github::{
 	Artifact, CheckResult, CheckSpec, Comment, CommentAction, CommentResult, CommentSpec, GitHub,
-	Pull, Tree, DEFAULT_BOT_LOGIN,
+	Pull, Tree, BODY_PREFIX_BYTES, DEFAULT_BOT_LOGIN, DEFAULT_CHECK_APP, RETRY_BUDGET_S,
 };
 pub use publish::{
 	publish, CheckReport, CommentReport, Failure, Note, Plan, PublishError, PublishReport,
 	SectionPlan, WorkflowRun,
 };
-pub use ureq_forge::UreqForge;
+pub use ureq_forge::{UreqForge, GITHUB_BLOB_HOSTS};

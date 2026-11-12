@@ -302,6 +302,7 @@ It lists the run's artefacts, downloads the ones your suites name (an expired ar
 - **A push gets check runs and no comment.** A run that was cancelled or skipped gets nothing.
 - **One comment, kept in place.** The comment is found by its hidden first line and by its author, `github-actions[bot]`, so a user's comment that copies the marker is ignored. A re-run updates it, a late run for the same commit never overwrites a later one, and a second comment left by two runs at once is deleted.
 - **When something is refused.** The check runs are written first. If GitHub refuses the comment (a read-only token, a locked conversation), the checks stay posted and the publisher exits non-zero so the failure is visible. A result too large for GitHub is written again in a shorter form and the log says so. An annotation on a file that is not in the commit is left out, and a batch GitHub refuses is left out and counted, not retried into a failure.
+- **Where artefacts come from.** The download follows GitHub's redirect only to GitHub's own storage (`*.blob.core.windows.net` and `*.githubusercontent.com`). On GitHub Enterprise Server the publisher accepts the server's own host, and the storage hosts of your installation have to be named in its configuration, or the download is refused.
 - **What the log shows.** Counts and fixed phrases, and the title of a section; never a test name, a message or a header.
 
 ## What the comment looks like

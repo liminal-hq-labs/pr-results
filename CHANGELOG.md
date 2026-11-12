@@ -31,6 +31,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - This repository publishes its own results: `publish-test-results.yml` (a `workflow_run` workflow with exactly four permissions, running the default branch's source), fed by `rust-test-results` and `event-file` uploads in the `Tests` job.
 - CI jobs `Goldens`, `Dependency policy`, `Action smoke` and `Release pins`, `scripts/check-pins.sh`, and `scripts/check-doc-yaml.sh`, which runs actionlint over the YAML in the documents.
 - Adoption recipes for nextest, vitest, Playwright shards, bun and Desk in `docs/adopting.md`, and fixtures for the `workflow_run` event and a forged uploaded event file.
+- Review fixes to the GitHub crate: a cap on inflated bytes across a run with each archive dropped once parsed (`read_zip_filtered`), comments kept as a 256-byte prefix while paging, a ten-minute budget for waiting to retry, annotations sent in separate requests that are read back rather than repeated, check runs matched by app as well as `external_id`, and blobs fetched only from GitHub's storage hosts (`UreqForge::with_blob_hosts` for GitHub Enterprise Server).
 - New dependencies, recorded with licences, crate count and binary size in decision D44: `ureq` `=3.5.1` (`rustls` with `ring`, no `aws-lc`), `serde_json` `=1.0.154`, `miniz_oxide` `=0.9.1` and `toml` `=1.2.1` (decision D51). `deny.toml` allows ISC, BSD-3-Clause and CDLA-Permissive-2.0 for the crates that need them.
 
 ### Changed

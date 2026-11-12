@@ -39,6 +39,8 @@ pub struct FakeCheck {
 	pub name: String,
 	pub head_sha: String,
 	pub external_id: Option<String>,
+	/// The app that made it.
+	pub app_slug: String,
 	pub conclusion: Option<String>,
 	pub title: String,
 	pub summary: String,
@@ -300,6 +302,17 @@ impl FakeForge {
 
 	/// A check run that this tool did not write, such as another workflow's.
 	pub fn add_check(&self, name: &str, head_sha: &str, external_id: Option<&str>) -> u64 {
+		self.add_check_from_app(name, head_sha, external_id, "github-actions")
+	}
+
+	/// The same, made by the app with this slug.
+	pub fn add_check_from_app(
+		&self,
+		name: &str,
+		head_sha: &str,
+		external_id: Option<&str>,
+		app_slug: &str,
+	) -> u64 {
 		self.with(|s| {
 			s.next_id += 1;
 			let id = s.next_id;
@@ -308,6 +321,7 @@ impl FakeForge {
 				name: name.to_owned(),
 				head_sha: head_sha.to_owned(),
 				external_id: external_id.map(str::to_owned),
+				app_slug: app_slug.to_owned(),
 				conclusion: Some("success".to_owned()),
 				title: "other".to_owned(),
 				summary: "other".to_owned(),
@@ -579,7 +593,16 @@ impl State {
 					.comments
 					.iter()
 					.filter(|c| c.pr == n)
-					.map(|c| json!({ "id": c.id, "body": c.body, "user": { "login": c.login } }))
+					.map(|c| {
+						json!({
+							"id": c.id, "body": c.body,
+							"created_at": "2026-11-02T14:40:00Z",
+							"user": {
+								"login": c.login,
+								"type": if c.login.ends_with("[bot]") { "Bot" } else { "User" },
+							},
+						})
+					})
 					.collect();
 				self.page(&path, &query, items, None)
 			}
@@ -668,11 +691,25 @@ impl State {
 						json!({
 							"id": c.id, "name": c.name, "head_sha": c.head_sha,
 							"external_id": c.external_id, "conclusion": c.conclusion,
-							"app": { "slug": "github-actions" },
+							"app": { "slug": c.app_slug },
+							"output": { "annotations_count": c.annotations.len() },
 						})
 					})
 					.collect();
 				self.page(&path, &query, items, Some("check_runs"))
+			}
+			(Method::Get, ["check-runs", id]) => {
+				let id: u64 = id.parse().unwrap_or(0);
+				match self.checks.iter().find(|c| c.id == id) {
+					Some(c) => json_response(
+						200,
+						&json!({
+							"id": c.id, "name": c.name,
+							"output": { "annotations_count": c.annotations.len() },
+						}),
+					),
+					None => message(404, "Not Found"),
+				}
 			}
 			(Method::Post, ["check-runs"]) => self.write_check(None, body.as_ref()),
 			(Method::Patch, ["check-runs", id]) => {
@@ -753,6 +790,7 @@ impl State {
 					name: text("name").unwrap_or_default(),
 					head_sha: head,
 					external_id: None,
+					app_slug: "github-actions".to_owned(),
 					conclusion: None,
 					title: String::new(),
 					summary: String::new(),

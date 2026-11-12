@@ -28,6 +28,8 @@ pub struct UreqForge {
 	token: Token,
 	api: Agent,
 	blob: Agent,
+	/// The hosts a blob may be fetched from: a host name, or `*.suffix` for any name under it.
+	blob_hosts: Vec<String>,
 	/// Tests only: plain `http://` to a loopback address is allowed.
 	#[cfg(test)]
 	allow_loopback_http: bool,
@@ -40,6 +42,34 @@ impl std::fmt::Debug for UreqForge {
 			.field("token", &self.token)
 			.finish_non_exhaustive()
 	}
+}
+
+/// Where GitHub keeps the artefacts and logs it redirects to: Azure blob storage
+/// (`productionresultssa*.blob.core.windows.net` and its relatives) and `githubusercontent.com`
+/// (`pipelines.actions.githubusercontent.com` and its relatives).
+pub const GITHUB_BLOB_HOSTS: [&str; 2] = ["*.blob.core.windows.net", "*.githubusercontent.com"];
+
+fn default_blob_hosts(api_host: &str) -> Vec<String> {
+	if api_host == "api.github.com" {
+		GITHUB_BLOB_HOSTS.iter().map(|h| (*h).to_owned()).collect()
+	} else {
+		vec![api_host.to_owned()]
+	}
+}
+
+/// Whether `host` matches one of `patterns`: equal to it, or, for `*.suffix`, a name with at least
+/// one more label in front of `.suffix`. An IP address matches only by being listed.
+pub(crate) fn host_allowed(patterns: &[String], host: &str) -> bool {
+	patterns.iter().any(|p| match p.strip_prefix("*.") {
+		Some(suffix) => {
+			host.strip_suffix(suffix)
+				.and_then(|front| front.strip_suffix('.'))
+				.is_some_and(|front| !front.is_empty())
+				&& !host.contains(':')
+				&& !host.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+		}
+		None => p == host,
+	})
 }
 
 fn agent(timeout: Duration, https_only: bool) -> Agent {
@@ -77,7 +107,13 @@ impl UreqForge {
 		if !valid || trimmed.contains(['?', '#']) {
 			return Err(ForgeError::Refused("the API base must be an https:// URL"));
 		}
+		let blob_hosts = if loopback {
+			vec!["127.0.0.1".to_owned(), "localhost".to_owned()]
+		} else {
+			default_blob_hosts(&crate::api::host_of(trimmed))
+		};
 		Ok(Self {
+			blob_hosts,
 			base: trimmed.to_owned(),
 			token,
 			api: agent(Duration::from_secs(60), !loopback),
@@ -85,6 +121,20 @@ impl UreqForge {
 			#[cfg(test)]
 			allow_loopback_http: loopback,
 		})
+	}
+
+	/// Replaces the hosts a blob may be fetched from. An entry is a host name or `*.suffix`, which
+	/// matches any name under the suffix but not the suffix itself. The default for github.com is
+	/// [`GITHUB_BLOB_HOSTS`], and for another API host that host alone, so a GitHub Enterprise
+	/// Server whose artefacts live in other storage names it here.
+	pub fn with_blob_hosts(mut self, hosts: &[&str]) -> Self {
+		self.blob_hosts = hosts.iter().map(|h| h.to_ascii_lowercase()).collect();
+		self
+	}
+
+	/// Whether `url`'s host is one a blob may come from.
+	pub(crate) fn blob_host_allowed(&self, url: &BlobUrl) -> bool {
+		host_allowed(&self.blob_hosts, &url.host())
 	}
 
 	#[cfg(test)]
@@ -227,6 +277,9 @@ impl Forge for UreqForge {
 	fn fetch_blob(&self, url: &BlobUrl, max_bytes: u64) -> Result<Vec<u8>, ForgeError> {
 		let mut current = url.clone();
 		for _ in 0..=MAX_BLOB_HOPS {
+			if !self.blob_host_allowed(&current) {
+				return Err(ForgeError::Refused("the blob host is not one GitHub uses"));
+			}
 			// No `Authorization`, and nothing else the API client adds: a presigned URL carries
 			// its own permission and must not learn the token.
 			let mut resp = self

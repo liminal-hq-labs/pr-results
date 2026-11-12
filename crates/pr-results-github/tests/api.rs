@@ -161,3 +161,21 @@ fn errors_say_what_failed_without_quoting_a_response() {
 	assert_eq!(ForgeError::Decode("x").status(), None);
 	assert!(Token::new("ghs_abc").is_some());
 }
+
+#[test]
+fn the_mask_command_escapes_what_a_workflow_command_would_misread() {
+	assert_eq!(
+		Token::new("ghs_abc123").unwrap().mask_command(),
+		"::add-mask::ghs_abc123"
+	);
+	// A percent sign is the escape character of workflow commands, so it is written `%25`; the
+	// token accepts no CR or LF, which would need `%0D` and `%0A`.
+	assert_eq!(
+		Token::new("a%b%25").unwrap().mask_command(),
+		"::add-mask::a%25b%2525"
+	);
+	assert!(Token::new("a\nb").is_none() && Token::new("a\rb").is_none());
+	let masked = Token::new("tok:en,1").unwrap().mask_command();
+	assert!(masked.starts_with("::add-mask::"));
+	assert_eq!(masked.lines().count(), 1);
+}

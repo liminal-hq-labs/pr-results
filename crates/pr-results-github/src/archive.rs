@@ -116,6 +116,17 @@ impl std::error::Error for ArchiveError {}
 /// Reads every regular file of the zip in `bytes`. Directory entries count towards
 /// `max_files` and are not returned.
 pub fn read_zip(bytes: &[u8], limits: &ArchiveLimits) -> Result<Vec<Entry>, ArchiveError> {
+	read_zip_filtered(bytes, limits, &|_| true)
+}
+
+/// Like [`read_zip`], but only a file that `keep` accepts is inflated, checked against the byte
+/// limits and returned. The names of all entries are still checked, so an archive with a hostile
+/// name is refused whatever it holds, but a large entry nobody asked for costs nothing.
+pub fn read_zip_filtered(
+	bytes: &[u8],
+	limits: &ArchiveLimits,
+	keep: &dyn Fn(&str) -> bool,
+) -> Result<Vec<Entry>, ArchiveError> {
 	let eocd = find_eocd(bytes)?;
 	let dir = Directory::read(bytes, eocd)?;
 	if usize::from(dir.entries) > limits.max_files {
@@ -174,21 +185,20 @@ pub fn read_zip(bytes: &[u8], limits: &ArchiveLimits) -> Result<Vec<Entry>, Arch
 			return Err(ArchiveError::Method(method));
 		}
 
-		if u64::from(size) > limits.max_entry_bytes {
-			return Err(ArchiveError::EntryTooLarge);
-		}
-		total = total
-			.checked_add(u64::from(size))
-			.filter(|t| *t <= limits.max_total_bytes)
-			.ok_or(ArchiveError::TotalTooLarge)?;
-
-		if kind == Kind::File {
+		if kind == Kind::File && keep(name) {
+			if u64::from(size) > limits.max_entry_bytes {
+				return Err(ArchiveError::EntryTooLarge);
+			}
+			total = total
+				.checked_add(u64::from(size))
+				.filter(|t| *t <= limits.max_total_bytes)
+				.ok_or(ArchiveError::TotalTooLarge)?;
 			let data = entry_data(bytes, &dir, name, method, crc, compressed, size, local)?;
 			out.push(Entry {
 				name: name.to_owned(),
 				data,
 			});
-		} else if size != 0 || compressed > 2 {
+		} else if kind == Kind::Directory && (size != 0 || compressed > 2) {
 			// A directory holds nothing. (An empty deflate stream is two bytes.)
 			return Err(ArchiveError::SpecialFile);
 		}
@@ -314,19 +324,25 @@ fn entry_data(
 		}
 		raw.to_vec()
 	} else {
-		// One byte past the declared size is enough to tell a stream that is too long.
-		let limit = size.checked_add(1).ok_or(ArchiveError::EntryTooLarge)?;
-		let inflated =
-			decompress_to_vec_with_limit(raw, limit).map_err(|_| ArchiveError::Corrupt)?;
-		if inflated.len() != size {
-			return Err(ArchiveError::Corrupt);
-		}
-		inflated
+		inflate_declared(raw, size).map_err(|_| ArchiveError::Corrupt)?
 	};
 	if crc32(&data) != crc {
 		return Err(ArchiveError::CrcMismatch);
 	}
 	Ok(data)
+}
+
+/// Inflates `raw` to exactly `size` bytes. The inflater is allowed one byte more than that, which
+/// is enough to tell a stream that runs on, and no more, so a header that lies about its size
+/// cannot make this allocate more than `size + 1`. On failure the error is the length of the
+/// buffer the inflater had grown to, which is what a test reads to pin the bound.
+fn inflate_declared(raw: &[u8], size: usize) -> Result<Vec<u8>, usize> {
+	let limit = size.saturating_add(1);
+	match decompress_to_vec_with_limit(raw, limit) {
+		Ok(v) if v.len() == size => Ok(v),
+		Ok(v) => Err(v.len()),
+		Err(e) => Err(e.output.len()),
+	}
 }
 
 /// Where the central directory is and how many entries it holds.
@@ -440,4 +456,31 @@ fn crc32(data: &[u8]) -> u32 {
 		}
 	}
 	!crc
+}
+
+#[cfg(test)]
+#[allow(
+	clippy::unwrap_used,
+	clippy::expect_used,
+	clippy::panic,
+	clippy::indexing_slicing
+)]
+mod tests {
+	use super::inflate_declared;
+
+	#[test]
+	fn a_lying_size_never_lets_the_inflater_grow_past_size_plus_one() {
+		let long = vec![b'z'; 8 * 1024 * 1024];
+		let raw = miniz_oxide::deflate::compress_to_vec(&long, 6);
+		for size in [0usize, 1, 100, 4096] {
+			let grown = inflate_declared(&raw, size).unwrap_err();
+			assert!(grown <= size + 1, "size {size}: the buffer grew to {grown}");
+		}
+		// An honest size is read whole, and one too large is a short read, not a success.
+		assert_eq!(
+			inflate_declared(&raw, long.len()).unwrap().len(),
+			long.len()
+		);
+		assert!(inflate_declared(&raw, long.len() + 5).is_err());
+	}
 }
