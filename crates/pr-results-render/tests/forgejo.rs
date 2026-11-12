@@ -42,11 +42,7 @@ fn a_forgejo_comment_never_says_check_run_or_github() {
 		for (file, text) in sc.outputs() {
 			let lower = text.to_ascii_lowercase();
 			for word in ["check run", "github"] {
-				assert!(
-					!lower.contains(word) || sc.name == "forgejo-hostile",
-					"{}/{file}: {word}",
-					sc.name
-				);
+				assert!(!lower.contains(word), "{}/{file}: {word}", sc.name);
 			}
 		}
 	}
@@ -246,6 +242,10 @@ fn a_title_that_forgejo_would_link_is_not_written_as_text() {
 		":smile:",
 		"a:b_c",
 		"a:+1",
+		"see http://example.invalid",
+		"HTTPS://x",
+		"www.example.invalid",
+		"ftp://x",
 	] {
 		assert!(!forgejo_inert_title(title), "{title}");
 	}

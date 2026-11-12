@@ -131,6 +131,12 @@ pub(crate) fn forgejo_inert(title: &str) -> bool {
 	if chars.contains(&'$') {
 		return false;
 	}
+	// `Safe::text` writes the colon of `://` as an entity, which decodes before Forgejo looks for
+	// a link, so a scheme or a `www.` start would autolink.
+	let lower: String = chars.iter().collect::<String>().to_ascii_lowercase();
+	if lower.contains("://") || lower.contains("www.") {
+		return false;
+	}
 	if chars
 		.iter()
 		.zip(chars.iter().skip(1))
