@@ -42,7 +42,7 @@ One streaming reader serves every flavour, and the flavour only decides how name
 | A root other than `testsuites` or `testsuite` | unexpected root |
 | A `<testcase>` directly under `<testsuites>` | structure |
 | More than 64 levels of elements, 10 000 suites, 200 000 cases or 256 attributes on one element | over the limit |
-| More than 64 MiB of text to keep, counted after invalid UTF-8 is replaced | over the limit |
+| More than 64 MiB of kept text and per-item overhead (40 bytes per piece of text, 64 per case, 64 per attempt), counted after invalid UTF-8 is replaced | over the limit |
 
 Names, class names, paths, messages and bodies longer than their caps (1 KiB, 1 KiB and 16 KiB) are cut while streaming, and the number of characters lost is kept and shown. Retries past 100 per case are not kept, and their number is kept and shown too. A suite's `file` is stored once and shared by its cases. A `time` or `line` that is not plain digits is read as zero or absent rather than failing the file. A `time` is read as seconds with no floating-point maths, rounded to the nearest millisecond.
 

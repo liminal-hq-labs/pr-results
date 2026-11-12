@@ -221,21 +221,22 @@ fn the_text_budget_refuses_with_a_count() {
 	let doc = format!(
 		"<testsuites><testsuite name=\"s\"><testcase classname=\"c\" name=\"{name}\"/></testsuite></testsuites>"
 	);
-	// The suite name (1), the class name (1) and the case name (100).
+	// The suite name (1), the class name (1) and the case name (100), 40 bytes of overhead each,
+	// and 64 for the case.
 	let exact = Limits {
-		max_text_bytes: 102,
+		max_text_bytes: 286,
 		..Limits::default()
 	};
 	assert!(parse_junit(doc.as_bytes(), Flavour::Generic, &exact).is_ok());
 	let under = Limits {
-		max_text_bytes: 101,
+		max_text_bytes: 285,
 		..Limits::default()
 	};
 	let err = parse_junit(doc.as_bytes(), Flavour::Generic, &under).unwrap_err();
-	assert_eq!(err, ParseError::TooMuchText { limit: 101 });
+	assert_eq!(err, ParseError::TooMuchText { limit: 285 });
 	assert_eq!(
 		err.to_string(),
-		"the input holds more than 101 bytes of text to keep"
+		"the input holds more than 285 bytes of text to keep"
 	);
 }
 
@@ -260,7 +261,8 @@ fn repeated_bodies_that_are_not_kept_still_count() {
 
 #[test]
 fn invalid_utf8_counts_at_its_replaced_size() {
-	// 300 bad bytes become 300 three-byte replacement characters: 900 bytes of name.
+	// 300 bad bytes become 300 three-byte replacement characters: 900 bytes of name, plus 40 for
+	// it, 82 for the suite and class names and 64 for the case.
 	let mut doc = b"<testsuites><testsuite name=\"s\"><testcase classname=\"c\" name=\"".to_vec();
 	doc.extend(std::iter::repeat_n(0xff, 300));
 	doc.extend_from_slice(b"\"/></testsuite></testsuites>");
@@ -268,11 +270,11 @@ fn invalid_utf8_counts_at_its_replaced_size() {
 		max_text_bytes: n,
 		..Limits::default()
 	};
-	let report = parse_junit(&doc, Flavour::Generic, &limits(902)).unwrap();
+	let report = parse_junit(&doc, Flavour::Generic, &limits(1086)).unwrap();
 	assert_eq!(report.suites[0].cases[0].name.as_str().len(), 900);
 	assert_eq!(
-		parse_junit(&doc, Flavour::Generic, &limits(901)).unwrap_err(),
-		ParseError::TooMuchText { limit: 901 }
+		parse_junit(&doc, Flavour::Generic, &limits(1085)).unwrap_err(),
+		ParseError::TooMuchText { limit: 1085 }
 	);
 	// The same count of valid bytes is a third of the cost.
 	let valid = String::from_utf8(
@@ -281,7 +283,7 @@ fn invalid_utf8_counts_at_its_replaced_size() {
 			.collect(),
 	)
 	.unwrap();
-	assert!(parse_junit(valid.as_bytes(), Flavour::Generic, &limits(302)).is_ok());
+	assert!(parse_junit(valid.as_bytes(), Flavour::Generic, &limits(486)).is_ok());
 }
 
 #[test]
@@ -338,4 +340,20 @@ fn attempts_past_the_limit_are_counted_not_dropped_silently() {
 	let report = parse_junit(&retries("rerunError", 2), Flavour::Nextest, &limits).unwrap();
 	assert_eq!(report.suites[0].cases[0].attempts_omitted, 0);
 	assert_eq!(report.suites[0].cases[0].attempts.len(), 2);
+}
+
+#[test]
+fn every_kept_attempt_is_charged() {
+	// Ten attempts at 154 each (64, and 45 for each of the message and the body), on top of the
+	// suite (41), class (41), name (41) and case (64).
+	let doc = retries("flakyFailure", 10);
+	let limits = |n| Limits {
+		max_text_bytes: n,
+		..Limits::default()
+	};
+	assert!(parse_junit(&doc, Flavour::Nextest, &limits(1727)).is_ok());
+	assert_eq!(
+		parse_junit(&doc, Flavour::Nextest, &limits(1726)).unwrap_err(),
+		ParseError::TooMuchText { limit: 1726 }
+	);
 }

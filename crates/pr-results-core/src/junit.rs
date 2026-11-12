@@ -20,9 +20,10 @@ pub struct Limits {
 	/// The whole input, in bytes, both as given and after invalid UTF-8 is replaced (each bad byte
 	/// becomes the three-byte U+FFFD, so the second is the larger).
 	pub max_bytes: usize,
-	/// All the text the report keeps, in bytes: names, class names, paths, messages and bodies,
-	/// counted once per stored copy after invalid UTF-8 is replaced. A file path shared by every
-	/// case of a suite is stored and counted once.
+	/// What the report keeps in memory, in bytes: all text (names, class names, paths, messages
+	/// and bodies), counted once per stored copy after invalid UTF-8 is replaced, plus a fixed
+	/// overhead of 40 bytes per piece of text, 64 per case and 64 per kept attempt. A file path
+	/// shared by every case of a suite is stored and counted once.
 	pub max_text_bytes: usize,
 	/// Element nesting, root included.
 	pub max_depth: usize,
@@ -98,7 +99,17 @@ pub fn parse_junit(input: &[u8], flavour: Flavour, limits: &Limits) -> Result<Re
 	Ok(Report { suites })
 }
 
-/// How much kept text is left.
+/// What a kept `Untrusted` costs besides its bytes: the allocation's reference counts and the
+/// handle, rounded up.
+const TEXT_OVERHEAD: usize = 40;
+/// What a test case costs besides its text: the `Case` itself, rounded up.
+const CASE_OVERHEAD: usize = 64;
+/// What a kept retry attempt costs besides its text: the `Attempt` itself, rounded up.
+const ATTEMPT_OVERHEAD: usize = 64;
+
+/// How much of the memory budget is left. It counts the text the report keeps plus a fixed
+/// overhead for each piece of text, case and attempt, so it bounds what the report holds in
+/// memory and not only the bytes of text. It does not count the input, which `max_bytes` bounds.
 pub(crate) struct Budget {
 	used: usize,
 	limit: usize,
@@ -117,9 +128,9 @@ impl Budget {
 		Ok(())
 	}
 
-	/// Charges for `text` and hands it back.
+	/// Charges for `text` and its handle and hands it back.
 	pub(crate) fn keep(&mut self, text: Untrusted) -> Result<Untrusted, ParseError> {
-		self.charge(text.len())?;
+		self.charge(text.len().saturating_add(TEXT_OVERHEAD))?;
 		Ok(text)
 	}
 }
@@ -415,6 +426,7 @@ impl<'l> Parser<'l> {
 						limit: self.limits.max_cases,
 					});
 				}
+				self.budget.charge(CASE_OVERHEAD)?;
 				let own = match get("file").and_then(|f| flavour::clean_path(f, name_cap)) {
 					Some(path) => Some(self.budget.keep(Untrusted::new(path))?),
 					None => None,
@@ -498,7 +510,10 @@ impl<'l> Parser<'l> {
 					self.facts.saw_attachment = true;
 				}
 				// Charged whether or not the case keeps it, so repeated elements cannot hide cost.
-				self.budget.charge(sink.text.as_str().len())?;
+				let body = sink.text.as_str().len();
+				if body > 0 {
+					self.budget.charge(body.saturating_add(TEXT_OVERHEAD))?;
+				}
 				let max = self.limits.max_attempts;
 				if let Some(case) = self.case.as_mut() {
 					let detail = sink.text.trimmed();
@@ -521,6 +536,7 @@ impl<'l> Parser<'l> {
 							if case.attempts.len() >= max {
 								case.attempts_omitted = case.attempts_omitted.saturating_add(1);
 							} else {
+								self.budget.charge(ATTEMPT_OVERHEAD)?;
 								let status = if matches!(t, Tag::FlakyFailure | Tag::RerunFailure) {
 									Status::Failed
 								} else {
@@ -544,7 +560,9 @@ impl<'l> Parser<'l> {
 	}
 }
 
-fn finish_case(b: CaseBuilder) -> Case {
+fn finish_case(mut b: CaseBuilder) -> Case {
+	// Growing by doubling can leave a third of the room unused, for every case.
+	b.attempts.shrink_to_fit();
 	// Every kept attempt is a failed or errored try, so any attempt before a pass makes a case
 	// flaky.
 	let flaky = b.failure.is_none() && b.skipped.is_none() && !b.attempts.is_empty();
