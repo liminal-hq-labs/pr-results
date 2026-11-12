@@ -287,6 +287,44 @@ fn annotated_env(failures: usize) -> Env {
 }
 
 #[test]
+fn a_suites_path_prefix_puts_vitests_paths_onto_the_repository() {
+	let mut env = Env::new();
+	let xml = std::fs::read_to_string(
+		std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+			.join("../../tests/fixtures/vitest/real-default.xml"),
+	)
+	.unwrap();
+	env.artifact("rust-test-results", &[("junit.xml", &xml)]);
+	env.plan.sections[0].flavour = pr_results_core::Flavour::Vitest;
+	env.plan.sections[0].path_prefix = pr_results_core::RepoPath::parse("apps/web/");
+	set_tree(
+		&env.fake,
+		SHA,
+		&[
+			"apps/web/test/math.test.js".to_owned(),
+			"apps/web/test/sub/retry.test.js".to_owned(),
+			"apps/web/src/math.js".to_owned(),
+		],
+	);
+	let report = env.publish();
+	assert!(!report.failed());
+	let mut paths: Vec<String> = env.fake.check_runs()[0]
+		.annotations
+		.iter()
+		.map(|a| a["path"].as_str().unwrap().to_owned())
+		.collect();
+	paths.sort();
+	assert_eq!(
+		paths,
+		[
+			"apps/web/src/math.js",
+			"apps/web/test/math.test.js",
+			"apps/web/test/sub/retry.test.js"
+		]
+	);
+}
+
+#[test]
 fn annotations_go_fifty_to_a_request() {
 	let mut env = annotated_env(120);
 	env.plan.options.max_annotations = 500;
