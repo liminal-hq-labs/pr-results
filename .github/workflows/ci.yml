@@ -114,6 +114,11 @@ jobs:
       - name: Run actionlint over the documents' YAML
         run: bash scripts/check-doc-yaml.sh
 
+      # The probe workflow in docs/ judges a rendered comment with this script, so the script is
+      # proved to pass the footer's links alone and to fail on a leaked one.
+      - name: Test the probe's anchor check
+        run: bash scripts/test-check-probe-anchors.sh
+
   zizmor:
     name: Workflow audit
     runs-on: ubuntu-24.04

@@ -104,21 +104,22 @@ jobs:
           set -euo pipefail
           gh api -H 'Accept: application/vnd.github.full+json' \
             "repos/$REPOSITORY/issues/comments/$COMMENT_ID" --jq .body_html > body.html
-          # Everything after the "Raw control" section is the renderer's: its only anchors may be
-          # the headings' own and the trusted footer links to this repository.
-          sed -n '/>text<\/h2>/,$p' body.html > rendered.html
-          grep -oE '<a [^>]*>' rendered.html | grep -v 'class="anchor"' > anchors.txt || true
-          grep -vF "href=\"https://github.com/$REPOSITORY/" anchors.txt > unexpected-anchors.txt || true
+          # After the raw control rows the only anchors may be a heading's own and the footer's
+          # links to this commit and run: any other is a leak. An empty read-back fails.
+          set +e
+          bash scripts/check-probe-anchors.sh "$REPOSITORY" body.html . 2> check-anchors.txt
+          status=$?
+          set -e
           {
             echo '### Anchors outside the raw control rows'
             echo
-            echo "Total: $(wc -l < anchors.txt). Unexpected: $(wc -l < unexpected-anchors.txt)."
+            echo "Unexpected anchors: $(wc -l < unexpected-anchors.txt 2>/dev/null || echo unknown)."
             echo
             echo '```text'
-            cat unexpected-anchors.txt
+            cat check-anchors.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          test ! -s unexpected-anchors.txt
+          exit "$status"
 
       - name: Read the timelines back
         if: always()
@@ -195,6 +196,7 @@ jobs:
             rendered.html
             anchors.txt
             unexpected-anchors.txt
+            check-anchors.txt
             timelines.md
             check-run.json
             check-run-read.json
