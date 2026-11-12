@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	{{PROJECT_TITLE}} hero banner: the Liminal HQ Labs placeholder, a small flask bubbling on a bench.
+
+	(c) Copyright 2026 Liminal HQ, Scott Morris
+	SPDX-License-Identifier: Apache-2.0 OR MIT
+
+	How to edit: scripts/init-project.sh fills in the title and description. Keep the title under
+	about 16 characters and the description under about 60, or shrink their font-size. Replace the
+	flask with a scene for the project when it has one: keep the 1200 x 320 viewBox, SMIL only, the
+	.motion and .static pairs for reduced motion, data-loop on the root and animations whose dur
+	divides it. For a final wordmark, outline the title with Inkscape (export text to path) and
+	keep the paths. Check every change with scripts/check-banner.sh and its shots option, and look
+	at the frames (docs/new-project.md has the commands).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="hero-title hero-desc" data-loop="9">
+	<title id="hero-title">{{PROJECT_TITLE}}</title>
+	<desc id="hero-desc">{{PROJECT_TITLE}}: {{PROJECT_DESCRIPTION}}. A Liminal HQ Labs experiment. An animated banner shows a flask of glowing lime liquid bubbling on a lab bench.</desc>
+
+	<style>
+		.ui { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Adwaita Sans', Inter, sans-serif; }
+		.mono { font-family: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace; }
+		.bg-a { stop-color: #0c0e16; }
+		.bg-b { stop-color: #161a28; }
+		.edge { fill: none; stroke: #2a3040; }
+		.static { display: none; }
+		@media (prefers-color-scheme: dark) {
+			.bg-a { stop-color: #050507; }
+			.bg-b { stop-color: #0e1019; }
+			.edge { stroke: #1d212c; }
+		}
+		@media (prefers-reduced-motion: reduce) {
+			.motion { display: none; }
+			.static { display: inline; }
+		}
+	</style>
+
+	<defs>
+		<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+			<stop class="bg-a" offset="0"/>
+			<stop class="bg-b" offset="1"/>
+		</linearGradient>
+		<linearGradient id="afterglow" x1="0" y1="0" x2="1" y2="0">
+			<stop offset="0" stop-color="#ffffff"/>
+			<stop offset="0.55" stop-color="#ffaa40"/>
+			<stop offset="1" stop-color="#f43f5e"/>
+		</linearGradient>
+		<linearGradient id="liquid" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0" stop-color="#bef264"/>
+			<stop offset="0.25" stop-color="#a3e635"/>
+			<stop offset="1" stop-color="#4ade80"/>
+		</linearGradient>
+		<radialGradient id="wash">
+			<stop offset="0" stop-color="#a78bfa" stop-opacity="0.16"/>
+			<stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+		</radialGradient>
+		<filter id="haze" x="-60%" y="-60%" width="220%" height="220%">
+			<feGaussianBlur stdDeviation="20"/>
+		</filter>
+		<clipPath id="frame"><rect width="1200" height="320" rx="18"/></clipPath>
+		<clipPath id="flask-in"><path d="M966 104V156L916 236Q910 248 924 248H1036Q1050 248 1044 236L994 156V104Z"/></clipPath>
+	</defs>
+
+	<g clip-path="url(#frame)">
+		<rect data-bg="" width="1200" height="320" fill="url(#bg)"/>
+		<circle cx="70" cy="330" r="260" fill="url(#wash)"/>
+
+		<!-- Left: title, description, status chip -->
+		<!-- hero-text:start (system font; outline it for the final wordmark) -->
+		<text class="ui" x="56" y="128" font-size="60" font-weight="800" letter-spacing="-1" fill="url(#afterglow)">{{PROJECT_TITLE}}</text>
+		<!-- hero-text:end -->
+		<text class="ui" x="56" y="172" font-size="18" font-weight="500" fill="#e0e0e0">{{PROJECT_DESCRIPTION}}</text>
+		<g class="ui" font-size="13" font-weight="600" fill="#b4bfce">
+			<rect id="chip-status" data-box="" x="56" y="200" width="134" height="28" rx="14" fill="#a3e635" fill-opacity="0.08" stroke="#a3e635" stroke-opacity="0.45"/>
+			<circle class="motion" cx="74" cy="214" r="4" fill="#a3e635">
+				<animate attributeName="opacity" dur="3s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" values="1;0.35;1"/>
+			</circle>
+			<circle class="static" cx="74" cy="214" r="4" fill="#a3e635"/>
+			<text data-for="chip-status" x="86" y="219">experimental</text>
+		</g>
+		<text class="mono" x="56" y="266" font-size="12" fill="#8a96aa">Liminal HQ Labs</text>
+
+		<!-- Right: a flask bubbling on the bench -->
+		<rect x="860" y="257" width="300" height="2" fill="#b4bfce" opacity="0.35"/>
+		<g class="motion">
+			<ellipse cx="980" cy="212" rx="90" ry="56" fill="#4ade80" opacity="0.2" filter="url(#haze)">
+				<animate attributeName="opacity" dur="4.5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" values="0.16;0.32;0.16"/>
+			</ellipse>
+		</g>
+		<ellipse class="static" cx="980" cy="212" rx="90" ry="56" fill="#4ade80" opacity="0.24" filter="url(#haze)"/>
+		<g clip-path="url(#flask-in)">
+			<path fill="url(#liquid)" d="M900 200H1060V260H900Z"/>
+			<g class="motion" fill="#ecfccb">
+				<circle cx="962" cy="244" r="3" opacity="0">
+					<animate attributeName="cy" dur="3s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.05;0.7;1" keySplines="0 0 1 1;0.5 0 0.8 1;0 0 1 1" values="244;244;204;204"/>
+					<animate attributeName="opacity" dur="3s" repeatCount="indefinite" keyTimes="0;0.05;0.15;0.6;0.7;1" values="0;0;0.85;0.85;0;0"/>
+				</circle>
+				<circle cx="990" cy="244" r="4" opacity="0">
+					<animate attributeName="cy" dur="4.5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.3;0.9;1" keySplines="0 0 1 1;0.5 0 0.8 1;0 0 1 1" values="244;244;204;204"/>
+					<animate attributeName="opacity" dur="4.5s" repeatCount="indefinite" keyTimes="0;0.3;0.4;0.8;0.9;1" values="0;0;0.8;0.8;0;0"/>
+				</circle>
+				<circle cx="1010" cy="242" r="2.5" opacity="0">
+					<animate attributeName="cy" dur="3s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.4;0.95;1" keySplines="0 0 1 1;0.5 0 0.8 1;0 0 1 1" values="242;242;205;205"/>
+					<animate attributeName="opacity" dur="3s" repeatCount="indefinite" keyTimes="0;0.4;0.5;0.85;0.95;1" values="0;0;0.85;0.85;0;0"/>
+				</circle>
+			</g>
+			<g class="static" fill="#ecfccb" opacity="0.8">
+				<circle cx="962" cy="226" r="3"/>
+				<circle cx="990" cy="214" r="4"/>
+				<circle cx="1010" cy="236" r="2.5"/>
+			</g>
+		</g>
+		<path d="M966 104V156L916 236Q910 248 924 248H1036Q1050 248 1044 236L994 156V104" fill="#ffffff" fill-opacity="0.05" stroke="#e0e0e0" stroke-opacity="0.65" stroke-width="2.5" stroke-linejoin="round"/>
+		<rect x="959" y="95" width="42" height="10" rx="4" fill="#161a26" stroke="#e0e0e0" stroke-opacity="0.65" stroke-width="2.5"/>
+		<path d="M936 222L970 168" stroke="#ffffff" stroke-opacity="0.22" stroke-width="5" stroke-linecap="round"/>
+	</g>
+	<rect class="edge" x="0.5" y="0.5" width="1199" height="319" rx="18"/>
+</svg>

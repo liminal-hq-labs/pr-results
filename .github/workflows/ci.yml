@@ -1,0 +1,136 @@
+# One job per check, so a pull request's checks list names exactly what passed or failed.
+# Language-neutral checks run as they are; uncomment the Rust block below (or add the
+# equivalent for the project's language) once there is code to check.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  markdown:
+    name: Markdown lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run markdownlint-cli2
+        uses: DavidAnson/markdownlint-cli2-action@v24
+        with:
+          globs: '**/*.md'
+
+  headers:
+    name: Licence headers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Check SPDX headers
+        run: bash scripts/check-headers.sh
+
+  banner:
+    name: Hero banner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install SVG tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxml2-utils librsvg2-bin fonts-dejavu-core fonts-liberation
+
+      # The runner image ships Google Chrome, which the text-fit pass drives headless.
+      - name: Check the banner
+        env:
+          BANNER_REQUIRE_RENDER: '1'
+        run: bash scripts/check-banner.sh
+
+  # Rust: one job per check in the shared ci-rust image. Take the current digest from
+  # https://github.com/liminal-hq/.github/blob/main/docs/reference/recommended-image-pins.md
+  #
+  # fmt:
+  #   name: Format
+  #   runs-on: ubuntu-24.04
+  #   timeout-minutes: 15
+  #   container:
+  #     image: ghcr.io/liminal-hq/ci-rust@sha256:f12097be8cc22eb5145a46bc9f75b38a67fedd5833add4392e11ce85023e64df
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v6
+  #       with:
+  #         persist-credentials: false
+  #
+  #     - name: Check formatting
+  #       run: cargo fmt --all -- --check
+  #
+  # clippy:
+  #   name: Clippy
+  #   runs-on: ubuntu-24.04
+  #   timeout-minutes: 30
+  #   container:
+  #     image: ghcr.io/liminal-hq/ci-rust@sha256:f12097be8cc22eb5145a46bc9f75b38a67fedd5833add4392e11ce85023e64df
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v6
+  #       with:
+  #         persist-credentials: false
+  #
+  #     - name: Cache Rust build output
+  #       uses: Swatinem/rust-cache@v2
+  #       with:
+  #         shared-key: {{PROJECT_NAME}}
+  #
+  #     - name: Run clippy
+  #       run: cargo clippy --workspace --all-targets --locked -- -D warnings
+  #
+  # test:
+  #   name: Tests
+  #   runs-on: ubuntu-24.04
+  #   timeout-minutes: 30
+  #   container:
+  #     image: ghcr.io/liminal-hq/ci-rust@sha256:f12097be8cc22eb5145a46bc9f75b38a67fedd5833add4392e11ce85023e64df
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v6
+  #       with:
+  #         persist-credentials: false
+  #
+  #     - name: Cache Rust build output
+  #       uses: Swatinem/rust-cache@v2
+  #       with:
+  #         shared-key: {{PROJECT_NAME}}
+  #
+  #     - name: Run the tests
+  #       run: cargo nextest run --workspace --locked

@@ -1,0 +1,6 @@
+# rustfmt settings for {{PROJECT_TITLE}}: hard tabs, everything else at the defaults.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+hard_tabs = true

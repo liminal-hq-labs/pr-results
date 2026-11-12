@@ -1,0 +1,14 @@
+{
+  // Table pipe spacing is left to the author; the newer markdownlint rule disagrees with the house tables.
+  "MD060": false,
+  "default": true,
+  // Long single-line paragraphs are intentional (AGENTS.md: don't hard-wrap markdown prose).
+  "MD013": false,
+  // The README hero and badges use inline HTML.
+  "MD033": false,
+  // Hard tabs are house style (tab-indented code samples).
+  "MD010": false,
+  "MD024": { "siblings_only": true },
+  // A README may open with its title and then a centred hero.
+  "MD041": false
+}
