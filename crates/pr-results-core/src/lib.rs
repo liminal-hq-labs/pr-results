@@ -12,6 +12,7 @@ mod anonymize;
 mod error;
 mod flavour;
 mod glob;
+mod hmac;
 mod junit;
 mod model;
 mod safe;

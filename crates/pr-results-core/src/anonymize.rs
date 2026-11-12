@@ -4,19 +4,22 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! A report from a private project can become a public fixture once every word in it is replaced
-//! by a token. The structure is kept: the elements, the attribute names, the counts, the times, the
-//! line and column numbers, and the punctuation and layout around the words, so a stack frame is
-//! still `at wA.wB (/wC/wD.wE:12:5)`. The same word becomes the same token everywhere, so a class
-//! name, a file attribute and a stack frame still agree.
+//! by a token. The structure is kept: the JUnit elements and attributes the readers use, the
+//! counts, the times, the line and column of a stack frame, and the punctuation and layout around
+//! the words, so a stack frame is still `at wA.wB (/wC/wD.wE:12:5)`. The same word becomes the
+//! same token everywhere, so a class name, a `file` attribute and a stack frame still agree.
 //!
-//! A token is a hash of the word and the salt, shortened. It hides a word from a reader, not from
-//! someone who can guess it: with the default (empty) salt, a candidate name can be hashed and
-//! compared. A secret salt closes that, and the output stays deterministic for that salt.
+//! A token is the first six bytes of an HMAC-SHA-256 of the word, keyed by the salt, as twelve
+//! lowercase hex digits after a one-letter prefix (`w` for a word, `n` for a number, `x` for an
+//! element or attribute name). Without the salt a token cannot be tied to a word, even by someone
+//! who can guess the word; a salt that is short or guessable can itself be found by trying it
+//! against common words. `docs/anonymizing-reports.md` says what else the output still shows.
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
 use crate::error::ParseError;
+use crate::hmac::hmac_sha256;
 
 /// Words that belong to the reporters and to JavaScript, not to the project. They are kept, so the
 /// markers the readers look for (`node_modules`, `[[ATTACHMENT|`, `at`) still work.
@@ -56,15 +59,57 @@ const KEPT_TYPES: &[&str] = &[
 /// Browser project names, which Playwright writes as the `hostname`.
 const KEPT_PROJECTS: &[&str] = &["chromium", "firefox", "webkit"];
 
-/// Attributes whose value is a number the reader uses.
-const NUMERIC_ATTRIBUTES: &[&str] = &[
+/// The elements the readers use. Any other element name is replaced.
+const KEPT_ELEMENTS: &[&str] = &[
+	"testsuites",
+	"testsuite",
+	"testcase",
+	"failure",
+	"error",
+	"skipped",
+	"system-out",
+	"system-err",
+	"properties",
+	"property",
+	"rerunFailure",
+	"flakyFailure",
+	"rerunError",
+	"flakyError",
+	"stack-trace",
+];
+
+/// The attributes the readers use. Any other attribute name is replaced.
+const KEPT_ATTRIBUTES: &[&str] = &[
+	"name",
+	"classname",
+	"file",
+	"line",
 	"time",
 	"tests",
 	"failures",
 	"errors",
 	"skipped",
+	"disabled",
+	"timestamp",
+	"hostname",
+	"id",
+	"message",
+	"type",
+	"package",
+	"status",
 	"assertions",
+	"xmlns",
+];
+
+/// Attributes that hold a count or a line: kept when they are up to four digits.
+const COUNT_ATTRIBUTES: &[&str] = &[
 	"line",
+	"tests",
+	"failures",
+	"errors",
+	"skipped",
+	"disabled",
+	"assertions",
 ];
 
 const FIXED_TIMESTAMP: &str = "2026-01-01T00:00:00.000Z";
@@ -155,7 +200,8 @@ impl Job<'_> {
 						.checked_sub(1)
 						.ok_or(ParseError::Structure("a closing tag with no opening tag"))?;
 					self.out.push_str("</");
-					self.out.push_str(e.name().as_ref());
+					let shown = self.name(e.name().as_ref(), KEPT_ELEMENTS);
+					self.out.push_str(&shown);
 					self.out.push('>');
 				}
 				Event::Text(t) => {
@@ -224,7 +270,8 @@ impl Job<'_> {
 		}
 		let name = e.name().as_ref().to_owned();
 		self.out.push('<');
-		self.out.push_str(&name);
+		let shown = self.name(&name, KEPT_ELEMENTS);
+		self.out.push_str(&shown);
 		for attr in e.attributes() {
 			let attr = attr.map_err(|_| ParseError::Malformed { offset: 0 })?;
 			let key = attr.key.as_ref().to_owned();
@@ -233,7 +280,8 @@ impl Job<'_> {
 				.map_err(|_| ParseError::BadEntity)?;
 			let shown = self.attribute(&name, &key, &value);
 			self.out.push(' ');
-			self.out.push_str(&key);
+			let shown_key = self.name(&key, KEPT_ATTRIBUTES);
+			self.out.push_str(&shown_key);
 			self.out.push_str("=\"");
 			escape_into(&mut self.out, &shown, true);
 			self.out.push('"');
@@ -249,9 +297,12 @@ impl Job<'_> {
 
 	/// What an attribute's value becomes.
 	fn attribute(&self, element: &str, key: &str, value: &str) -> String {
-		let numeric = |v: &str| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || c == '.');
+		let digits = |v: &str, most: usize| {
+			!v.is_empty() && v.len() <= most && v.bytes().all(|b| b.is_ascii_digit())
+		};
 		match key {
-			k if NUMERIC_ATTRIBUTES.contains(&k) && numeric(value) => value.to_owned(),
+			k if COUNT_ATTRIBUTES.contains(&k) && digits(value, 4) => value.to_owned(),
+			"time" if is_seconds(value) => value.to_owned(),
 			"timestamp" => FIXED_TIMESTAMP.to_owned(),
 			"name" if self.depth == 0 && KEPT_ROOT_NAMES.contains(&value) => value.to_owned(),
 			"type" if KEPT_TYPES.contains(&value) => value.to_owned(),
@@ -261,52 +312,171 @@ impl Job<'_> {
 			_ => scrub(value, self.salt),
 		}
 	}
+
+	/// An element or attribute name as it is written out: the readers' vocabulary as it is, any
+	/// other name (and any namespace prefix) as a token that is still a valid XML name.
+	fn name(&self, name: &str, kept: &[&str]) -> String {
+		if kept.contains(&name) {
+			return name.to_owned();
+		}
+		match name.split_once(':') {
+			Some(("xmlns", local)) => format!("xmlns:{}", token('x', local, self.salt)),
+			Some((prefix, local)) => {
+				let local = if kept.contains(&local) {
+					local.to_owned()
+				} else {
+					token('x', local, self.salt)
+				};
+				format!("{}:{local}", token('x', prefix, self.salt))
+			}
+			None => token('x', name, self.salt),
+		}
+	}
 }
 
-/// Replaces every word of `text` with its token and keeps everything between the words.
+/// A time in seconds: up to four digits, then optionally a point and up to twelve.
+fn is_seconds(v: &str) -> bool {
+	let (whole, fraction) = v.split_once('.').unwrap_or((v, ""));
+	!whole.is_empty()
+		&& whole.len() <= 4
+		&& fraction.len() <= 12
+		&& whole
+			.bytes()
+			.chain(fraction.bytes())
+			.all(|b| b.is_ascii_digit())
+}
+
+/// Replaces every word and number of `text` with its token and keeps everything between them,
+/// except the line and column that end a stack frame, a panic location or a Playwright heading
+/// (see [`position_starts`]).
 fn scrub(text: &str, salt: &str) -> String {
 	let mut out = String::with_capacity(text.len());
-	let mut word = String::new();
-	for c in text.chars() {
-		if c.is_alphanumeric() || c == '_' {
-			word.push(c);
-			continue;
-		}
-		push_word(&mut out, &mut word, salt);
-		out.push(c);
+	for line in text.split_inclusive('\n') {
+		scrub_line(&mut out, line, salt);
 	}
-	push_word(&mut out, &mut word, salt);
 	out
 }
 
-fn push_word(out: &mut String, word: &mut String, salt: &str) {
+fn scrub_line(out: &mut String, line: &str, salt: &str) {
+	let kept = position_starts(line);
+	let mut word = String::new();
+	let mut start = 0;
+	for (at, c) in line.char_indices() {
+		if c.is_alphanumeric() || c == '_' {
+			if word.is_empty() {
+				start = at;
+			}
+			word.push(c);
+			continue;
+		}
+		push_word(out, &mut word, kept.contains(&start), salt);
+		out.push(c);
+	}
+	push_word(out, &mut word, kept.contains(&start), salt);
+}
+
+fn push_word(out: &mut String, word: &mut String, keep_number: bool, salt: &str) {
 	if word.is_empty() {
 		return;
 	}
-	let short_number = word.len() <= 4 && word.bytes().all(|b| b.is_ascii_digit());
-	if short_number || KEPT_WORDS.contains(&word.as_str()) {
+	if word.bytes().all(|b| b.is_ascii_digit()) {
+		if keep_number {
+			out.push_str(word);
+		} else {
+			out.push_str(&token('n', word, salt));
+		}
+	} else if KEPT_WORDS.contains(&word.as_str()) {
 		out.push_str(word);
 	} else {
-		out.push_str(&token(word, salt));
+		out.push_str(&token('w', word, salt));
 	}
 	word.clear();
 }
 
-/// `w` and ten hex digits: a keyed hash of the word, so one word is one token and a token says
-/// nothing of the word's length or letters.
-fn token(word: &str, salt: &str) -> String {
-	let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-	for b in salt.bytes().chain([0xff]).chain(word.bytes()) {
-		h ^= u64::from(b);
-		h = h.wrapping_mul(0x0100_0000_01b3);
+/// Where the numbers that are positions start in `line`: the line and column at the end of
+///
+/// - a stack frame (the line starts with `at ` or `❯`): `at fn (src/a.js:12:5)`,
+/// - a panic location (the line holds `panicked at `): `panicked at src/a.rs:12:5:`,
+/// - each part of a Playwright heading (`[chromium] › a.spec.js:24:4 › titles`),
+///
+/// when the text before the colon looks like a file name (a dot, and letters after the last
+/// dot, so that `10.0.0.12:5432` and `localhost:3000` are not positions). A number of five digits
+/// or more is never a position. Everything else that is a number is replaced, because a port, an
+/// address or an identifier is as private as a word.
+fn position_starts(line: &str) -> Vec<usize> {
+	let mut starts = Vec::new();
+	let lead = line.len() - line.trim_start().len();
+	let trimmed = line.trim();
+	let end = lead + trimmed.len();
+	if trimmed.starts_with("at ")
+		|| trimmed.starts_with('\u{276f}')
+		|| trimmed.contains("panicked at ")
+	{
+		let from = trimmed
+			.rfind(char::is_whitespace)
+			.map_or(lead, |i| lead + i + 1);
+		trailing_positions(line, from, end, &mut starts);
+	} else if trimmed.starts_with('[') && trimmed.contains(" \u{203a} ") {
+		let mut from = lead;
+		for part in trimmed.split(" \u{203a} ") {
+			let to = from + part.len();
+			trailing_positions(line, from, to, &mut starts);
+			from = to + " \u{203a} ".len();
+		}
 	}
-	// A final mix so that words that differ in a last letter differ in every digit.
-	h ^= h >> 33;
-	h = h.wrapping_mul(0xff51_afd7_ed55_8ccd);
-	h ^= h >> 33;
-	h = h.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
-	h ^= h >> 33;
-	format!("w{:010x}", h & 0xff_ffff_ffff)
+	starts
+}
+
+/// The positions at the end of `line[start..end]`, as `:line:col` or `:line`, pushed to `out`.
+fn trailing_positions(line: &str, start: usize, mut end: usize, out: &mut Vec<usize>) {
+	let bytes = line.as_bytes();
+	while end > start && matches!(bytes.get(end - 1), Some(b')' | b':' | b',')) {
+		end -= 1;
+	}
+	// The start of the run of up to four digits that ends at `to`.
+	let digits_before = |to: usize| -> Option<usize> {
+		let mut from = to;
+		while from > start && bytes.get(from - 1).is_some_and(u8::is_ascii_digit) {
+			from -= 1;
+		}
+		(to > from && to - from <= 4).then_some(from)
+	};
+	let Some(last) = digits_before(end) else {
+		return;
+	};
+	if last <= start || bytes.get(last - 1) != Some(&b':') {
+		return;
+	}
+	let mut path_end = last - 1;
+	let mut first = None;
+	if let Some(s) = digits_before(path_end) {
+		if s > start && bytes.get(s - 1) == Some(&b':') {
+			first = Some(s);
+			path_end = s - 1;
+		}
+	}
+	let Some(path) = line.get(start..path_end) else {
+		return;
+	};
+	let extension = path.rsplit_once('.').map(|(_, e)| e);
+	if !extension.is_some_and(|e| e.bytes().any(|b| b.is_ascii_alphabetic())) {
+		return;
+	}
+	out.extend(first);
+	out.push(last);
+}
+
+/// A prefix letter and twelve hex digits: the first six bytes of the HMAC-SHA-256 of `word`
+/// under the salt. The same word always gives the same token, a token says nothing of the word's
+/// length or letters, and without the salt it cannot be tied to a word.
+fn token(prefix: char, word: &str, salt: &str) -> String {
+	let mac = hmac_sha256(salt.as_bytes(), word.as_bytes());
+	let mut out = String::with_capacity(13);
+	out.push(prefix);
+	for byte in mac.iter().take(6) {
+		out.push_str(&format!("{byte:02x}"));
+	}
+	out
 }
 
 /// Writes `text` as XML character data (or an attribute value), with characters XML 1.0 forbids
