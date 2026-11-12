@@ -1,7 +1,6 @@
 # One job per check, so a pull request's checks list names exactly what passed or failed.
-# The language-neutral checks run now. The Rust block at the end is commented until the first
-# crate lands: the change that adds `Cargo.toml` uncomments and adapts it, and adds the goldens,
-# reproducible-build and action-smoke jobs the specification lists.
+# The Rust jobs run in the shared ci-rust image. The dependency policy, goldens, reproducible-build
+# and action-smoke jobs the specification lists follow with the code they check.
 #
 # Every action is pinned by full commit SHA with its version in a comment, and images by digest.
 #
@@ -128,86 +127,66 @@ jobs:
         with:
           advanced-security: false
 
-  # Rust: one job per check in the shared ci-rust image. Take the current digest from
+  # Rust: one job per check in the shared ci-rust image, whose digest comes from
   # https://github.com/liminal-hq/.github/blob/main/docs/reference/recommended-image-pins.md
-  # and check that the image carries `cargo-nextest` before relying on it (its notes list Rust and
-  # `cargo-deny`).
-  #
-  # fmt:
-  #   name: Format
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 15
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Check formatting
-  #       run: cargo fmt --all -- --check
-  #
-  # clippy:
-  #   name: Clippy
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 30
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Cache Rust build output
-  #       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-  #       with:
-  #         shared-key: pr-results
-  #
-  #     - name: Run clippy
-  #       run: cargo clippy --workspace --all-targets --locked -- -D warnings
-  #
-  # test:
-  #   name: Tests
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 30
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Cache Rust build output
-  #       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-  #       with:
-  #         shared-key: pr-results
-  #
-  #     - name: Run the tests
-  #       run: cargo nextest run --workspace --locked --profile ci
-  #
-  #     # Uploaded for the publisher the repository's own CI will use once it is released.
-  #     - name: Upload Rust test results
-  #       if: always()
-  #       uses: actions/upload-artifact@<full commit sha> # vX.Y.Z
-  #       with:
-  #         name: rust-test-results
-  #         path: target/nextest/ci/junit.xml
-  #         if-no-files-found: ignore
-  #
-  # deny:
-  #   name: Dependency policy
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 15
-  #   container:
-  #     image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  #       with:
-  #         persist-credentials: false
-  #
-  #     - name: Check dependencies
-  #       run: cargo deny check
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pr-results
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/liminal-hq/ci-rust@sha256:0ef31efa5876407765cd5572a23323932183a5357eaac92eee67d79657d45c02
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pr-results
+
+      - name: Run the tests
+        run: cargo nextest run --workspace --locked --profile ci
+
+      # Uploading target/nextest/ci/junit.xml as `rust-test-results` for the publisher waits for the
+      # upload-artifact action to be pinned and for the first release of the publisher itself.
+
+  # The dependency policy job (`cargo deny check` in the same image) follows with the goldens and
+  # the reproducible build.
