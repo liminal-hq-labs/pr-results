@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 pub mod conformance;
+pub mod forgejo;
 pub mod zip;
 
 use std::fmt::Write as _;
@@ -40,6 +41,7 @@ impl Env {
 		let gh = GitHub::new(fake.clone(), RepoSlug::parse(REPO).unwrap(), BOT);
 		let run = WorkflowRun {
 			id: RunId(RUN),
+			run_number: Some(77),
 			head_sha: Sha::parse(SHA).unwrap(),
 			head_branch: "feature".to_owned(),
 			head_repo: RepoSlug::parse(REPO).unwrap(),

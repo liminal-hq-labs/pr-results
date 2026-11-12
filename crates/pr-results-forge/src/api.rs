@@ -261,6 +261,8 @@ pub struct ApiResponse {
 	pub rate_reset: Option<u64>,
 	/// The `Location` of a redirect, if it is an `https://` URL.
 	pub location: Option<BlobUrl>,
+	/// Forgejo's `X-Total-Count`: how many items a list holds in all.
+	pub total_count: Option<u64>,
 	pub body: Vec<u8>,
 }
 
@@ -300,7 +302,7 @@ impl fmt::Display for ForgeError {
 			Self::RateLimited { wait_s } => {
 				write!(f, "the rate limit lifts in {wait_s} s, too long to wait")
 			}
-			Self::Status { status, op } => write!(f, "GitHub answered {status} to {op}"),
+			Self::Status { status, op } => write!(f, "the forge answered {status} to {op}"),
 			Self::Decode(why) => write!(f, "unexpected response: {why}"),
 		}
 	}

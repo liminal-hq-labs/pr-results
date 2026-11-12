@@ -235,10 +235,14 @@ impl<F: Forge> Client<F> {
 	}
 
 	/// Every item of a list, following `Link` headers for at most 100 pages (not at all for
-	/// [`Paging::Whole`]). `key` names the
-	/// array when the list is wrapped, as the artefacts are. Each item is reduced by `keep` as its
-	/// page is read and the page is dropped, so what is held is what the caller asked to keep and
-	/// not a hundred pages of other people's text.
+	/// [`Paging::Whole`]). `key` names the array when the list is wrapped, as the artefacts are.
+	/// Each item is reduced by `keep` as its page is read and the page is dropped, so what is held
+	/// is what the caller asked to keep and not a hundred pages of other people's text.
+	///
+	/// A forge that reports how many items a list holds (Forgejo's `X-Total-Count`) is believed
+	/// over the pages: a list that comes back shorter than its count, because a `Link` was
+	/// dropped or a page was cut, is an error and not a quietly short list. For a list returned
+	/// whole the count must match exactly.
 	pub(crate) fn paged<T>(
 		&self,
 		first: ApiRequest,
@@ -248,6 +252,7 @@ impl<F: Forge> Client<F> {
 		keep: impl Fn(&Value) -> Option<T>,
 	) -> Result<Vec<T>, ForgeError> {
 		let mut items = Vec::new();
+		let mut seen = 0u64;
 		let mut req = match paging.page_size() {
 			Some((name, size)) => first.with_query(name, size),
 			None => first,
@@ -255,6 +260,7 @@ impl<F: Forge> Client<F> {
 		for _ in 0..MAX_PAGES {
 			let resp = Self::ok(self.request(&req)?, op)?;
 			let next = resp.next.clone();
+			let total = resp.total_count;
 			let body = resp.json()?;
 			drop(resp);
 			let page = match key {
@@ -264,9 +270,20 @@ impl<F: Forge> Client<F> {
 			let page = page
 				.and_then(Value::as_array)
 				.ok_or(ForgeError::Decode("a list was expected"))?;
+			seen = seen.saturating_add(page.len() as u64);
 			items.extend(page.iter().filter_map(&keep));
 			match (paging, next) {
-				(Paging::Whole, _) | (_, None) => return Ok(items),
+				(Paging::Whole, _) | (_, None) => {
+					return match total {
+						Some(t) if paging == Paging::Whole && seen != t => Err(ForgeError::Decode(
+							"a list does not match its X-Total-Count",
+						)),
+						Some(t) if seen < t => Err(ForgeError::Decode(
+							"a list is shorter than its X-Total-Count",
+						)),
+						_ => Ok(items),
+					};
+				}
 				(_, Some(next)) => req = ApiRequest::get(next),
 			}
 		}

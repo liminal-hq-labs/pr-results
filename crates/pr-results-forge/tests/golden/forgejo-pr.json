@@ -1,0 +1,39 @@
+[
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/7"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/7/comments"
+  },
+  {
+    "body": {
+      "body": "<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=5000 -->\n### Example checks: 2 failures in 1 suite\n\n| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | **Failed** | 0 | 2 | 0 | 0 | 0.2 s |\n\n#### Failures\n\n<details open>\n<summary>Failure 1 of 2</summary>\n\n`suite` › `c` › `t0`\n\n`boom 0` · at `src/f0.rs:3` · 0.1 s\n\n````text\ndetail 0\n````\n\n</details>\n\n<details open>\n<summary>Failure 2 of 2</summary>\n\n`suite` › `c` › `t1`\n\n`boom 1` · at `src/f1.rs:3` · 0.1 s\n\n````text\ndetail 1\n````\n\n</details>\n\nCommit [`3f9c2e1`](https://forgejo.example.invalid/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://forgejo.example.invalid/example/app/actions/runs/77) · pr-results 0.2.0\n"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/issues/7/comments"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/7/comments"
+  },
+  {
+    "body": {
+      "context": "Example Rust tests",
+      "description": "2 failed",
+      "state": "failure",
+      "target_url": "https://forgejo.example.invalid/example/app/pulls/7#issuecomment-1002"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/statuses/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334"
+  }
+]

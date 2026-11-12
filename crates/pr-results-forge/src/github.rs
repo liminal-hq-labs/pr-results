@@ -17,9 +17,10 @@ use serde_json::{json, Value};
 use crate::api::{ApiRequest, Forge, ForgeError, Method};
 use crate::client::{Client, Paging, BACKOFF_S};
 use crate::host::{
-	Artifact, CheckResult, CheckSpec, Comment, CommentAction, CommentResult, CommentSpec, Host,
-	HostKind, Pull, ResultSpec, ResultWritten, Tree, BODY_PREFIX_BYTES,
+	comment_from, pull_from, Artifact, CheckResult, CheckSpec, Comment, CommentResult, CommentSpec,
+	Host, HostKind, Pull, ResultSpec, ResultWritten, Tree,
 };
+use crate::sticky::{upsert_sticky, Sticky};
 
 /// The login of `GITHUB_TOKEN`'s identity, whose comments are the only ones taken for ours.
 pub const DEFAULT_BOT_LOGIN: &str = "github-actions[bot]";
@@ -30,15 +31,6 @@ pub const DEFAULT_CHECK_APP: &str = "github-actions";
 /// How many times a create is repeated after it was confirmed not to have happened.
 const CREATE_ATTEMPTS: usize = 3;
 const ANNOTATION_BATCH: usize = 50;
-
-/// The first `BODY_PREFIX_BYTES` bytes of `s`, cut at a character boundary.
-fn prefix(s: &str) -> String {
-	let mut end = s.len().min(BODY_PREFIX_BYTES);
-	while !s.is_char_boundary(end) {
-		end -= 1;
-	}
-	s.get(..end).unwrap_or("").to_owned()
-}
 
 /// GitHub's REST API over a [`Client`]: check runs for the sections and an issue comment, found
 /// by the marker and by author.
@@ -289,29 +281,12 @@ impl<F: Forge> GitHub<F> {
 	pub fn comments(&self, pr: u64) -> Result<Vec<Comment>, ForgeError> {
 		let req = self.client.get(&format!("issues/{pr}/comments"))?;
 		self.client
-			.paged(req, Paging::GitHub, None, "listing comments", |c| {
-				let user = c.get("user")?;
-				Some(Comment {
-					id: c.get("id")?.as_u64()?,
-					login: user.get("login")?.as_str()?.to_owned(),
-					user_type: user
-						.get("type")
-						.and_then(Value::as_str)
-						.unwrap_or("")
-						.to_owned(),
-					created_at: c
-						.get("created_at")
-						.and_then(Value::as_str)
-						.unwrap_or("")
-						.to_owned(),
-					body: prefix(c.get("body").and_then(Value::as_str).unwrap_or("")),
-				})
-			})
+			.paged(req, Paging::GitHub, None, "listing comments", comment_from)
 	}
 
 	/// The bot's comments for `key`, oldest first. A user's comment that copies the marker is not
 	/// ours: the author is checked as well as the marker.
-	fn ours(&self, comments: Vec<Comment>, key: &CommentKey) -> Vec<Comment> {
+	fn ours_of(&self, comments: Vec<Comment>, key: &CommentKey) -> Vec<Comment> {
 		let mut ours: Vec<Comment> = comments
 			.into_iter()
 			.filter(|c| c.login == self.bot && Marker::prefix_matches(&c.body, key))
@@ -364,7 +339,7 @@ impl<F: Forge> GitHub<F> {
 				break;
 			}
 			self.client.forge().sleep(Duration::from_secs(wait));
-			let ours = self.ours(self.comments(spec.pr)?, &spec.marker.key);
+			let ours = self.ours_of(self.comments(spec.pr)?, &spec.marker.key);
 			if let Some(c) = ours
 				.iter()
 				.find(|c| Marker::parse(&c.body).as_ref() == Some(spec.marker))
@@ -379,7 +354,7 @@ impl<F: Forge> GitHub<F> {
 	}
 
 	/// Deletes comments, ignoring those that are already gone. Returns how many were removed.
-	fn remove(&self, ids: impl Iterator<Item = u64>) -> usize {
+	fn remove(&self, ids: &mut dyn Iterator<Item = u64>) -> usize {
 		let mut removed = 0;
 		for id in ids {
 			let deleted = self
@@ -525,84 +500,37 @@ impl<F: Forge> Host for GitHub<F> {
 	}
 
 	fn upsert_result(&self, spec: &ResultSpec<'_>) -> Result<ResultWritten, ForgeError> {
-		self.upsert_check(spec)
+		match spec {
+			ResultSpec::Check(check) => self.upsert_check(check),
+			ResultSpec::Status(_) => Err(ForgeError::Refused(
+				"GitHub has check runs, not commit statuses",
+			)),
+		}
 	}
 
-	/// Keeps one sticky comment per pull request and key. It leaves the comment alone when one for
-	/// the same commit from a later run is there, updates the oldest of the bot's comments for
-	/// the key, and creates one when there is none, then deletes any other the bot wrote for the
-	/// key so concurrent runs converge on one.
+	/// Keeps one sticky comment per pull request and key; see [`upsert_sticky`]. Ours are the
+	/// bot's comments carrying the key's marker.
 	fn upsert_comment(&self, spec: &CommentSpec<'_>) -> Result<CommentResult, ForgeError> {
-		let key = &spec.marker.key;
-		let ours = self.ours(self.comments(spec.pr)?, key);
-		let newer = ours.iter().find(|c| {
-			Marker::parse(&c.body)
-				.is_some_and(|m| m.sha == spec.marker.sha && m.run > spec.marker.run)
-		});
-		if let Some(c) = newer {
-			return Ok(CommentResult {
-				id: c.id,
-				action: CommentAction::SkippedNewer,
-				duplicates_removed: 0,
-			});
-		}
-		if let Some(oldest) = ours.first() {
-			if self.patch_comment(oldest.id, spec.body)? {
-				let removed = self.remove(ours.iter().skip(1).map(|c| c.id));
-				return Ok(CommentResult {
-					id: oldest.id,
-					action: CommentAction::Updated,
-					duplicates_removed: removed,
-				});
-			}
-			// It was deleted since it was listed (404): fall through and create one.
-		}
-		let created = self.create_comment(spec)?;
-		let ours = self.ours(self.comments(spec.pr)?, key);
-		let Some(keep) = ours.first() else {
-			return Ok(CommentResult {
-				id: created,
-				action: CommentAction::Created,
-				duplicates_removed: 0,
-			});
-		};
-		let removed = self.remove(ours.iter().skip(1).map(|c| c.id));
-		if keep.id != created {
-			// Another run's create landed first and ours was removed: its comment stays, and says
-			// what this run found unless a later run for the same commit wrote it.
-			let later = Marker::parse(&keep.body)
-				.is_some_and(|m| m.sha == spec.marker.sha && m.run > spec.marker.run);
-			if !later && !self.patch_comment(keep.id, spec.body)? {
-				return Err(ForgeError::Status {
-					status: 404,
-					op: "updating a comment",
-				});
-			}
-		}
-		Ok(CommentResult {
-			id: keep.id,
-			action: CommentAction::Created,
-			duplicates_removed: removed,
-		})
+		upsert_sticky(self, spec)
 	}
 }
 
-fn pull_from(v: &Value) -> Option<Pull> {
-	let repo = |side: &str| {
-		v.get(side)?
-			.get("repo")?
-			.get("full_name")?
-			.as_str()
-			.map(str::to_owned)
-	};
-	Some(Pull {
-		number: v.get("number")?.as_u64()?,
-		open: v.get("state")?.as_str()? == "open",
-		head_sha: v.get("head")?.get("sha")?.as_str()?.to_owned(),
-		head_ref: v.get("head")?.get("ref")?.as_str()?.to_owned(),
-		head_repo: repo("head"),
-		base_repo: repo("base"),
-	})
+impl<F: Forge> Sticky for GitHub<F> {
+	fn ours(&self, pr: u64, key: &CommentKey) -> Result<Vec<Comment>, ForgeError> {
+		Ok(self.ours_of(self.comments(pr)?, key))
+	}
+
+	fn patch(&self, id: u64, body: &str) -> Result<bool, ForgeError> {
+		self.patch_comment(id, body)
+	}
+
+	fn create(&self, spec: &CommentSpec<'_>) -> Result<u64, ForgeError> {
+		self.create_comment(spec)
+	}
+
+	fn remove(&self, ids: &mut dyn Iterator<Item = u64>) -> usize {
+		GitHub::remove(self, ids)
+	}
 }
 
 fn annotation_json(a: &Annotation) -> Value {
