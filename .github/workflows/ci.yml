@@ -309,6 +309,10 @@ jobs:
       - name: Test the pin check
         run: bash scripts/test-check-pins.sh
 
+      # Proves the toolchain guard of the release builds rejects drift and every override.
+      - name: Test the toolchain check
+        run: bash scripts/test-check-toolchain.sh
+
       # Online: asks GitHub (read access to public repositories, with the workflow's
       # `contents: read` token) whether every `# vX` comment names the pinned commit.
       - name: Check the pins

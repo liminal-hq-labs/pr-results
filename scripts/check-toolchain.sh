@@ -11,9 +11,11 @@ set -euo pipefail
 #
 # - the installed musl packages are the versions in `scripts/musl-packages.txt` for this
 #   architecture (a different package could change the C objects of `ring`);
-# - no cargo configuration file or `RUSTFLAGS`-like variable can override the flags the build
-#   script sets (`CARGO_ENCODED_RUSTFLAGS`, `CARGO_BUILD_RUSTFLAGS`, the per-target forms and the
-#   `CARGO_PROFILE_*` overrides).
+# - no cargo configuration file (in the tree, in any directory above it or in the cargo home) and no
+#   variable can override the flags the build script sets or wrap the compiler and linker
+#   (`CARGO_ENCODED_RUSTFLAGS`, `CARGO_BUILD_RUSTFLAGS`, the per-target forms, `CARGO_PROFILE_*`,
+#   `RUSTC_WRAPPER`, `RUSTC_WORKSPACE_WRAPPER`, their `CARGO_BUILD_*` forms and
+#   `CARGO_TARGET_*_LINKER`).
 #
 # It prints the package versions to the step summary when there is one.
 
@@ -49,9 +51,19 @@ while IFS= read -r file; do
 done < <(find . -path ./.git -prune -o -path '*/.cargo/*' \( -name config -o -name config.toml \) -print 2>/dev/null
 	for f in "$cargo_home/config" "$cargo_home/config.toml"; do [[ -e "$f" ]] && echo "$f"; done)
 
+# Cargo reads `.cargo/config.toml` in every directory above the working directory too.
+dir="$PWD"
+while :; do
+	for name in config config.toml; do
+		[[ -e "$dir/.cargo/$name" ]] && bad "cargo configuration found: $dir/.cargo/$name"
+	done
+	[[ "$dir" == / ]] && break
+	dir="$(dirname "$dir")"
+done
+
 while IFS= read -r name; do
-	[[ -n "$name" ]] && bad "$name is set and can override the build flags"
-done < <(env | cut -d= -f1 | grep -E '^(CARGO_ENCODED_RUSTFLAGS|CARGO_BUILD_RUSTFLAGS|CARGO_TARGET_.*_RUSTFLAGS|CARGO_PROFILE_.*)$' || true)
+	[[ -n "$name" ]] && bad "$name is set and can override the build flags or wrap the toolchain"
+done < <(env | cut -d= -f1 | grep -E '^(CARGO_ENCODED_RUSTFLAGS|CARGO_BUILD_RUSTFLAGS|CARGO_TARGET_.*_RUSTFLAGS|CARGO_TARGET_.*_LINKER|CARGO_PROFILE_.*|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER)$' || true)
 
 if [[ "$failed" != 0 ]]; then
 	exit 1
