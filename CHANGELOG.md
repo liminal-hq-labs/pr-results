@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Fixed
+
+- The tag check of `release.yml` marks the checkout as a safe directory for git, which the pinned `ci-rust` container needs because its user does not own the checkout, and reports a comparison git could not make apart from a commit that is not on the default branch. The first run on `v0.1.0` failed closed on this and published nothing. `scripts/test-release-checks.sh` runs the check in that container as another user, and the `Release pins` job runs it.
+
 ## 0.1.0 — 2026-11-12
 
 The first release: experimental, with Linux `x86_64` and `aarch64` binaries.
