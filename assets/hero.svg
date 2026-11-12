@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-	pr-results hero banner: the Liminal HQ Labs placeholder, a small flask bubbling on a bench.
+	pr-results hero banner: a pull request card receives a comment while its checks tick in, one failing and then fixed.
 
 	(c) Copyright 2026 Liminal HQ, Scott Morris
 	SPDX-License-Identifier: Apache-2.0 OR MIT
 
-	How to edit: scripts/init-project.sh fills in the title and description. Keep the title under
-	about 16 characters and the description under about 60, or shrink their font-size. Replace the
-	flask with a scene for the project when it has one: keep the 1200 x 320 viewBox, SMIL only, the
-	.motion and .static pairs for reduced motion, data-loop on the root and animations whose dur
-	divides it. For a final wordmark, outline the title with Inkscape (export text to path) and
-	keep the paths. Check every change with scripts/check-banner.sh and its shots option, and look
-	at the frames (docs/new-project.md has the commands).
+	How to edit: the scene is built from the shapes below, with no text inside it. The loop is 9 s and
+	every animation lasts 9 s, so the keyTimes are fractions of one loop: checks tick in at 0.10, 0.20,
+	0.30 (which fails) and 0.40; the comment arrives at 0.48; the failing check is retried at 0.64 and
+	passes at 0.72; the comment updates in place at 0.78; everything fades out from 0.94. Keep the
+	.motion and .static pairs, the 1200 x 320 viewBox, SMIL only and a title under about 16
+	characters. Check every change with scripts/check-banner.sh and its shots option, and look at the
+	frames (docs/new-project.md has the commands).
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="hero-title hero-desc" data-loop="9">
 	<title id="hero-title">pr-results</title>
-	<desc id="hero-desc">pr-results: Calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. A Liminal HQ Labs experiment. An animated banner shows a flask of glowing lime liquid bubbling on a lab bench.</desc>
+	<desc id="hero-desc">pr-results: Calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. A Liminal HQ Labs experiment. An animated banner shows a pull request card. Four checks tick in one by one and the third fails, then a comment arrives listing the results. The failing check is retried and passes, and the comment updates in place.</desc>
 
 	<style>
 		.ui { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Adwaita Sans', Inter, sans-serif; }
@@ -45,31 +45,27 @@
 			<stop offset="0.55" stop-color="#ffaa40"/>
 			<stop offset="1" stop-color="#f43f5e"/>
 		</linearGradient>
-		<linearGradient id="liquid" x1="0" y1="0" x2="0" y2="1">
-			<stop offset="0" stop-color="#bef264"/>
-			<stop offset="0.25" stop-color="#a3e635"/>
-			<stop offset="1" stop-color="#4ade80"/>
-		</linearGradient>
 		<radialGradient id="wash">
 			<stop offset="0" stop-color="#a78bfa" stop-opacity="0.16"/>
 			<stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
 		</radialGradient>
-		<filter id="haze" x="-60%" y="-60%" width="220%" height="220%">
-			<feGaussianBlur stdDeviation="20"/>
-		</filter>
+		<radialGradient id="glow">
+			<stop offset="0" stop-color="#4ade80" stop-opacity="0.14"/>
+			<stop offset="1" stop-color="#4ade80" stop-opacity="0"/>
+		</radialGradient>
 		<clipPath id="frame"><rect width="1200" height="320" rx="18"/></clipPath>
-		<clipPath id="flask-in"><path d="M966 104V156L916 236Q910 248 924 248H1036Q1050 248 1044 236L994 156V104Z"/></clipPath>
 	</defs>
 
 	<g clip-path="url(#frame)">
 		<rect data-bg="" width="1200" height="320" fill="url(#bg)"/>
 		<circle cx="70" cy="330" r="260" fill="url(#wash)"/>
+		<circle cx="976" cy="160" r="230" fill="url(#glow)"/>
 
 		<!-- Left: title, description, status chip -->
 		<!-- hero-text:start (system font; outline it for the final wordmark) -->
 		<text class="ui" x="56" y="128" font-size="60" font-weight="800" letter-spacing="-1" fill="url(#afterglow)">pr-results</text>
 		<!-- hero-text:end -->
-		<text class="ui" x="56" y="172" font-size="18" font-weight="500" fill="#e0e0e0">Calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports</text>
+		<text class="ui" x="56" y="172" font-size="18" font-weight="500" fill="#e0e0e0">Test results on pull requests, in one calm comment</text>
 		<g class="ui" font-size="13" font-weight="600" fill="#b4bfce">
 			<rect id="chip-status" data-box="" x="56" y="200" width="134" height="28" rx="14" fill="#a3e635" fill-opacity="0.08" stroke="#a3e635" stroke-opacity="0.45"/>
 			<circle class="motion" cx="74" cy="214" r="4" fill="#a3e635">
@@ -80,39 +76,131 @@
 		</g>
 		<text class="mono" x="56" y="266" font-size="12" fill="#8a96aa">Liminal HQ Labs</text>
 
-		<!-- Right: a flask bubbling on the bench -->
-		<rect x="860" y="257" width="300" height="2" fill="#b4bfce" opacity="0.35"/>
+		<!-- Right: a pull request card -->
+		<rect x="800" y="28" width="352" height="264" rx="16" fill="#ffffff" fill-opacity="0.05" stroke="#e0e0e0" stroke-opacity="0.22" stroke-width="1.5"/>
+		<!-- Header: merge glyph and two title bars -->
+		<circle cx="826" cy="58" r="8" fill="none" stroke="#a78bfa" stroke-width="2.5"/>
+		<circle cx="826" cy="58" r="2.5" fill="#a78bfa"/>
+		<rect x="848" y="52" width="190" height="10" rx="5" fill="#b4bfce" fill-opacity="0.5"/>
+		<rect x="848" y="69" width="112" height="7" rx="3.5" fill="#b4bfce" fill-opacity="0.26"/>
+		<rect x="1070" y="52" width="58" height="24" rx="12" fill="none" stroke="#a78bfa" stroke-opacity="0.55" stroke-width="1.5"/>
+		<rect x="820" y="90" width="312" height="1.5" fill="#b4bfce" fill-opacity="0.18"/>
+
 		<g class="motion">
-			<ellipse cx="980" cy="212" rx="90" ry="56" fill="#4ade80" opacity="0.2" filter="url(#haze)">
-				<animate attributeName="opacity" dur="4.5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" values="0.16;0.32;0.16"/>
-			</ellipse>
+		<g opacity="0">
+			<animate attributeName="opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.48;0.56;0.94;0.98;1" values="0;0;1;1;0;0"/>
+			<animateTransform attributeName="transform" type="translate" dur="9s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.48;0.56;0.94;0.98;1" keySplines="0 0 1 1;0.2 0.7 0.3 1;0 0 1 1;0 0 1 1;0 0 1 1" values="0 12;0 12;0 0;0 0;0 12;0 12"/>
+			<rect x="820" y="102" width="312" height="104" rx="12" fill="#a3e635" fill-opacity="0.07" stroke="#a3e635" stroke-opacity="0.42" stroke-width="1.5"/>
+			<circle cx="842" cy="124" r="9" fill="#a3e635" fill-opacity="0.85"/>
+			<rect x="860" y="119" width="140" height="10" rx="5" fill="#f43f5e">
+				<animate attributeName="fill" dur="9s" repeatCount="indefinite" keyTimes="0;0.78;0.82;0.98;1" values="#f43f5e;#f43f5e;#4ade80;#4ade80;#f43f5e"/>
+			</rect>
+			<rect x="1014" y="121" width="64" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+			<circle cx="842" cy="150" r="3.5" fill="#4ade80"/>
+			<rect x="856" y="147" width="160" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="147" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
+			<circle cx="842" cy="164" r="3.5" fill="#4ade80"/>
+			<rect x="856" y="161" width="122" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="161" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
+			<circle cx="842" cy="178" r="3.5" fill="#f43f5e">
+				<animate attributeName="fill" dur="9s" repeatCount="indefinite" keyTimes="0;0.78;0.82;0.98;1" values="#f43f5e;#f43f5e;#4ade80;#4ade80;#f43f5e"/>
+			</circle>
+			<rect x="856" y="175" width="176" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="175" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
+			<circle cx="842" cy="192" r="3.5" fill="#4ade80"/>
+			<rect x="856" y="189" width="96" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="189" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
 		</g>
-		<ellipse class="static" cx="980" cy="212" rx="90" ry="56" fill="#4ade80" opacity="0.24" filter="url(#haze)"/>
-		<g clip-path="url(#flask-in)">
-			<path fill="url(#liquid)" d="M900 200H1060V260H900Z"/>
-			<g class="motion" fill="#ecfccb">
-				<circle cx="962" cy="244" r="3" opacity="0">
-					<animate attributeName="cy" dur="3s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.05;0.7;1" keySplines="0 0 1 1;0.5 0 0.8 1;0 0 1 1" values="244;244;204;204"/>
-					<animate attributeName="opacity" dur="3s" repeatCount="indefinite" keyTimes="0;0.05;0.15;0.6;0.7;1" values="0;0;0.85;0.85;0;0"/>
-				</circle>
-				<circle cx="990" cy="244" r="4" opacity="0">
-					<animate attributeName="cy" dur="4.5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.3;0.9;1" keySplines="0 0 1 1;0.5 0 0.8 1;0 0 1 1" values="244;244;204;204"/>
-					<animate attributeName="opacity" dur="4.5s" repeatCount="indefinite" keyTimes="0;0.3;0.4;0.8;0.9;1" values="0;0;0.8;0.8;0;0"/>
-				</circle>
-				<circle cx="1010" cy="242" r="2.5" opacity="0">
-					<animate attributeName="cy" dur="3s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.4;0.95;1" keySplines="0 0 1 1;0.5 0 0.8 1;0 0 1 1" values="242;242;205;205"/>
-					<animate attributeName="opacity" dur="3s" repeatCount="indefinite" keyTimes="0;0.4;0.5;0.85;0.95;1" values="0;0;0.85;0.85;0;0"/>
-				</circle>
-			</g>
-			<g class="static" fill="#ecfccb" opacity="0.8">
-				<circle cx="962" cy="226" r="3"/>
-				<circle cx="990" cy="214" r="4"/>
-				<circle cx="1010" cy="236" r="2.5"/>
-			</g>
+		<circle cx="862" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="842" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<circle cx="938" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="918" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<circle cx="1014" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="994" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<circle cx="1090" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="1070" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<g>
+			<animate attributeName="opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.94;0.97;0.995;1" values="1;1;0;0;1"/>
+			<circle cx="862" cy="244" r="14" fill="#4ade80" fill-opacity="0">
+				<animate attributeName="fill-opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.1;0.14;0.985;0.99;1" values="0;0;0.16;0.16;0;0"/>
+			</circle>
+			<path d="M857 244 L860.5 248.5 L867.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" stroke-dashoffset="24">
+				<animate attributeName="stroke-dashoffset" dur="9s" repeatCount="indefinite" keyTimes="0;0.1;0.14;0.985;0.99;1" values="24;24;0;0;24;24"/>
+			</path>
 		</g>
-		<path d="M966 104V156L916 236Q910 248 924 248H1036Q1050 248 1044 236L994 156V104" fill="#ffffff" fill-opacity="0.05" stroke="#e0e0e0" stroke-opacity="0.65" stroke-width="2.5" stroke-linejoin="round"/>
-		<rect x="959" y="95" width="42" height="10" rx="4" fill="#161a26" stroke="#e0e0e0" stroke-opacity="0.65" stroke-width="2.5"/>
-		<path d="M936 222L970 168" stroke="#ffffff" stroke-opacity="0.22" stroke-width="5" stroke-linecap="round"/>
+		<g>
+			<animate attributeName="opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.94;0.97;0.995;1" values="1;1;0;0;1"/>
+			<circle cx="938" cy="244" r="14" fill="#4ade80" fill-opacity="0">
+				<animate attributeName="fill-opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.2;0.24;0.985;0.99;1" values="0;0;0.16;0.16;0;0"/>
+			</circle>
+			<path d="M933 244 L936.5 248.5 L943.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" stroke-dashoffset="24">
+				<animate attributeName="stroke-dashoffset" dur="9s" repeatCount="indefinite" keyTimes="0;0.2;0.24;0.985;0.99;1" values="24;24;0;0;24;24"/>
+			</path>
+		</g>
+		<g>
+			<animate attributeName="opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.94;0.97;0.995;1" values="1;1;0;0;1"/>
+			<circle cx="1014" cy="244" r="14" fill="#4ade80" fill-opacity="0">
+				<animate attributeName="fill-opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.72;0.76;0.985;0.99;1" values="0;0;0.16;0.16;0;0"/>
+			</circle>
+			<path d="M1009 244 L1012.5 248.5 L1019.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" stroke-dashoffset="24">
+				<animate attributeName="stroke-dashoffset" dur="9s" repeatCount="indefinite" keyTimes="0;0.72;0.76;0.985;0.99;1" values="24;24;0;0;24;24"/>
+			</path>
+			<circle cx="1014" cy="244" r="14" fill="#f43f5e" fill-opacity="0">
+				<animate attributeName="fill-opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.3;0.34;0.64;0.67;1" values="0;0;0.18;0.18;0;0"/>
+			</circle>
+			<path d="M1009.5 239.5 L1018.5 248.5 M1018.5 239.5 L1009.5 248.5" fill="none" stroke="#f43f5e" stroke-width="3" stroke-linecap="round" opacity="0">
+				<animate attributeName="opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.3;0.34;0.64;0.67;1" values="0;0;1;1;0;0"/>
+			</path>
+			<circle cx="1014" cy="244" r="14" fill="none" stroke="#ffaa40" stroke-width="2.5" opacity="0">
+				<animate attributeName="opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.64;0.68;0.72;1" values="0;0;1;0;0"/>
+			</circle>
+		</g>
+		<g>
+			<animate attributeName="opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.94;0.97;0.995;1" values="1;1;0;0;1"/>
+			<circle cx="1090" cy="244" r="14" fill="#4ade80" fill-opacity="0">
+				<animate attributeName="fill-opacity" dur="9s" repeatCount="indefinite" keyTimes="0;0.4;0.44;0.985;0.99;1" values="0;0;0.16;0.16;0;0"/>
+			</circle>
+			<path d="M1085 244 L1088.5 248.5 L1095.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="24" stroke-dashoffset="24">
+				<animate attributeName="stroke-dashoffset" dur="9s" repeatCount="indefinite" keyTimes="0;0.4;0.44;0.985;0.99;1" values="24;24;0;0;24;24"/>
+			</path>
+		</g>
+		</g>
+		<g class="static">
+		<g>
+			<rect x="820" y="102" width="312" height="104" rx="12" fill="#a3e635" fill-opacity="0.07" stroke="#a3e635" stroke-opacity="0.42" stroke-width="1.5"/>
+			<circle cx="842" cy="124" r="9" fill="#a3e635" fill-opacity="0.85"/>
+			<rect x="860" y="119" width="140" height="10" rx="5" fill="#4ade80"/>
+			<rect x="1014" y="121" width="64" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+			<circle cx="842" cy="150" r="3.5" fill="#4ade80"/>
+			<rect x="856" y="147" width="160" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="147" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
+			<circle cx="842" cy="164" r="3.5" fill="#4ade80"/>
+			<rect x="856" y="161" width="122" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="161" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
+			<circle cx="842" cy="178" r="3.5" fill="#4ade80"/>
+			<rect x="856" y="175" width="176" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="175" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
+			<circle cx="842" cy="192" r="3.5" fill="#4ade80"/>
+			<rect x="856" y="189" width="96" height="6" rx="3" fill="#b4bfce" fill-opacity="0.32"/>
+			<rect x="1060" y="189" width="52" height="6" rx="3" fill="#b4bfce" fill-opacity="0.16"/>
+		</g>
+		<circle cx="862" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="842" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<circle cx="938" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="918" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<circle cx="1014" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="994" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<circle cx="1090" cy="244" r="14" fill="none" stroke="#b4bfce" stroke-opacity="0.4" stroke-width="2"/>
+		<rect x="1070" y="268" width="40" height="6" rx="3" fill="#b4bfce" fill-opacity="0.26"/>
+		<circle cx="862" cy="244" r="14" fill="#4ade80" fill-opacity="0.16"/>
+		<path d="M857 244 L860.5 248.5 L867.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+		<circle cx="938" cy="244" r="14" fill="#4ade80" fill-opacity="0.16"/>
+		<path d="M933 244 L936.5 248.5 L943.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+		<circle cx="1014" cy="244" r="14" fill="#4ade80" fill-opacity="0.16"/>
+		<path d="M1009 244 L1012.5 248.5 L1019.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+		<circle cx="1090" cy="244" r="14" fill="#4ade80" fill-opacity="0.16"/>
+		<path d="M1085 244 L1088.5 248.5 L1095.5 239.5" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+		</g>
 	</g>
 	<rect class="edge" x="0.5" y="0.5" width="1199" height="319" rx="18"/>
 </svg>
