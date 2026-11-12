@@ -49,7 +49,7 @@ The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks
 
 ## Install and run
 
-The setup is a small reusable workflow in your repository that runs after your CI finishes, pinned by full commit SHA. Look the SHA of the release up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.2.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation. The publisher runs on Linux, `x86_64` and `aarch64`, as a static musl binary. On other platforms build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results pr-results --locked`. macOS and Windows binaries are not shipped in v0.2, and Windows path handling in the zip reader and the file checks is untested.
+On **GitHub**, the publisher runs in a `workflow_run` workflow after CI finishes, so it works for fork and Dependabot pull requests. Look the release SHA up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.2.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation. The publisher runs on Linux, `x86_64` and `aarch64`, as a static musl binary. On other platforms build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results pr-results --locked`. macOS and Windows binaries are not shipped in v0.2, and Windows path handling in the zip reader and the file checks is untested.
 
 The workflow:
 
@@ -75,12 +75,15 @@ jobs:
     uses: liminal-hq-labs/pr-results/.github/workflows/publish.yml@<full commit sha> # v0.2.0
 ```
 
+On **Forgejo**, which has no `workflow_run` trigger, a final job downloads earlier jobs' artefacts and runs `pr-results publish --from results --forge forgejo` with the job token. It writes one commit status per suite in place of check runs. See [docs/adopting-forgejo.md](docs/adopting-forgejo.md) for the full setup.
+
 Your CI uploads its results as artefacts (`rust-test-results`, `frontend-test-results`, `event-file` and so on), and the publisher does the rest. See [docs/adopting.md](docs/adopting.md) for the steps, a recipe for each test runner (nextest, vitest, Playwright shards, bun and Desk) and the optional `.github/pr-results.toml`.
 
 ## Documentation
 
 - [SPEC.md](SPEC.md) — behaviour and interfaces
-- [docs/adopting.md](docs/adopting.md) — setting it up in a repository
+- [docs/adopting.md](docs/adopting.md) — setting it up on GitHub
+- [docs/adopting-forgejo.md](docs/adopting-forgejo.md) — setting it up on Forgejo
 - [docs/inputs.md](docs/inputs.md) — the formats it reads
 - [docs/security.md](docs/security.md) — how it treats untrusted input
 - [docs/releasing.md](docs/releasing.md) — cutting and verifying a release
