@@ -18,7 +18,9 @@ use crate::{Annotation, CheckOutput, Conclusion, Input, Level, Section};
 const ANNOTATION_HARD_CAP: usize = 500;
 /// An annotation's title is at most 255 characters.
 const ANNOTATION_TITLE_CHARS: usize = 255;
-/// Well under GitHub's 64 KiB for an annotation's message, even when every character is wide.
+/// An annotation's message is at most 64 KiB.
+const ANNOTATION_MESSAGE_BYTES: usize = 65_535;
+/// Where the search for a message that fits starts, in characters.
 const ANNOTATION_MESSAGE_CHARS: usize = 16_000;
 /// Rows of the per-suite table.
 const SUITE_ROWS: usize = 50;
@@ -45,7 +47,7 @@ pub(crate) fn check(
 		Verdict::NoResults if section.required => Conclusion::Failure,
 		Verdict::NoResults => Conclusion::Neutral,
 	};
-	let (summary, _) = fit(i.options.summary_limit, Plan::start(i.options), |plan| {
+	let (summary, _) = fit(i.options.summary_limit(), Plan::start(i.options), |plan| {
 		summary(i, &info, &failures, &flaky, plan, annotations.len(), capped)
 	});
 	Some(CheckOutput {
@@ -297,7 +299,7 @@ fn detail_lines(n: usize, e: &Entry<'_>, cap: usize) -> Vec<Safe> {
 
 /// The details of every failure that fits, then the slowest ten cases.
 fn text(i: &Input<'_>, section: &Section<'_>, failures: &[Entry<'_>]) -> Safe {
-	let limit = i.options.text_limit;
+	let limit = i.options.text_limit();
 	let slow = slowest_lines(section, SLOWEST);
 	let mut shown: Vec<Vec<Safe>> = Vec::new();
 	let mut used = 0usize;
@@ -429,7 +431,37 @@ fn annotation(case: &Case, level: Level) -> Option<Annotation> {
 		start_line: line,
 		end_line: line,
 		level,
-		title: Safe::plain_text(&case.name, ANNOTATION_TITLE_CHARS),
-		message: Safe::plain_block(&message, ANNOTATION_MESSAGE_CHARS),
+		title: bounded(
+			ANNOTATION_TITLE_CHARS,
+			ANNOTATION_TITLE_CHARS,
+			measure,
+			|budget| Safe::plain_text(&case.name, budget),
+		),
+		message: bounded(
+			ANNOTATION_MESSAGE_BYTES,
+			ANNOTATION_MESSAGE_CHARS,
+			|s| s.as_str().len(),
+			|budget| Safe::plain_block(&message, budget),
+		),
 	})
+}
+
+/// The text `build` makes from the largest budget, starting at `start` characters, whose `size`
+/// is within `limit`. A cut appends a marker after the budget, so the budget alone is not the
+/// size; this takes the excess off the budget until the whole, marker included, fits.
+fn bounded(
+	limit: usize,
+	start: usize,
+	size: impl Fn(&Safe) -> usize,
+	build: impl Fn(usize) -> Safe,
+) -> Safe {
+	let mut budget = start.min(limit);
+	loop {
+		let built = build(budget);
+		let excess = size(&built).saturating_sub(limit);
+		if excess == 0 || budget == 0 {
+			return built;
+		}
+		budget = budget.saturating_sub(excess);
+	}
 }

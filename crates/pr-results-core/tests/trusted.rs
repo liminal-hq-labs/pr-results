@@ -187,6 +187,22 @@ fn marker_round_trips() {
 }
 
 #[test]
+fn marker_accepts_a_crlf_line_ending_and_nothing_else_after_the_arrow() {
+	let m = marker();
+	let good = m.render().as_str().to_owned();
+	assert_eq!(
+		Marker::parse(&format!("{good}\r\nbody\r\n")),
+		Some(m.clone())
+	);
+	assert_eq!(Marker::parse(&format!("{good}\r")), Some(m));
+	assert_eq!(Marker::parse(&format!("{good}\r\r\nbody")), None);
+	assert_eq!(Marker::parse(&format!("{good} \r\nbody")), None);
+	assert_eq!(Marker::parse(&format!("\r{good}")), None);
+	let ci = CommentKey::parse("ci").unwrap();
+	assert!(Marker::prefix_matches(&format!("{good}\r\nbody"), &ci));
+}
+
+#[test]
 fn marker_refuses_forgeries() {
 	let good = format!("<!-- pr-results:1 key=ci sha={SHA} run=19283746 -->");
 	let forged = [

@@ -6,6 +6,10 @@
 //! Run it, post the output as a comment in a throwaway repository, and read the comment's
 //! rendered HTML (decision Q9). Every target appears four ways through the renderer's own
 //! forms (`text`, `code_span`, `code_block` and the failure layout) and once raw, as a control.
+//! The heading's title (which goes through `Safe::text`) carries every target too, and the
+//! table cells and test names also carry targets with a pipe, a backtick and an escaped pipe.
+//! Annotations and check-run summaries are not probed: annotations go through the REST API as
+//! plain text, and a check run's summary and text use the same forms as the comment.
 //! In the rendered HTML, a mention, issue link or autolink anchor should appear only for the raw
 //! rows. The timeline and the notifications of the account that owns the repository should show
 //! only the raw rows too.
@@ -47,6 +51,16 @@ fn targets(owner: &str, repo: &str, team: &str) -> Vec<String> {
 	]
 }
 
+/// Targets that could break out of a table cell or a code span. They are probed in the rendered
+/// forms only, because raw they would only break the control table.
+fn awkward(owner: &str) -> Vec<String> {
+	vec![
+		format!("@{owner}|#1"),
+		format!("x`@{owner}`#1"),
+		format!("@{owner}\\|#1"),
+	]
+}
+
 /// XML text for an attribute value.
 fn attr(s: &str) -> String {
 	s.replace('&', "&amp;")
@@ -54,7 +68,7 @@ fn attr(s: &str) -> String {
 		.replace('"', "&quot;")
 }
 
-fn failure_layout(ctx: &RunContext, targets: &[String]) -> Option<Safe> {
+fn failure_layout(ctx: &RunContext, title: &str, targets: &[String]) -> Option<Safe> {
 	let mut xml = String::from("<testsuites><testsuite name=\"probe\">");
 	for target in targets {
 		let t = attr(target);
@@ -77,7 +91,7 @@ fn failure_layout(ctx: &RunContext, targets: &[String]) -> Option<Safe> {
 	}];
 	let input = Input {
 		ctx,
-		title: "Mention probe",
+		title,
 		sections: &sections,
 		options: &options,
 	};
@@ -117,14 +131,17 @@ fn main() -> ExitCode {
 			return ExitCode::from(2);
 		}
 	};
-	let targets = targets(&owner, &repo, &team);
+	let controls = targets(&owner, &repo, &team);
+	let mut targets = controls.clone();
+	targets.extend(awkward(&owner));
+	let title = targets.join(" ");
 
 	println!("# Mention probe\n");
 	println!("Only the raw control rows should link or mention anyone.\n");
 
 	println!("## Raw control\n");
 	println!("| Form | Target |\n| --- | --- |");
-	for target in &targets {
+	for target in &controls {
 		println!("| raw | {target} |");
 	}
 
@@ -146,7 +163,8 @@ fn main() -> ExitCode {
 	}
 
 	println!("## Failure layout\n");
-	match failure_layout(&ctx, &targets) {
+	println!("The heading carries every target as its title.\n");
+	match failure_layout(&ctx, &title, &targets) {
 		Some(layout) => print!("{layout}"),
 		None => {
 			eprintln!("mention_probe: the probe report could not be built");

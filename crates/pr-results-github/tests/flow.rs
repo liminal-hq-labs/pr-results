@@ -16,8 +16,8 @@ mod common;
 use std::time::Duration;
 
 use common::{
-	check_golden, failing, heavy, passing, paths, section, set_tree, zip, Env, BOT, OLD_SHA, REPO,
-	RUN, SHA,
+	check_golden, failing, passing, paths, section, set_tree, zip, Env, BOT, OLD_SHA, REPO, RUN,
+	SHA,
 };
 use pr_results_core::{Marker, RunId};
 use pr_results_github::{
@@ -986,11 +986,10 @@ fn writes_are_half_a_second_apart() {
 
 #[test]
 fn an_oversize_comment_is_retried_once_in_its_minimal_form() {
-	let mut env = Env::new();
-	env.artifact("rust-test-results", &[("junit.xml", &heavy(30, 16_000))]);
-	env.plan.options.comment_limit = 5_000_000;
-	env.plan.options.max_failures = 100;
-	env.plan.options.excerpt_lines = 100_000;
+	let env = Env::new();
+	env.artifact("rust-test-results", &[("junit.xml", &failing(40, "f"))]);
+	// The renderer holds itself to GitHub's limits, so the fake's are lowered to make it overshoot.
+	env.fake.set_limits(3_000, 20_000, 50);
 	let report = env.publish();
 	assert!(!report.failed(), "{:?}", report.failures);
 	assert!(report.notes.contains(&Note::CommentMinimal { pr: 7 }));
@@ -1009,12 +1008,10 @@ fn an_oversize_comment_is_retried_once_in_its_minimal_form() {
 #[test]
 fn an_oversize_check_run_is_retried_once_in_its_minimal_form() {
 	let mut env = Env::new();
-	env.artifact("rust-test-results", &[("junit.xml", &heavy(30, 16_000))]);
-	env.plan.options.summary_limit = 5_000_000;
-	env.plan.options.text_limit = 5_000_000;
-	env.plan.options.max_failures = 100;
-	env.plan.options.excerpt_lines = 100_000;
 	env.plan.post_comment = false;
+	env.artifact("rust-test-results", &[("junit.xml", &failing(40, "f"))]);
+	// The renderer holds itself to GitHub's limits, so the fake's are lowered to make it overshoot.
+	env.fake.set_limits(65_536, 1_500, 50);
 	let report = env.publish();
 	assert!(!report.failed(), "{:?}", report.failures);
 	assert!(report.notes.contains(&Note::CheckMinimal { section: 0 }));

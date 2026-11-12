@@ -69,7 +69,8 @@ pub struct Options {
 	/// Lines of each failure's body.
 	pub excerpt_lines: usize,
 	pub symbols: Symbols,
-	/// Character limits, counted after escaping.
+	/// Character limits, counted after escaping. Each is held to 65,535 when used, GitHub's own
+	/// limit for a check run's summary and text and just under its limit for a comment.
 	pub comment_limit: usize,
 	pub summary_limit: usize,
 	pub text_limit: usize,
@@ -77,6 +78,23 @@ pub struct Options {
 	pub max_annotations: usize,
 	/// Flaky cases are annotated as warnings.
 	pub flaky_annotations: bool,
+}
+
+/// The most any of the three limits may be, whatever the setting.
+const LIMIT_CEILING: usize = 65_535;
+
+impl Options {
+	pub(crate) fn comment_limit(&self) -> usize {
+		self.comment_limit.min(LIMIT_CEILING)
+	}
+
+	pub(crate) fn summary_limit(&self) -> usize {
+		self.summary_limit.min(LIMIT_CEILING)
+	}
+
+	pub(crate) fn text_limit(&self) -> usize {
+		self.text_limit.min(LIMIT_CEILING)
+	}
 }
 
 impl Default for Options {
