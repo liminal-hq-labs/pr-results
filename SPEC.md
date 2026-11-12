@@ -131,6 +131,8 @@ pr-results --version | --help
 | `2` | The arguments, the settings file, a file given to `render` or the environment are wrong |
 | `4` | Tests failed, and only with `--fail-on-failures` (never when publishing itself failed: that is `1`) |
 
+**Defaults the command line does not expose.** There are no flags or settings for the hosts a blob may be fetched from, the app whose check runs are ours or the time allowed for retries. The client uses its defaults: `*.blob.core.windows.net` and `*.githubusercontent.com` for github.com, the API host alone for any other `GITHUB_API_URL` (a GitHub Enterprise Server whose artefacts live elsewhere is refused until a setting for it exists), `github-actions` as the check app, and a ten-minute budget for waiting to retry. When that budget is used up the log says "Retries stopped because the time allowed for waiting was used up." and the writes that then failed make the exit status 1 as any refused write does; the note alone does not.
+
 **Logs.** Every line on standard output or standard error passes through `Safe::log_line`, so a name cannot start a workflow command. Markdown printed to standard output (the comment of `--dry-run`, and `render` without `--out`) has a backslash and a space put in front of any line that starts with `::` or `##[`; the files it writes are exact. The token is masked with `::add-mask::` before the first request.
 
 ### Packaging

@@ -57,20 +57,36 @@ fn a_pull_request_run_gets_its_check_run_and_comment() {
 }
 
 #[test]
-fn the_token_is_masked_first_and_never_printed_again() {
+fn the_token_is_masked_first_exactly_once_and_never_printed_again() {
 	let dir = scratch("mask");
 	let fake = github_with_pr();
 	artifact(&fake, "rust-test-results", &[("junit.xml", &failing_xml())]);
 	let vars = publisher_env(&dir, &pr_event());
+	let mask = format!("::add-mask::{TOKEN}");
+
+	for extra in [&[][..], &["--dry-run", dir.join("o").to_str().unwrap()][..]] {
+		let mut args = vec!["publish"];
+		args.extend_from_slice(extra);
+		let o = invoke(&args, &vars, &Factory::new(&fake));
+
+		assert_eq!(o.code, 0, "{}", o.err);
+		assert_eq!(o.out.lines().next(), Some(mask.as_str()));
+		assert_eq!(o.out.matches("::add-mask::").count(), 1);
+		assert_eq!(o.out.matches(TOKEN).count(), 1);
+		assert!(!o.err.contains(TOKEN));
+	}
+}
+
+#[test]
+fn nothing_is_masked_when_nothing_is_published() {
+	let dir = scratch("mask-none");
+	let fake = github_with_pr();
+	let vars = publisher_env(&dir, &pr_event().replace("\"success\"", "\"cancelled\""));
 
 	let o = invoke(&["publish"], &vars, &Factory::new(&fake));
 
-	assert_eq!(
-		o.out.lines().next(),
-		Some(format!("::add-mask::{TOKEN}").as_str())
-	);
-	assert_eq!(o.out.matches(TOKEN).count(), 1);
-	assert!(!o.err.contains(TOKEN));
+	assert_eq!(o.code, 0);
+	assert!(!o.out.contains("add-mask"));
 }
 
 #[test]

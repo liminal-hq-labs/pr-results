@@ -85,6 +85,8 @@ The same binary is available as a step, for a custom flow or for `render`:
 
 The inputs are `command` (`publish`, `render` or `validate-config`), `args` (split on whitespace), `config`, `build` (`release`, the default, or `source`, which builds the action's checkout with a pinned toolchain) and `token` (default `github.token`). `publish` works only in a `workflow_run` workflow on the default branch, and stops with a message anywhere else. Publishing from the test job itself is planned for v0.2.
 
+On GitHub Enterprise Server the publisher reads artefacts only from the API host itself, and check runs are matched to the `github-actions` app. A server whose artefact storage has other host names is refused until a setting for them exists; there is none in v0.1.
+
 ## 3. Configure it (optional)
 
 With the default artefact names, no file is needed: suites are inferred from artefacts matching `*-test-results*`. To name check runs, map suites or set limits, add `.github/pr-results.toml` on the default branch. Unknown keys are an error, and so is a setting for a later version. Every setting and its default is in [SPEC.md](../SPEC.md#settings-and-defaults); validate a file with `pr-results validate-config .github/pr-results.toml`.
