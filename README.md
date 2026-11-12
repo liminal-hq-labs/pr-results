@@ -10,7 +10,7 @@
 
 pr-results will read the test and check results your CI produces and post them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It is planned to understand JUnit from nextest, vitest, bun, jest and Playwright as well as step reports from shell-script projects, and to be safe on pull requests from forks by design.
 
-> **Status:** experimental and **not built yet**. Today this repository holds the specification, the design decisions and the project's own checks. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
+> **Status:** experimental and **barely built**. The data model, the escaping type and the JUnit parsers exist and are tested, but the tool reads nothing from GitHub and **posts nothing**. There is no action, binary or release to install. Interfaces and formats may change between any two commits.
 
 ## What it's for
 

@@ -18,7 +18,7 @@
 
 ## Project status
 
-pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental** and not built yet, so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
+pr-results is a [Liminal HQ Labs](https://github.com/liminal-hq-labs) experiment: calm test and check results for pull requests: one sticky comment and a check run per suite, from JUnit and step reports. It is **experimental** and only partly built (the model, `Safe` and the JUnit parsers; it posts nothing yet), so interfaces, file formats and behaviour may change between any two commits. `SPEC.md` is the source of truth for behaviour, and `docs/decisions.md` records why. The [Labs charter](https://github.com/liminal-hq-labs/.github/blob/main/docs/labs-charter.md) covers what that status means and how a project graduates.
 
 ## Spelling and writing
 
@@ -90,7 +90,7 @@ Use `#` comments for shell, YAML, TOML and Dockerfiles, and an XML comment for S
 ## Architecture rules
 
 - **Untrusted input is escaped only through `Safe`.** Everything from an artefact (names, messages, paths, the event file) is untrusted. The renderer accepts only `Safe` fragments, so no raw string reaches Markdown or HTML. Do not add a second escaping path.
-- **No network outside `pr-results-github`.** The model, parse and render crates are pure and tested offline. Anything that talks to GitHub sits behind the `Forge` trait, with an in-memory fake for tests.
+- **No network outside `pr-results-github`.** The core and render crates are pure and tested offline. Anything that talks to GitHub sits behind the `Forge` trait, with an in-memory fake for tests.
 - **No pull request code in privileged workflows.** A workflow that holds a write token never checks out or runs code from a pull request head, and takes no secret beyond `GITHUB_TOKEN`. The publisher uses the latest release pinned by SHA, never the pull request's own build.
 - **Deterministic output.** The same inputs give byte-identical Markdown: stable ordering, no clocks beyond the run times in the inputs.
 - **No unsafe code.** Each crate has `#![forbid(unsafe_code)]`.
@@ -131,4 +131,4 @@ scripts/       header check, banner check and its Chromium text-fit harness
 .github/       CI workflow, Dependabot and zizmor configuration, issue and pull request templates, release notes configuration
 ```
 
-Still to come with the code that needs them: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-{model,parse,render,github}/`, `src/` (the command line), `tests/fixtures/` and `tests/golden/`, `deny.toml`, `action.yml`, and the reusable, publishing and release workflows.
+Built: `Cargo.toml` and `Cargo.lock`, `crates/pr-results-core/` (the model, `Safe` and the parsers), `crates/pr-results/` (the command line), `tests/fixtures/`, `deny.toml` and `.config/nextest.toml`. Still to come with the code that needs them: `crates/pr-results-{render,github}/`, `tests/golden/`, `action.yml`, and the reusable, publishing and release workflows.

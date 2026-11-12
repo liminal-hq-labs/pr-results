@@ -1,6 +1,6 @@
 # Security
 
-> **Planned.** `pr-results` is not built yet. This page states the design rules the tool must follow, so a product can prepare its CI now. Nothing here describes shipped behaviour. The rules themselves are normative in [SPEC.md](../SPEC.md#the-workflow_run-flow-and-security).
+> **Planned.** `pr-results` posts nothing yet. Only the XML limits, the text rules and the `Safe` type below are built, in `pr-results-core`. This page states the design rules the tool must follow, so a product can prepare its CI now. Nothing here describes shipped behaviour. The rules themselves are normative in [SPEC.md](../SPEC.md#the-workflow_run-flow-and-security).
 
 How `pr-results` must handle untrusted input, and why it is designed to run on fork pull requests. This page explains the model and says what to check.
 

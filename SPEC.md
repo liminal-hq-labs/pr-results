@@ -2,7 +2,7 @@
 
 The source of truth for behaviour. A change that alters behaviour updates this file in the same change. Why each choice was made is in [docs/decisions.md](docs/decisions.md); the per-format input notes are in [docs/inputs.md](docs/inputs.md), the threat model in [docs/security.md](docs/security.md) and the adoption guide in [docs/adopting.md](docs/adopting.md).
 
-Nothing described here is built yet. Where a decision is still the owner's, the text says **Open question** and names its number in the [list at the end](#open-questions).
+The data model, `Safe` and the JUnit parsers exist (see the notes in [Components](#components) and [the normalized model](#the-normalized-model)); everything else described here is not built yet. Where a decision is still the owner's, the text says **Open question** and names its number in the [list at the end](#open-questions).
 
 ## Contents
 
@@ -94,15 +94,14 @@ A Cargo workspace, added crate by crate with the code that needs it:
 
 | Crate | Role | I/O |
 | --- | --- | --- |
-| `pr-results-model` | The normalized model (below) | none |
-| `pr-results-parse` | JUnit and step-results parsers, flavour detection, location derivation | none |
-| `pr-results-render` | Markdown with the `Safe` type and budgets | none, pure |
-| `pr-results-github` | A `Forge` trait and its `ureq` implementation, the artefact download | network |
+| `pr-results-core` | The normalized model (below), the `Safe` type, and the JUnit and step-results parsers with flavour detection and location derivation | none, pure |
+| `pr-results-render` | Markdown from the model, built only from `Safe`, with budgets (not built yet) | none, pure |
+| `pr-results-github` | A `Forge` trait and its `ureq` implementation, the artefact download (not built yet) | network |
 | `pr-results` | The command line: configuration, wiring and `main` | files and network |
 
-Everything except `pr-results-github` and the command line's `main` is pure and tested offline. `pr-results-github` sits behind the `Forge` trait, with an in-memory fake that records requests. Each crate has `#![forbid(unsafe_code)]`.
+Everything except `pr-results-github` and the command line's `main` is pure and tested offline. `pr-results-github` sits behind the `Forge` trait, with an in-memory fake that records requests. Each crate has `#![forbid(unsafe_code)]`, and library code denies `unwrap`, `expect`, `panic` and unchecked indexing, so hostile input cannot panic the tool.
 
-Dependencies, all permissively licensed and checked by `cargo deny`: `quick-xml`, `serde`, `serde_json`, `toml`, `ureq` with `rustls`, `zip` (deflate only), `globset` and `sha2` for self-checks. No async runtime, no `reqwest`, no OpenSSL.
+Dependencies, all permissively licensed and checked by `cargo deny`, each added with the code that needs it and pinned exactly: `quick-xml` is in; `serde`, `serde_json`, `toml`, `ureq` with `rustls`, `zip` (deflate only), `globset` and `sha2` follow. No async runtime, no `reqwest`, no OpenSSL. The command line has only `--version` and `--help` so far.
 
 ### Command line
 
@@ -147,7 +146,9 @@ status  = passed | failed | errored | skipped | flaky (passed after a failed att
 id      = suite key + "\u{1f}" + classname + "\u{1f}" + name, after whitespace normalization
 ```
 
-`detail` is capped at 16 KiB per case at parse time and `message` at 1 KiB. Suites with the same name across files merge, so a matrix of jobs that each upload part of a suite shows as one.
+`detail` is capped at 16 KiB per case at parse time and `message` at 1 KiB, and names, class names and paths at 1 KiB. Suites with the same name across files merge, so a matrix of jobs that each upload part of a suite shows as one.
+
+As built in `pr-results-core`: a `Report` holds `Suite`s (`name`, `flavour`, `cases`, `time_ms`), and a `Case` holds `name`, `classname`, `file`, `line`, `status`, `time_ms`, `attempts`, `message`, `detail`, and the captured `system_out` and `system_err`. Every string is an `Untrusted`, which cannot be formatted except through `Safe`. `id` is computed by `Case::identity` rather than stored. `schema`, `tool_version`, `key`, `display_name` and `source_files` belong to the serialized report and the settings layer, and arrive with them.
 
 ### The step-results contract
 
