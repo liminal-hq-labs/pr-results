@@ -577,6 +577,7 @@ fn input_borrows_only_what_it_needs() {
 		ctx: &ctx,
 		title: "T",
 		sections: &sections,
+		other_checks: &[],
 		options: &options,
 	};
 	assert!(pr_results_render::comment(&input).steps_taken.is_empty());

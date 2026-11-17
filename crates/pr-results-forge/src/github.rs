@@ -17,8 +17,9 @@ use serde_json::{json, Value};
 use crate::api::{ApiRequest, Forge, ForgeError, Method};
 use crate::client::{Client, Paging, BACKOFF_S};
 use crate::host::{
-	comment_from, pull_from, Artifact, CheckResult, CheckSpec, Comment, CommentResult, CommentSpec,
-	Host, HostKind, Pull, ResultSpec, ResultWritten, Tree,
+	comment_from, pull_from, Artifact, CheckResult, CheckRunInfo, CheckSpec, Comment,
+	CommentResult, CommentSpec, Host, HostKind, Pull, ResultSpec, ResultWritten, Tree,
+	EXTERNAL_ID_PREFIX,
 };
 use crate::sticky::{upsert_sticky, Sticky};
 
@@ -30,6 +31,8 @@ pub const DEFAULT_CHECK_APP: &str = "github-actions";
 
 /// How many times a create is repeated after it was confirmed not to have happened.
 const CREATE_ATTEMPTS: usize = 3;
+/// A listed check's name is kept to this many characters: it comes from someone else's workflow.
+const CHECK_NAME_CHARS: usize = 200;
 const ANNOTATION_BATCH: usize = 50;
 
 /// GitHub's REST API over a [`Client`]: check runs for the sections and an issue comment, found
@@ -472,6 +475,35 @@ impl<F: Forge> Host for GitHub<F> {
 			None,
 			"listing pull requests by head",
 			pull_from,
+		)
+	}
+
+	fn check_runs(&self, sha: &Sha) -> Result<Vec<CheckRunInfo>, ForgeError> {
+		let req = self
+			.client
+			.get(&format!("commits/{}/check-runs", sha.as_str()))?
+			.with_query("filter", "latest");
+		self.client.paged(
+			req,
+			Paging::GitHub,
+			Some("check_runs"),
+			"listing check runs",
+			|c| {
+				let text = |key: &str| c.get(key).and_then(Value::as_str).map(str::to_owned);
+				let external_id = text("external_id").unwrap_or_default();
+				let app = c
+					.get("app")
+					.and_then(|a| a.get("slug"))
+					.and_then(Value::as_str);
+				Some(CheckRunInfo {
+					name: text("name")?.chars().take(CHECK_NAME_CHARS).collect(),
+					status: text("status")?,
+					conclusion: text("conclusion"),
+					details_url: text("details_url"),
+					ours: external_id.starts_with(EXTERNAL_ID_PREFIX)
+						&& app == Some(self.check_app.as_str()),
+				})
+			},
 		)
 	}
 

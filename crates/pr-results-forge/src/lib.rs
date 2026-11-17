@@ -38,8 +38,9 @@ pub use fake::{FakeCheck, FakeComment, FakeForge, FakeForgejo, FakePull, FakeSta
 pub use forgejo::{Forgejo, ACTIONS_ID, ACTIONS_LOGIN};
 pub use github::{GitHub, DEFAULT_BOT_LOGIN, DEFAULT_CHECK_APP};
 pub use host::{
-	Artifact, CheckResult, CheckSpec, Comment, CommentAction, CommentResult, CommentSpec, Host,
-	HostKind, Pull, ResultSpec, ResultWritten, StatusSpec, Tree, BODY_PREFIX_BYTES,
+	Artifact, CheckResult, CheckRunInfo, CheckSpec, Comment, CommentAction, CommentResult,
+	CommentSpec, Host, HostKind, Pull, ResultSpec, ResultWritten, StatusSpec, Tree,
+	BODY_PREFIX_BYTES,
 };
 pub use publish::{
 	publish, publish_inputs, CheckReport, CommentReport, Failure, Inputs, Note, Plan, PublishError,

@@ -19,20 +19,22 @@ use pr_results_core::{
 	ServerUrl, Sha, Status, Suite, TrustedUrl,
 };
 use pr_results_render::{
-	check_with_paths, comment, job_summary, status, Comment, Conclusion, Input, Options,
-	RunContext, Section, StatusState, Target,
+	check_with_paths, comment, job_summary, status, CheckState, Comment, Conclusion, Input,
+	Options, OtherCheck, RunContext, Section, StatusState, Target,
 };
 use serde_json::Value;
 
 use crate::api::ForgeError;
 use crate::archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
 use crate::host::{
-	Artifact, CheckSpec, CommentAction, CommentSpec, Host, HostKind, Pull, ResultSpec, StatusSpec,
-	Tree,
+	Artifact, CheckRunInfo, CheckSpec, CommentAction, CommentSpec, Host, HostKind, Pull,
+	ResultSpec, StatusSpec, Tree, EXTERNAL_ID_PREFIX,
 };
 
 /// A pull request is commented on this many times at most when several verify.
 const MAX_PULLS: usize = 5;
+/// At most this many of the commit's other checks are read into the comment.
+const MAX_OTHER_CHECKS: usize = 500;
 /// The event file is read only if it is no larger than this.
 const EVENT_FILE_BYTES: u64 = 1024 * 1024;
 const EVENT_FILE_NAME: &str = "event.json";
@@ -74,6 +76,11 @@ pub struct Plan {
 	pub key: CommentKey,
 	/// Whether to write the sticky comment at all (`comment.mode`).
 	pub post_comment: bool,
+	/// Whether to list the commit's other check runs in the comment (`comment.other_checks`).
+	pub other_checks: bool,
+	/// The run this publisher is itself running in, when it is not the run being reported on. Its
+	/// own job is still going while it reads, so listing it would show a check that is never done.
+	pub own_run: Option<RunId>,
 	pub sections: Vec<SectionPlan>,
 	pub options: Options,
 	pub archive: ArchiveLimits,
@@ -98,6 +105,8 @@ impl Plan {
 			title: title.to_owned(),
 			key,
 			post_comment: true,
+			other_checks: false,
+			own_run: None,
 			sections,
 			options: Options::default(),
 			archive: ArchiveLimits::default(),
@@ -160,6 +169,12 @@ pub enum Note {
 	},
 	TreeUnavailable,
 	TreeTruncated,
+	/// The commit's check runs could not be listed, so the comment has no table of them.
+	OtherChecksUnavailable,
+	/// The forge has no check runs to list.
+	OtherChecksUnsupported,
+	/// Publishing from the job itself cannot tell its own check from the others.
+	OtherChecksInJob,
 	/// Waiting to retry used up its time, so later failures were reported, not retried.
 	RetryBudgetSpent,
 	AnnotationsOutsideTree {
@@ -322,6 +337,18 @@ impl PublishReport {
 					"The commit's tree is too large to list: annotations were not checked."
 						.to_owned()
 				}
+				Note::OtherChecksUnavailable => {
+					"The commit's other checks could not be listed: the comment has no table of them."
+						.to_owned()
+				}
+				Note::OtherChecksUnsupported => {
+					"This forge has no check runs to list: `comment.other_checks` has no effect."
+						.to_owned()
+				}
+				Note::OtherChecksInJob => {
+					"Publishing from the job itself does not list other checks: use the workflow_run publisher."
+						.to_owned()
+				}
 				Note::AnnotationsOutsideTree { section, count } => format!(
 					"{count} annotations for {} named files that are not in the commit.",
 					title(*section)
@@ -401,7 +428,15 @@ pub fn publish<H: Host>(
 	gh.begin_run();
 	let artifacts = gh.artifacts(run.id).map_err(at("listing artefacts"))?;
 	let loaded = load(gh, &artifacts, plan, &mut report)?;
-	Ok(finish(gh, run, server, plan, &loaded, &artifacts, report))
+	Ok(finish(
+		gh,
+		run,
+		server,
+		plan,
+		&loaded,
+		Some(&artifacts),
+		report,
+	))
 }
 
 /// Posts the results of `run` from inputs the caller has already read, so it asks the host for no
@@ -418,7 +453,7 @@ pub fn publish_inputs<H: Host>(
 		..PublishReport::default()
 	};
 	gh.begin_run();
-	finish(gh, run, server, plan, inputs, &[], report)
+	finish(gh, run, server, plan, inputs, None, report)
 }
 
 /// Renders and writes what was read.
@@ -428,7 +463,7 @@ fn finish<H: Host>(
 	server: &ServerUrl,
 	plan: &Plan,
 	loaded: &Inputs,
-	artifacts: &[Artifact],
+	artifacts: Option<&[Artifact]>,
 	mut report: PublishReport,
 ) -> PublishReport {
 	let target = match gh.kind() {
@@ -458,10 +493,12 @@ fn finish<H: Host>(
 			inputs_skipped: *skipped,
 		})
 		.collect();
+	let others = other_checks(gh, run, plan, artifacts.is_some(), &mut report);
 	let input = Input {
 		ctx: &ctx,
 		title: &plan.title,
 		sections: &sections,
+		other_checks: &others,
 		options: &plan.options,
 	};
 
@@ -472,12 +509,28 @@ fn finish<H: Host>(
 		HostKind::GitHub => {
 			let tree = read_tree(gh, run, loaded, &mut report);
 			post_checks(gh, run, plan, &input, tree.as_ref(), &mut report);
-			post_comments(gh, run, plan, &input, &full, artifacts, &mut report);
+			post_comments(
+				gh,
+				run,
+				plan,
+				&input,
+				&full,
+				artifacts.unwrap_or(&[]),
+				&mut report,
+			);
 		}
 		HostKind::Forgejo => {
 			// No annotations, so no tree is read. The comment goes first: a status links to it.
 			report.results = ResultKind::CommitStatus;
-			post_comments(gh, run, plan, &input, &full, artifacts, &mut report);
+			post_comments(
+				gh,
+				run,
+				plan,
+				&input,
+				&full,
+				artifacts.unwrap_or(&[]),
+				&mut report,
+			);
 			post_statuses(gh, run, server, plan, &input, &mut report);
 		}
 	}
@@ -674,6 +727,75 @@ fn read_tree<H: Host>(
 	}
 }
 
+// ---- other checks --------------------------------------------------------------------------
+
+/// The commit's other check runs, for the comment's table: not the ones this tool wrote, which
+/// are the suites above it, and not the publishing job's own. Anything that stops the listing
+/// leaves the table out and says so; the results are posted all the same.
+fn other_checks<H: Host>(
+	gh: &H,
+	run: &WorkflowRun,
+	plan: &Plan,
+	from_artifacts: bool,
+	report: &mut PublishReport,
+) -> Vec<OtherCheck> {
+	if !plan.other_checks {
+		return Vec::new();
+	}
+	if !from_artifacts {
+		report.notes.push(Note::OtherChecksInJob);
+		return Vec::new();
+	}
+	if gh.kind() != HostKind::GitHub {
+		report.notes.push(Note::OtherChecksUnsupported);
+		return Vec::new();
+	}
+	let listed = match gh.check_runs(&run.head_sha) {
+		Ok(listed) => listed,
+		Err(_) => {
+			report.notes.push(Note::OtherChecksUnavailable);
+			return Vec::new();
+		}
+	};
+	listed
+		.iter()
+		.filter(|c| !c.ours && !plan.own_run.is_some_and(|own| in_run(c, own)))
+		.take(MAX_OTHER_CHECKS)
+		.map(|c| OtherCheck {
+			name: c.name.clone(),
+			state: state_of(c),
+		})
+		.collect()
+}
+
+/// Whether the check is a job of workflow run `id`: its page is `.../actions/runs/<id>/...`.
+fn in_run(c: &CheckRunInfo, id: RunId) -> bool {
+	const MARK: &str = "/actions/runs/";
+	let Some(url) = c.details_url.as_deref() else {
+		return false;
+	};
+	let Some((_, rest)) = url.split_once(MARK) else {
+		return false;
+	};
+	let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+	digits.parse::<u64>().is_ok_and(|n| n == id.0)
+}
+
+/// How a check run stands, from GitHub's `status` and `conclusion`. A conclusion that is not
+/// known is shown as needing a look, not as a pass.
+fn state_of(c: &CheckRunInfo) -> CheckState {
+	if c.status != "completed" {
+		return CheckState::Running;
+	}
+	match c.conclusion.as_deref() {
+		Some("success") => CheckState::Passed,
+		Some("failure" | "timed_out" | "startup_failure") => CheckState::Failed,
+		Some("cancelled") => CheckState::Cancelled,
+		Some("neutral" | "skipped" | "stale") => CheckState::Skipped,
+		_ => CheckState::ActionRequired,
+	}
+}
+
 // ---- check runs ----------------------------------------------------------------------------
 
 fn post_checks<H: Host>(
@@ -702,7 +824,11 @@ fn post_checks<H: Host>(
 				count: outside.get(),
 			});
 		}
-		let external_id = format!("pr-results:1:{}:{}", plan.key.as_str(), section.check_name);
+		let external_id = format!(
+			"{EXTERNAL_ID_PREFIX}{}:{}",
+			plan.key.as_str(),
+			section.check_name
+		);
 		let mut spec = CheckSpec {
 			name: &section.check_name,
 			head_sha: &run.head_sha,

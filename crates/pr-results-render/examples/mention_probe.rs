@@ -122,6 +122,7 @@ fn failure_layout(ctx: &RunContext, title: &str, targets: &[String]) -> Option<S
 		ctx,
 		title,
 		sections: &sections,
+		other_checks: &[],
 		options: &options,
 	};
 	// Without the marker, so the probe can never be taken for a real comment.
@@ -163,6 +164,7 @@ fn check_run_body(ctx: &RunContext, title: &str, targets: &[String]) -> Option<S
 		ctx,
 		title,
 		sections: &sections,
+		other_checks: &[],
 		options: &options,
 	};
 	let out = check(&input, 0)?;

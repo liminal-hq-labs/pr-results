@@ -855,3 +855,62 @@ fn in_job_skips_links_and_rejects_oversize_files() {
 	let out = invoke(&args, &vars, &Factory::new(&fake));
 	assert_eq!(out.code, 2, "{}", out.err);
 }
+
+#[test]
+fn other_checks_are_listed_when_the_setting_is_on_and_the_publishers_own_job_is_not() {
+	let dir = scratch("other-checks");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"rust-test-results",
+		&[("junit.xml", &fixture("nextest/pass.xml"))],
+	);
+	fake.add_other_check(
+		"Security audit",
+		SHA,
+		"completed",
+		Some("failure"),
+		Some("https://github.com/example/app/actions/runs/5000/job/1"),
+	);
+	fake.add_other_check(
+		"publish / Publish",
+		SHA,
+		"in_progress",
+		None,
+		Some("https://github.com/example/app/actions/runs/9001/job/2"),
+	);
+	let config = dir.join("pr-results.toml");
+	std::fs::write(&config, "schema = 1\n\n[comment]\nother_checks = true\n").unwrap();
+	let mut vars = publisher_env(&dir, &pr_event());
+	vars.insert("GITHUB_RUN_ID".to_owned(), "9001".to_owned());
+
+	let o = invoke(
+		&["publish", "--config", config.to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let body = fake.comments(7)[0].body.clone();
+	assert!(body.contains("1 other check needs attention"), "{body}");
+	assert!(body.contains("| `Security audit` | **Failed** |"), "{body}");
+	assert!(!body.contains("Publish"), "{body}");
+}
+
+#[test]
+fn other_checks_are_not_listed_by_default() {
+	let dir = scratch("other-checks-off");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"rust-test-results",
+		&[("junit.xml", &fixture("nextest/pass.xml"))],
+	);
+	fake.add_other_check("Security audit", SHA, "completed", Some("failure"), None);
+	let vars = publisher_env(&dir, &pr_event());
+
+	let o = invoke(&["publish"], &vars, &Factory::new(&fake));
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert!(!fake.comments(7)[0].body.contains("Other checks"));
+}

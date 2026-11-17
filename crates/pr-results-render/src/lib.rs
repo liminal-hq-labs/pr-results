@@ -125,12 +125,36 @@ impl Default for Options {
 	}
 }
 
+/// How another check on the commit stands, in the few words the comment has for it. The order is
+/// the order of the rows: what needs attention first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CheckState {
+	Failed,
+	ActionRequired,
+	Cancelled,
+	/// Queued, waiting or in progress: it has no result yet.
+	Running,
+	/// Neutral, skipped or stale.
+	Skipped,
+	Passed,
+}
+
+/// A check on the commit that this tool did not write, such as another job's or another
+/// workflow's. The name was chosen by whoever wrote that workflow, so it is untrusted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OtherCheck {
+	pub name: String,
+	pub state: CheckState,
+}
+
 #[derive(Debug, Clone)]
 pub struct Input<'a> {
 	pub ctx: &'a RunContext,
 	/// The heading's title, from the settings.
 	pub title: &'a str,
 	pub sections: &'a [Section<'a>],
+	/// The commit's other checks, for a table of their own. Empty when the setting is off.
+	pub other_checks: &'a [OtherCheck],
 	pub options: &'a Options,
 }
 
@@ -139,6 +163,8 @@ pub struct Input<'a> {
 /// so it matters only when `max_failures` is set higher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Degradation {
+	/// Passing checks from other workflows as one row.
+	OtherChecksCollapsed,
 	/// Flaky tests as a count, not a list.
 	ExtrasToCounts,
 	/// Failure excerpts of 8 lines.

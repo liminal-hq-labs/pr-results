@@ -11,7 +11,7 @@ use pr_results_core::{Case, Marker, Safe, Status, Suite, TrustedUrl};
 
 use crate::text::{big, cat, count, join, noun, num, t};
 use crate::view::{excerpt, group_of, location_piece, suite_label, Counts, Entry, Verdict};
-use crate::{RunContext, Symbols, Target};
+use crate::{CheckState, RunContext, Symbols, Target};
 
 /// Budgets for the names shown on a line, in characters after escaping.
 const SUITE_CHARS: usize = 120;
@@ -19,6 +19,7 @@ const GROUP_CHARS: usize = 120;
 const NAME_CHARS: usize = 200;
 const MESSAGE_CHARS: usize = 300;
 pub(crate) const TITLE_CHARS: usize = 120;
+const CHECK_CHARS: usize = 120;
 
 /// The table cell and failure prefix for a section: its title, in a code span.
 pub(crate) fn section_label(title: &str) -> Safe {
@@ -96,6 +97,37 @@ fn result_cell(verdict: Verdict, required: bool, symbols: Symbols) -> Safe {
 		Verdict::NoResults if required => cat(&[glyph(symbols, "\u{2013} "), t("**No results**")]),
 		Verdict::NoResults => cat(&[glyph(symbols, "\u{2013} "), t("No results")]),
 	}
+}
+
+pub(crate) fn other_head() -> [Safe; 2] {
+	[t("| Check | Result |"), t("| --- | --- |")]
+}
+
+fn state_cell(state: CheckState, symbols: Symbols) -> Safe {
+	match state {
+		CheckState::Failed => cat(&[glyph(symbols, "\u{2717} "), t("**Failed**")]),
+		CheckState::ActionRequired => cat(&[glyph(symbols, "\u{2717} "), t("**Action required**")]),
+		CheckState::Cancelled => cat(&[glyph(symbols, "\u{2013} "), t("Cancelled")]),
+		CheckState::Running => cat(&[glyph(symbols, "\u{21bb} "), t("Running")]),
+		CheckState::Skipped => cat(&[glyph(symbols, "\u{2013} "), t("Skipped")]),
+		CheckState::Passed => cat(&[glyph(symbols, "\u{2713} "), t("Passed")]),
+	}
+}
+
+/// One row of the other checks' table. `name` is untrusted, so it goes in a code span.
+pub(crate) fn other_row(name: &str, state: CheckState, symbols: Symbols) -> Safe {
+	other_row_labelled(&Safe::code_span(name, CHECK_CHARS), state, symbols)
+}
+
+/// The same with a label that is already `Safe`, such as the row that stands for several checks.
+pub(crate) fn other_row_labelled(label: &Safe, state: CheckState, symbols: Symbols) -> Safe {
+	cat(&[
+		t("| "),
+		label.clone(),
+		t(" | "),
+		state_cell(state, symbols),
+		t(" |"),
+	])
 }
 
 /// One table row. `label` is already `Safe`: a code span of the suite's title, or a literal.

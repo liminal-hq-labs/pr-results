@@ -73,3 +73,11 @@ pub(crate) fn passing_combined(target: Target) -> &'static str {
 		Target::Forgejo => " passing suites were combined into one row to fit the size limit.",
 	}
 }
+
+/// After the number of passing checks from other workflows folded into one row.
+pub(crate) fn other_checks_combined(target: Target) -> &'static str {
+	match target {
+		Target::GitHub => " passing checks were combined into one row to fit GitHub's size limit.",
+		Target::Forgejo => " passing checks were combined into one row to fit the size limit.",
+	}
+}
