@@ -41,8 +41,8 @@ For runners that cannot use the composite action, copy the release tag and the *
 - name: Install pr-results
   shell: bash
   env:
-    PR_RESULTS_TAG: 'v0.3.0'
-    PR_RESULTS_SHA256: '1d5a597aac06560990bf508118949e69fbecdfdb923bfc69832d985d2ca37263'
+    PR_RESULTS_TAG: 'v0.4.0'
+    PR_RESULTS_SHA256: 'PLACEHOLDER'
   run: |
     set -euo pipefail
     dir="$(mktemp -d "${RUNNER_TEMP}/pr-results.XXXXXX")"
