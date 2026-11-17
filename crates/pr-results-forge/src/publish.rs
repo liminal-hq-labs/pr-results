@@ -519,6 +519,7 @@ fn finish<H: Host>(
 		title: &plan.title,
 		sections: &sections,
 		other_checks: &others,
+		baseline: None,
 		options: &plan.options,
 	};
 

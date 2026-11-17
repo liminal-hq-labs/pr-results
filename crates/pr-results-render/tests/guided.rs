@@ -15,7 +15,8 @@ mod common;
 use std::fmt::Write as _;
 
 use common::{
-	assert_inert_all, guided_truncation_base, other, parse_text, scenarios, section, Scenario,
+	assert_inert_all, delta, guided_truncation_base, many_delta, other, parse_text, scenarios,
+	section, Scenario,
 };
 use pr_results_core::Flavour;
 use pr_results_render::{job_summary, measure, CheckState, Degradation, Style, Symbols, Target};
@@ -563,4 +564,152 @@ fn the_job_summary_leaves_the_note_out_since_it_is_written_once() {
 		assert!(!summary.as_str().contains("\n\n\n"));
 		assert!(summary.as_str().contains("Commit ["));
 	}
+}
+
+fn with_delta(sc: Scenario, d: pr_results_core::TestDelta, from: Option<&str>) -> Scenario {
+	sc.guided().with_baseline(d, "main", from)
+}
+
+#[test]
+fn the_comment_says_how_many_tests_were_added_and_removed() {
+	let both = body(&with_delta(
+		run(3, 0),
+		delta(
+			&[("a", "one"), ("a", "two"), ("a", "three")],
+			&[("a", "gone")],
+		),
+		None,
+	));
+	assert!(
+		both.contains(
+			"This pull request adds 3 tests and removes 1 test against `main`. A renamed test counts as both."
+		),
+		"{both}"
+	);
+	assert!(
+		both.contains("<summary>Tests added (3) and removed (1)</summary>"),
+		"{both}"
+	);
+
+	let added = body(&with_delta(run(3, 0), delta(&[("a", "one")], &[]), None));
+	assert!(
+		added.contains("This pull request adds 1 test against `main`."),
+		"{added}"
+	);
+	assert!(!added.contains("renamed"), "{added}");
+	assert!(
+		added.contains("<summary>Tests added (1)</summary>"),
+		"{added}"
+	);
+
+	let removed = body(&with_delta(
+		run(3, 0),
+		delta(&[], &[("a", "x"), ("a", "y")]),
+		None,
+	));
+	assert!(
+		removed.contains("This pull request removes 2 tests against `main`."),
+		"{removed}"
+	);
+	assert!(
+		removed.contains("<summary>Tests removed (2)</summary>"),
+		"{removed}"
+	);
+}
+
+#[test]
+fn it_says_nothing_when_the_tests_are_the_same_or_there_is_no_baseline() {
+	let same = body(&with_delta(run(3, 0), delta(&[], &[]), None));
+	assert!(!same.contains("This pull request"), "{same}");
+	let none = body(&run(3, 0).guided());
+	assert!(!none.contains("This pull request"), "{none}");
+}
+
+#[test]
+fn the_setting_and_the_plain_style_decide_whether_it_is_there() {
+	let d = || delta(&[("a", "one")], &[]);
+	let mut off = with_delta(run(3, 0), d(), None);
+	off.options.test_delta = false;
+	assert!(!body(&off).contains("This pull request"));
+
+	let mut plain = run(3, 0).with_baseline(d(), "main", None);
+	plain.options.test_delta = true;
+	assert_eq!(plain.options.style, Style::Plain);
+	assert!(!body(&plain).contains("This pull request"));
+}
+
+#[test]
+fn a_fallback_says_which_branch_had_no_results() {
+	let text = body(&with_delta(
+		run(3, 0),
+		delta(&[("a", "one")], &[]),
+		Some("fix/stacked"),
+	));
+	assert!(
+		text.contains(
+			"adds 1 test against `main`, because `fix/stacked` had no results to compare with."
+		),
+		"{text}"
+	);
+}
+
+#[test]
+fn the_names_are_listed_in_code_and_the_rest_are_counted() {
+	let text = body(&with_delta(run(3, 0), many_delta(33, 21), None));
+	assert!(
+		text.contains("- `core` \u{203a} `app` \u{203a} `new_000`"),
+		"{text}"
+	);
+	assert!(text.contains("`new_019`"), "{text}");
+	assert!(!text.contains("new_020"), "{text}");
+	assert!(text.contains("\u{2026}and 13 more tests."), "{text}");
+	assert!(text.contains("\u{2026}and 1 more test."), "{text}");
+}
+
+#[test]
+fn emoji_marks_the_two_lists_only_in_the_enhanced_style() {
+	let d = || delta(&[("a", "one")], &[("a", "two")]);
+	let enhanced = body(&run(3, 0).enhanced().with_baseline(d(), "main", None));
+	assert!(
+		enhanced.contains("\u{2795} Added:") && enhanced.contains("\u{2796} Removed:"),
+		"{enhanced}"
+	);
+	let guided = body(&with_delta(run(3, 0), d(), None));
+	assert!(
+		guided.contains("\nAdded:\n") && guided.contains("\nRemoved:\n"),
+		"{guided}"
+	);
+}
+
+#[test]
+fn a_comment_over_its_limit_gives_up_the_list_first_and_says_so() {
+	let big = || {
+		let mut sc = with_delta(run(3, 0), many_delta(40, 40), None);
+		sc.options.comment_limit = 100_000;
+		sc
+	};
+	let roomy = big().comment();
+	assert!(roomy.body.as_str().contains("<summary>Tests added"));
+	assert!(roomy.steps_taken.is_empty());
+
+	let mut tight = big();
+	tight.options.comment_limit = measure(&roomy.body) - 1;
+	let c = tight.comment();
+	assert!(
+		c.steps_taken.contains(&Degradation::ExtrasToCounts),
+		"{:?}",
+		c.steps_taken
+	);
+	let text = c.body.to_string();
+	assert!(
+		text.contains("This pull request adds 40 tests and removes 40 tests against `main`."),
+		"{text}"
+	);
+	assert!(!text.contains("<summary>Tests added"), "{text}");
+	assert!(
+		text.contains(
+			"The list of 40 added and 40 removed tests was left out to fit GitHub's size limit."
+		),
+		"{text}"
+	);
 }

@@ -580,6 +580,7 @@ fn input_borrows_only_what_it_needs() {
 		title: "T",
 		sections: &sections,
 		other_checks: &[],
+		baseline: None,
 		options: &options,
 	};
 	assert!(pr_results_render::comment(&input).steps_taken.is_empty());

@@ -10,9 +10,9 @@
 use pr_results_core::Safe;
 
 use crate::blocks::{check_label, mark, section_label, Mark};
-use crate::text::{big, cat, count, noun, t};
+use crate::text::{big, cat, count, join, noun, t};
 use crate::view::{Counts, SectionInfo, Verdict};
-use crate::{CheckState, Options, OtherCheck, Section, Symbols};
+use crate::{Baseline, CheckState, Options, OtherCheck, Section, Symbols};
 
 /// Bullets of the needs-attention list before the rest are counted.
 const MAX_BULLETS: usize = 10;
@@ -464,4 +464,123 @@ pub(crate) fn visible_others(sections: &[Section<'_>], others: &[OtherCheck]) ->
 		})
 		.cloned()
 		.collect()
+}
+
+/// The tests of each kind the list names before the rest are counted.
+const DELTA_LISTED: usize = 20;
+/// Characters of a branch name or a test's name shown.
+const DELTA_BRANCH_CHARS: usize = 100;
+const DELTA_NAME_CHARS: usize = 120;
+
+/// `This pull request adds 3 tests and removes 2 against `main`. A renamed test counts as both.`
+/// Everything but the numbers and the code spans is fixed; the branch names are the author's, so
+/// they are only ever in a code span and are cut.
+pub(crate) fn test_delta_sentence(b: &Baseline<'_>) -> Safe {
+	let added = big(b.delta.added_total);
+	let removed = big(b.delta.removed_total);
+	let mut parts = vec![t("This pull request ")];
+	if added > 0 {
+		parts.extend([t("adds "), count(added), noun(added, " test", " tests")]);
+	}
+	if added > 0 && removed > 0 {
+		parts.push(t(" and "));
+	}
+	if removed > 0 {
+		parts.extend([
+			t("removes "),
+			count(removed),
+			noun(removed, " test", " tests"),
+		]);
+	}
+	parts.push(t(" against "));
+	parts.push(Safe::code_span(b.against, DELTA_BRANCH_CHARS));
+	if let Some(from) = b.fell_back_from {
+		parts.push(t(", because "));
+		parts.push(Safe::code_span(from, DELTA_BRANCH_CHARS));
+		parts.push(t(" had no results to compare with"));
+	}
+	parts.push(t("."));
+	if added > 0 && removed > 0 {
+		parts.push(t(" A renamed test counts as both."));
+	}
+	cat(&parts)
+}
+
+fn delta_name(id: &pr_results_core::TestId) -> Safe {
+	let mut parts = vec![Safe::code_span(id.suite.as_str(), DELTA_NAME_CHARS)];
+	for part in [&id.project, &id.class, &id.name] {
+		if !part.is_empty() {
+			parts.push(Safe::code_span(part.as_str(), DELTA_NAME_CHARS));
+		}
+	}
+	join(&t(" \u{203a} "), &parts)
+}
+
+/// The collapsed list of the tests added and removed, up to `DELTA_LISTED` of each.
+pub(crate) fn test_delta_list(b: &Baseline<'_>, symbols: Symbols) -> Vec<Safe> {
+	let added = big(b.delta.added_total);
+	let removed = big(b.delta.removed_total);
+	let mut summary = vec![t("<summary>")];
+	if added > 0 {
+		summary.extend([t("Tests added ("), count(added), t(")")]);
+	}
+	if added > 0 && removed > 0 {
+		summary.push(t(" and removed ("));
+	} else if removed > 0 {
+		summary.push(t("Tests removed ("));
+	}
+	if removed > 0 {
+		summary.extend([count(removed), t(")")]);
+	}
+	summary.push(t("</summary>"));
+	let mut lines = vec![t("<details>"), cat(&summary), Safe::default()];
+	let sides = [
+		(
+			"Added:",
+			if symbols == Symbols::Emoji {
+				"\u{2795} "
+			} else {
+				""
+			},
+			&b.delta.added,
+			b.delta.added_total,
+		),
+		(
+			"Removed:",
+			if symbols == Symbols::Emoji {
+				"\u{2796} "
+			} else {
+				""
+			},
+			&b.delta.removed,
+			b.delta.removed_total,
+		),
+	];
+	let mut first = true;
+	for (label, mark, ids, total) in sides {
+		if total == 0 {
+			continue;
+		}
+		if !first {
+			lines.push(Safe::default());
+		}
+		first = false;
+		lines.push(cat(&[t(mark), t(label)]));
+		lines.push(Safe::default());
+		for id in ids.iter().take(DELTA_LISTED) {
+			lines.push(cat(&[t("- "), delta_name(id)]));
+		}
+		if total > DELTA_LISTED {
+			let left = big(total - DELTA_LISTED);
+			lines.push(Safe::default());
+			lines.push(cat(&[
+				t("\u{2026}and "),
+				count(left),
+				noun(left, " more test.", " more tests."),
+			]));
+		}
+	}
+	lines.push(Safe::default());
+	lines.push(t("</details>"));
+	lines
 }

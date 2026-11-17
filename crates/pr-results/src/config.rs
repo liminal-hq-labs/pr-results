@@ -124,6 +124,9 @@ pub struct Settings {
 	pub mascot: bool,
 	pub progress: bool,
 	pub alerts: bool,
+	/// What the pull request adds and removes in tests against its base. On in the guided and
+	/// enhanced styles; it needs a baseline to say anything.
+	pub test_delta: bool,
 	/// A line saying the comment is updated in place. On in the guided and enhanced styles.
 	pub updated_note: bool,
 	/// Keep the table of other checks open when every one passed.
@@ -156,6 +159,7 @@ impl Default for Settings {
 			mascot: false,
 			progress: false,
 			alerts: false,
+			test_delta: true,
 			updated_note: true,
 			other_checks_open: false,
 			other_checks: false,
@@ -188,6 +192,7 @@ impl Settings {
 			mascot: self.mascot,
 			progress: self.progress,
 			alerts: self.alerts,
+			test_delta: self.test_delta,
 			updated_note: self.updated_note,
 			other_checks_open: self.other_checks_open,
 			max_annotations: self.max_annotations,
@@ -405,6 +410,7 @@ impl Reader<'_> {
 				"progress",
 				"alerts",
 				"updated_note",
+				"test_delta",
 				"other_checks",
 				"other_checks_open",
 				"other_checks_ignore",
@@ -524,17 +530,24 @@ impl Reader<'_> {
 				*slot = on;
 			}
 		}
-		// Unlike the extras this is on in the guided style too, and off only in the plain one.
-		s.updated_note = style != "plain";
-		if let Some(on) = self.boolean(t, "updated_note", "comment.")? {
-			if on && style == "plain" {
-				let at = self.find(t, "updated_note").map_or(0..0, |v| v.span());
-				return Err(self.err(
-					at,
-					"`comment.updated_note` needs `comment.style` of \"guided\" or \"enhanced\"",
-				));
+		// Unlike the extras these are on in the guided style too, and off only in the plain one.
+		for (name, slot) in [
+			("updated_note", &mut s.updated_note),
+			("test_delta", &mut s.test_delta),
+		] {
+			*slot = style != "plain";
+			if let Some(on) = self.boolean(t, name, "comment.")? {
+				if on && style == "plain" {
+					let at = self.find(t, name).map_or(0..0, |v| v.span());
+					return Err(self.err(
+						at,
+						format!(
+							"`comment.{name}` needs `comment.style` of \"guided\" or \"enhanced\""
+						),
+					));
+				}
+				*slot = on;
 			}
-			s.updated_note = on;
 		}
 		Ok(())
 	}

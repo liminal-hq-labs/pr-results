@@ -279,3 +279,16 @@ fn the_updated_note_is_on_except_in_the_plain_style() {
 		.contains("`comment.updated_note` needs `comment.style`"));
 	assert!(err("[comment]\nupdated_note = 1").contains("updated_note"));
 }
+
+#[test]
+fn the_test_delta_is_on_except_in_the_plain_style() {
+	assert!(of("").test_delta);
+	assert!(of("").options().test_delta);
+	assert!(of("[comment]\nstyle = \"enhanced\"").test_delta);
+	assert!(!of("[comment]\nstyle = \"plain\"").test_delta);
+	assert!(!of("[comment]\ntest_delta = false").test_delta);
+	assert!(!of("[comment]\nstyle = \"plain\"\ntest_delta = false").test_delta);
+	assert!(err("[comment]\nstyle = \"plain\"\ntest_delta = true")
+		.contains("`comment.test_delta` needs `comment.style`"));
+	assert!(err("[comment]\ntest_delta = \"yes\"").contains("test_delta"));
+}

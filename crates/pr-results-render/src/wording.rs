@@ -58,6 +58,14 @@ pub(crate) fn flaky_left_out(target: Target) -> &'static str {
 	}
 }
 
+/// After the count of added and removed tests whose list was left out.
+pub(crate) fn delta_left_out(target: Target) -> &'static str {
+	match target {
+		Target::GitHub => " was left out to fit GitHub's size limit.",
+		Target::Forgejo => " was left out to fit the size limit.",
+	}
+}
+
 /// After the number of lines each excerpt was cut to.
 pub(crate) fn excerpts_cut(target: Target) -> &'static str {
 	match target {

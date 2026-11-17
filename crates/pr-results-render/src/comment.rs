@@ -255,6 +255,7 @@ fn render(
 	let tally = Tally::of(infos, i.other_checks);
 	let mood = tally.mood();
 	let mut doc = Doc::new();
+	let mut delta_cut: Option<Safe> = None;
 	doc.line(marker_line(i.ctx));
 	doc.line(heading(
 		i.ctx.target,
@@ -288,6 +289,24 @@ fn render(
 		for lines in blocks {
 			doc.blank();
 			doc.lines(lines);
+		}
+		if o.test_delta {
+			if let Some(b) = i.baseline.as_ref().filter(|b| !b.delta.is_empty()) {
+				doc.block(guided::test_delta_sentence(b));
+				if plan.extras_as_counts {
+					delta_cut = Some(cat(&[
+						t("The list of "),
+						count(big(b.delta.added_total)),
+						t(" added and "),
+						count(big(b.delta.removed_total)),
+						t(" removed tests"),
+						t(wording::delta_left_out(target)),
+					]));
+				} else {
+					doc.blank();
+					doc.lines(guided::test_delta_list(b, o.symbols));
+				}
+			}
 		}
 	}
 
@@ -352,6 +371,7 @@ fn render(
 	}
 
 	let mut notes: Vec<Safe> = Vec::new();
+	notes.extend(delta_cut);
 	if !flaky.is_empty() {
 		if plan.extras_as_counts {
 			let k = big(flaky.len());

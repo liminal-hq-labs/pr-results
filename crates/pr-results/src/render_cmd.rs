@@ -77,6 +77,7 @@ pub(crate) fn render(a: &RenderArgs, io: &mut Streams<'_>) -> Result<u8, CliErro
 		title: &title,
 		sections: &borrowed,
 		other_checks: &[],
+		baseline: None,
 		options: &options,
 	};
 	let body = comment(&input).body.to_string();
