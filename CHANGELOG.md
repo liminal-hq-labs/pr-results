@@ -4,6 +4,15 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Added
+
+- Groundwork for the baseline of a pull request (decision D78, issue #37), not yet used by the publisher. `Host::baseline_run`, with `BaselineQuery` and `RunRef`, finds the newest completed `push` run of a workflow in the repository itself that ended in `success` or `failure`, by exact commit or by branch, so a fork's run of the same name and a cancelled run are never taken for a baseline. GitHub implements it with one read of `actions/workflows/{id}/runs` and no new permission, and the other hosts find none. `FakeForge` serves the route (`FakeRun`, `add_workflow_run`).
+- `Pull::base_ref` and `Pull::base_sha`, read from the API's `base.ref` and `base.sha` and left `None` when absent or malformed, and `WorkflowRun::workflow_id`, read from the trusted event's `workflow_run.workflow_id`.
+
+### Changed
+
+- **Breaking for library users (0.x):** `Pull` has the fields `base_ref` and `base_sha`, `WorkflowRun` has `workflow_id` and `FakePull` has `base_ref` and `base_sha`. None of the crates is published.
+
 ## 0.3.0 — 2026-11-17
 
 ### Added

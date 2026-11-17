@@ -444,6 +444,25 @@ A fork controls `event.json`, so a forged file could name someone else's pull re
 
 Before writing the comment it re-reads the pull request and skips it if it is closed or if `head.sha` has moved on. If the existing comment's marker carries a later run id for the same commit, it leaves the comment alone (S9). The check runs are written first and the comment last, so a refused comment (a 403 from a read-only token) still leaves the checks posted and makes the exit status non-zero. A push gets check runs and no comment (D39), and a cancelled or skipped run gets nothing. The reusable workflow sets `concurrency: pr-results-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}` with `cancel-in-progress: false`.
 
+### Finding the baseline
+
+**Not yet used by the publisher.** The forge layer can find a baseline run (`Host::baseline_run`) and nothing calls it until baseline comparison is wired in, so publishing makes the requests it always did. The baseline is the artefacts of a completed run of the same workflow on the base, which the publisher will read like the run's own, with the same limits.
+
+The workflow is `workflow_run.workflow_id` of the trusted event, never a value from the uploaded event file, so a pull request cannot choose whose artefacts are read. An event without one has no baseline. The runs are looked for in this order, stopping at the first that is found:
+
+1. The run on exactly the pull request's `base.sha`.
+2. The newest run on the pull request's base branch (`base.ref`).
+3. The newest run on `baseline.branch`. An empty `baseline.branch` still disables baselines altogether.
+
+Each is one read-only request, `GET /repos/{o}/{r}/actions/workflows/{workflow_id}/runs` with `head_sha` or `branch`, `event=push`, `status=completed` and `per_page=10`, which needs no permission beyond `actions: read`. The branch is percent-encoded and must be 1 to 255 bytes with no control character, or no request is made. A run is accepted only if all of these hold:
+
+- Its status is `completed` and its event is `push`. A pull request's run on a branch of the same name is not a baseline.
+- Its conclusion is `success` or `failure`. A red base still has results to compare with; `cancelled`, `skipped`, `timed_out`, `neutral` and a missing conclusion have none worth comparing.
+- Its `head_repository` is this repository (names compared without regard to case). A fork's run of the same name never supplies a baseline, and neither does a run whose fork has been deleted.
+- It is on the commit or branch that was asked for.
+
+The newest accepted run is chosen by `created_at`, not by the order of the list. Only the first ten runs are read, so ten runs in a row that cannot be a baseline (cancelled ones, say) hide an older one: that is a miss, never a wrong baseline. `exclude_pull_requests` is not used, because it only empties each run's `pull_requests` list and does not leave out pull request runs. Forgejo has no such lookup and has no baseline for now (decision D78).
+
 ### Untrusted input rules
 
 Everything from artefacts is untrusted: file names, XML content, artefact names and the event file.
@@ -619,6 +638,8 @@ Q5, Q8, Q10 and Q11 are answered in [docs/decisions.md](docs/decisions.md) (D38 
 - GitHub Enterprise Server: the base accepts a path (`https://host/api/v3`), and nothing else was tried. The blob host allowlist for github.com is from GitHub's documented storage names and was not checked against a live download; a name GitHub adds outside it would be refused until the list is widened.
 - That any workflow here runs on GitHub: `action.yml`, `publish.yml`, `publish-test-results.yml` and the new `ci.yml` jobs are checked by actionlint, zizmor (also `--pedantic`) and a local test of their shell steps, and nothing else. In particular: `workflow_run` runs the file from the default branch only, so the dogfood publisher is inert until merged; `uses: ./` and `github.action_path` in a composite action; `rustup` and a pinned toolchain on the runner for `build: source`; the sparse checkout of `.github`; `actions/upload-artifact` inside the `ci-rust` container (it needs the runner's Node); the concurrency group expression in a reusable workflow; and that the caller's four permissions reach the called job.
 - That `toml` reports a line for every kind of mistake in a settings file. Spans were checked for the cases in the tests.
+- Whether `base.sha` of a pull request is the base branch's tip or its merge base with the head, which GitHub's pages do not say. The baseline lookup tries the commit and then the branch, so either works, at the cost of a baseline that may be a little older than the branch's tip.
+- That a workflow's run list comes newest first. It did for this repository's own runs, and the pages do not promise it, so the lookup orders by `created_at` itself. `head_sha` must be the full forty-digit hash: an abbreviated one found nothing.
 - That the fixtures of the `workflow_run` event match a real payload. They are written by hand from GitHub's documentation with only the fields the tool reads.
 
 ## In-job publishing
