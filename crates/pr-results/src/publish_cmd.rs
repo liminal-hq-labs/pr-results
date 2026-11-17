@@ -519,6 +519,7 @@ fn plan(settings: &Settings, title: &str, sections: Vec<SectionPlan>) -> Plan {
 		..ParseLimits::default()
 	};
 	plan.max_download_bytes = l.max_artifact_bytes;
+	plan.baseline_branch = settings.baseline_branch.clone();
 	plan
 }
 

@@ -13,10 +13,10 @@
 mod common;
 
 use common::{
-	artifact, fixture, github_with_pr, invoke, publisher_env, scratch, Factory, DESK_TOML, REPO,
-	SHA, TOKEN,
+	artifact, artifact_in, fixture, github_with_pr, invoke, publisher_env, scratch, Factory,
+	Outcome, DESK_TOML, REPO, SHA, TOKEN,
 };
-use pr_results_forge::{FakeForge, FakePull};
+use pr_results_forge::{FakeForge, FakePull, FakeRun};
 
 fn pr_event() -> String {
 	fixture("events/workflow_run-pr.json")
@@ -1217,5 +1217,163 @@ fn a_clean_audit_and_a_clean_build_pass() {
 			Some("success"),
 			"{name}"
 		);
+	}
+}
+
+// ---- the added and removed tests ------------------------------------------------------------
+
+/// A completed push run of the event's workflow on `branch`, with its own results.
+fn baseline_run(fake: &FakeForge, sha: &str, branch: &str, xml: &str) {
+	fake.add_workflow_run(FakeRun::push(900, 1001, REPO, sha, branch, "success"));
+	artifact_in(fake, 900, "rust-test-results", &[("junit.xml", xml)]);
+}
+
+fn tests_named(names: &[&str]) -> String {
+	let cases: String = names
+		.iter()
+		.map(|n| format!("<testcase classname=\"c\" name=\"{n}\" time=\"0.1\"/>"))
+		.collect();
+	format!("<testsuites><testsuite name=\"suite\">{cases}</testsuite></testsuites>")
+}
+
+fn workflow_requests(fake: &FakeForge) -> usize {
+	fake.requests()
+		.iter()
+		.filter(|r| r.target().contains("/actions/workflows/"))
+		.count()
+}
+
+/// Publishes pull request 7 with `config` as its settings file.
+fn publish_with(name: &str, fake: &FakeForge, config: &str) -> Outcome {
+	let dir = scratch(name);
+	let path = dir.join("pr-results.toml");
+	std::fs::write(&path, config).unwrap();
+	let vars = publisher_env(&dir, &pr_event());
+	invoke(
+		&["publish", "--config", path.to_str().unwrap()],
+		&vars,
+		&Factory::new(fake),
+	)
+}
+
+#[test]
+fn the_comment_and_the_job_summary_say_which_tests_were_added() {
+	let dir = scratch("delta");
+	let fake = github_with_pr();
+	baseline_run(&fake, &"a".repeat(40), "main", &tests_named(&["a", "b"]));
+	artifact(
+		&fake,
+		"rust-test-results",
+		&[("junit.xml", &tests_named(&["a", "b", "c"]))],
+	);
+	let mut vars = publisher_env(&dir, &pr_event());
+	let file = dir.join("summary.md");
+	vars.insert("GITHUB_STEP_SUMMARY".to_owned(), file.display().to_string());
+
+	let o = invoke(&["publish"], &vars, &Factory::new(&fake));
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let sentence = "This pull request adds 1 test against `main`.";
+	assert!(fake.comments(7)[0].body.contains(sentence));
+	let summary = std::fs::read_to_string(&file).unwrap();
+	assert!(summary.contains(sentence), "{summary}");
+	assert!(
+		summary.contains("Pull request 7 was compared with run 900 over 1 of 1 suites."),
+		"{summary}"
+	);
+}
+
+#[test]
+fn baseline_workflow_is_accepted_and_changes_nothing() {
+	let fake = github_with_pr();
+	baseline_run(&fake, &"a".repeat(40), "main", &tests_named(&["a"]));
+	artifact(
+		&fake,
+		"rust-test-results",
+		&[("junit.xml", &tests_named(&["a", "b"]))],
+	);
+
+	let o = publish_with(
+		"delta-workflow",
+		&fake,
+		"[baseline]\nworkflow = \"Some other name\"\n",
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert!(fake.comments(7)[0]
+		.body
+		.contains("This pull request adds 1 test against `main`."));
+}
+
+#[test]
+fn baseline_branch_is_where_a_base_with_no_run_falls_back_to() {
+	let fake = github_with_pr();
+	baseline_run(&fake, &"c".repeat(40), "develop", &tests_named(&["a"]));
+	artifact(
+		&fake,
+		"rust-test-results",
+		&[("junit.xml", &tests_named(&["a", "b"]))],
+	);
+
+	let o = publish_with("delta-branch", &fake, "[baseline]\nbranch = \"develop\"\n");
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert!(fake.comments(7)[0].body.contains(
+		"This pull request adds 1 test against `develop`, because `main` had no results to compare with."
+	));
+}
+
+#[test]
+fn an_empty_baseline_branch_turns_baselines_off() {
+	let fake = github_with_pr();
+	baseline_run(&fake, &"a".repeat(40), "main", &tests_named(&["a"]));
+	artifact(
+		&fake,
+		"rust-test-results",
+		&[("junit.xml", &tests_named(&["a", "b"]))],
+	);
+
+	let o = publish_with("delta-none", &fake, "[baseline]\nbranch = \"\"\n");
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert_eq!(workflow_requests(&fake), 0);
+	assert!(!fake.comments(7)[0].body.contains("This pull request adds"));
+}
+
+#[test]
+fn an_empty_baseline_branch_with_the_line_asked_for_is_a_usage_error() {
+	let fake = github_with_pr();
+
+	let o = publish_with(
+		"delta-conflict",
+		&fake,
+		"[comment]\ntest_delta = true\n[baseline]\nbranch = \"\"\n",
+	);
+
+	assert_eq!(o.code, 2);
+	assert!(o.err.contains("comment.test_delta"), "{}", o.err);
+	assert!(o.err.contains("baseline.branch"), "{}", o.err);
+	assert!(fake.requests().is_empty());
+}
+
+#[test]
+fn the_plain_style_and_a_switched_off_line_look_for_no_baseline() {
+	for (name, config) in [
+		("plain", "[comment]\nstyle = \"plain\"\n"),
+		("off", "[comment]\ntest_delta = false\n"),
+	] {
+		let fake = github_with_pr();
+		baseline_run(&fake, &"a".repeat(40), "main", &tests_named(&["a"]));
+		artifact(
+			&fake,
+			"rust-test-results",
+			&[("junit.xml", &tests_named(&["a", "b"]))],
+		);
+
+		let o = publish_with(&format!("delta-{name}"), &fake, config);
+
+		assert_eq!(o.code, 0, "{name}: {}", o.err);
+		assert_eq!(workflow_requests(&fake), 0, "{name}");
+		assert!(!fake.comments(7)[0].body.contains("This pull request adds"));
 	}
 }

@@ -24,6 +24,9 @@ const MAX_SUITES: usize = 50;
 const MAX_FILE_GLOBS: usize = 32;
 const MAX_NAME_GLOBS: usize = 50;
 const MAX_COMMAND_CHARS: usize = 200;
+/// The longest branch name a host reports or a baseline is looked for under.
+const MAX_BRANCH_BYTES: usize = 255;
+const DEFAULT_BASELINE_BRANCH: &str = "main";
 
 /// What is wrong with a settings file, and on which line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +142,8 @@ pub struct Settings {
 	pub check_commands: Vec<(String, String)>,
 	pub max_annotations: usize,
 	pub flaky_annotations: bool,
+	/// The branch a baseline falls back to (`baseline.branch`). Empty turns baselines off.
+	pub baseline_branch: String,
 	pub limits: Limits,
 	pub forge: ForgeSettings,
 	/// Empty means: infer one suite from each `*-test-results*` artefact.
@@ -167,6 +172,7 @@ impl Default for Settings {
 			check_commands: Vec::new(),
 			max_annotations: options.max_annotations,
 			flaky_annotations: options.flaky_annotations,
+			baseline_branch: DEFAULT_BASELINE_BRANCH.to_owned(),
 			limits: Limits::default(),
 			forge: ForgeSettings::default(),
 			suites: Vec::new(),
@@ -371,17 +377,18 @@ impl Reader<'_> {
 			}
 		}
 		if let Some(t) = self.subtable(root, "baseline")? {
-			// Checked so that a typo is caught now. Comparing with the base branch is planned for
-			// v0.3, so these have no effect yet.
-			self.only(
-				t,
-				&["branch", "workflow", "slower_percent", "slower_min_seconds"],
-				"baseline.",
-			)?;
-			self.string(t, "branch", "baseline.")?;
-			self.string(t, "workflow", "baseline.")?;
-			self.number(t, "slower_percent", "baseline.", 0, 10_000)?;
-			self.number(t, "slower_min_seconds", "baseline.", 0, 86_400)?;
+			self.baseline(t, &mut s)?;
+		}
+		if s.test_delta && s.baseline_branch.is_empty() {
+			if let Some(v) = self
+				.subtable(root, "comment")?
+				.and_then(|c| self.find(c, "test_delta"))
+			{
+				return Err(self.err(
+					v.span(),
+					"`comment.test_delta` is true but `baseline.branch` is empty, which turns baselines off: set a branch, or set `comment.test_delta` to false",
+				));
+			}
 		}
 		if let Some(t) = self.subtable(root, "limits")? {
 			self.limits(t, &mut s.limits)?;
@@ -394,6 +401,30 @@ impl Reader<'_> {
 		}
 		self.distinct_check_names(&s, root)?;
 		Ok(s)
+	}
+
+	/// `branch` is the fallback of the baseline lookup and an empty one turns baselines off.
+	/// `workflow` is accepted and has no effect: the workflow is the triggering run's own. The
+	/// `slower_*` keys are checked and have no effect yet.
+	fn baseline(&self, t: &Table<'_>, s: &mut Settings) -> Result<(), ConfigError> {
+		self.only(
+			t,
+			&["branch", "workflow", "slower_percent", "slower_min_seconds"],
+			"baseline.",
+		)?;
+		if let Some((branch, span)) = self.string(t, "branch", "baseline.")? {
+			if branch.len() > MAX_BRANCH_BYTES || branch.chars().any(char::is_control) {
+				return Err(self.err(
+					span,
+					format!("`baseline.branch` must be at most {MAX_BRANCH_BYTES} bytes with no control character"),
+				));
+			}
+			s.baseline_branch = branch;
+		}
+		self.string(t, "workflow", "baseline.")?;
+		self.number(t, "slower_percent", "baseline.", 0, 10_000)?;
+		self.number(t, "slower_min_seconds", "baseline.", 0, 86_400)?;
+		Ok(())
 	}
 
 	fn comment(&self, t: &Table<'_>, s: &mut Settings) -> Result<(), ConfigError> {

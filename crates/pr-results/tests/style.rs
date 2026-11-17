@@ -292,3 +292,39 @@ fn the_test_delta_is_on_except_in_the_plain_style() {
 		.contains("`comment.test_delta` needs `comment.style`"));
 	assert!(err("[comment]\ntest_delta = \"yes\"").contains("test_delta"));
 }
+
+#[test]
+fn the_baseline_branch_defaults_to_main_and_empty_turns_baselines_off() {
+	assert_eq!(of("").baseline_branch, "main");
+	assert_eq!(
+		of("[baseline]\nbranch = \"develop\"").baseline_branch,
+		"develop"
+	);
+	assert_eq!(of("[baseline]\nbranch = \"\"").baseline_branch, "");
+	assert_eq!(of("[baseline]\nworkflow = \"CI\"").baseline_branch, "main");
+	assert!(err("[baseline]\nbranch = 3").contains("`baseline.branch` must be a string"));
+	assert!(
+		err(&format!("[baseline]\nbranch = \"{}\"", "x".repeat(256)))
+			.contains("`baseline.branch` must be at most 255 bytes")
+	);
+	assert!(err("[baseline]\nbranch = \"a\\nb\"").contains("no control character"));
+}
+
+#[test]
+fn asking_for_the_test_delta_with_no_baseline_branch_is_refused() {
+	let text = "[comment]\ntest_delta = true\n\n[baseline]\nbranch = \"\"\n";
+	let message = err(text);
+	assert!(message.contains("`comment.test_delta`"), "{message}");
+	assert!(message.contains("`baseline.branch`"), "{message}");
+	assert!(message.contains("line 2"), "{message}");
+	// The key and the table in either order, and under the enhanced style.
+	assert!(
+		err("[baseline]\nbranch = \"\"\n[comment]\nstyle = \"enhanced\"\ntest_delta = true")
+			.contains("`baseline.branch`")
+	);
+	// The default, an explicit off and the plain style are all fine with no branch.
+	let none = of("[baseline]\nbranch = \"\"");
+	assert!(none.test_delta && none.baseline_branch.is_empty());
+	assert!(!of("[comment]\ntest_delta = false\n[baseline]\nbranch = \"\"").test_delta);
+	assert!(!of("[comment]\nstyle = \"plain\"\n[baseline]\nbranch = \"\"").test_delta);
+}

@@ -122,11 +122,16 @@ pub fn github_with_pr() -> FakeForge {
 }
 
 pub fn artifact(fake: &FakeForge, name: &str, files: &[(&str, &str)]) -> u64 {
+	artifact_in(fake, 5000, name, files)
+}
+
+/// An artefact of run `run`.
+pub fn artifact_in(fake: &FakeForge, run: u64, name: &str, files: &[(&str, &str)]) -> u64 {
 	let specs: Vec<zip::Spec> = files
 		.iter()
 		.map(|(n, c)| zip::Spec::deflated(n, c.as_bytes()))
 		.collect();
-	fake.add_artifact(5000, name, zip::build(&specs))
+	fake.add_artifact(run, name, zip::build(&specs))
 }
 
 pub const DESK_TOML: &str = r#"
