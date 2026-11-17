@@ -304,3 +304,28 @@ fn the_requests_for_other_checks_match_their_golden() {
 	env.publish();
 	check_golden("other-checks", &env.fake.requests());
 }
+
+#[test]
+fn a_suite_that_names_its_job_hides_that_jobs_row_while_they_agree() {
+	let mut env = env();
+	env.plan.sections[0].job = Some("Tests".to_owned());
+	env.fake
+		.add_other_check("Tests", SHA, "completed", Some("success"), None);
+	env.fake
+		.add_other_check("Format", SHA, "completed", Some("success"), None);
+	env.publish();
+	assert_eq!(rows(&body(&env)), ["| `Format` | Passed |"]);
+}
+
+#[test]
+fn a_named_job_that_failed_with_no_results_is_still_listed() {
+	let mut env = Env::new();
+	env.plan.other_checks = true;
+	env.plan.sections[0].job = Some("Tests".to_owned());
+	env.plan.sections[0].required = true;
+	env.fake
+		.add_other_check("Tests", SHA, "completed", Some("failure"), None);
+	env.publish();
+	let text = body(&env);
+	assert!(text.contains("| `Tests` | **Failed** |"), "{text}");
+}

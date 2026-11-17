@@ -87,6 +87,7 @@ pub struct OwnedSection {
 	pub suites: Vec<Suite>,
 	pub inputs_skipped: usize,
 	pub run_locally: Option<String>,
+	pub job: Option<String>,
 }
 
 pub fn section(title: &str, required: bool, suites: Vec<Suite>) -> OwnedSection {
@@ -97,6 +98,7 @@ pub fn section(title: &str, required: bool, suites: Vec<Suite>) -> OwnedSection 
 		suites,
 		inputs_skipped: 0,
 		run_locally: None,
+		job: None,
 	}
 }
 
@@ -181,6 +183,7 @@ impl Scenario {
 				suites: &s.suites,
 				inputs_skipped: s.inputs_skipped,
 				run_locally: s.run_locally.as_deref(),
+				job: s.job.as_deref(),
 			})
 			.collect();
 		let input = Input {
@@ -790,7 +793,14 @@ pub fn scenarios() -> Vec<Scenario> {
 	};
 	let hostile_title =
 		"@everyone GH-123 <img src=x onerror=alert(1)> [x](https://example.invalid)";
+	let mut with_job = fail();
+	with_job.job = Some("Tests".to_owned());
 	let mut guided = vec![
+		Scenario::new("guided-job-replaced", "Example checks", vec![with_job]).with_other_checks({
+			let mut checks = project_checks(CheckState::Failed);
+			checks.push(other("Tests", CheckState::Failed));
+			checks
+		}),
 		Scenario::new("guided-all-pass", "Example checks", vec![pass()])
 			.with_other_checks(project_checks(CheckState::Passed)),
 		Scenario::new("guided-failures", "Example checks", vec![fail()])

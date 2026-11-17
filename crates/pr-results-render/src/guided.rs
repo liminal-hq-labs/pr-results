@@ -11,8 +11,8 @@ use pr_results_core::Safe;
 
 use crate::blocks::{check_label, mark, section_label, Mark};
 use crate::text::{big, cat, count, noun, t};
-use crate::view::{Counts, SectionInfo};
-use crate::{CheckState, Options, OtherCheck, Symbols};
+use crate::view::{Counts, SectionInfo, Verdict};
+use crate::{CheckState, Options, OtherCheck, Section, Symbols};
 
 /// Bullets of the needs-attention list before the rest are counted.
 const MAX_BULLETS: usize = 10;
@@ -427,4 +427,27 @@ fn list_commas(parts: &[Safe]) -> Safe {
 		out.push(p.clone());
 	}
 	cat(&out)
+}
+
+/// Whether a job's row and its suite's row say the same thing, so one of them is enough.
+fn agree(state: CheckState, verdict: Verdict) -> bool {
+	matches!(
+		(state, verdict),
+		(CheckState::Passed, Verdict::Passed) | (CheckState::Failed, Verdict::Failed)
+	)
+}
+
+/// The other checks that tell the reader something the suites do not. A suite that names its job
+/// replaces that job's row only while the two agree: a job that failed with no results uploaded, or
+/// one that passed while its tests failed, is exactly what the table is for.
+pub(crate) fn visible_others(sections: &[Section<'_>], others: &[OtherCheck]) -> Vec<OtherCheck> {
+	others
+		.iter()
+		.filter(|c| {
+			!sections.iter().any(|s| {
+				s.job == Some(c.name.as_str()) && agree(c.state, SectionInfo::new(s).verdict)
+			})
+		})
+		.cloned()
+		.collect()
 }

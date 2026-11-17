@@ -111,6 +111,7 @@ pub fn section(title: &str, check: &str, artifact: &str) -> SectionPlan {
 		flavour: Flavour::Generic,
 		path_prefix: None,
 		run_locally: None,
+		job: None,
 	}
 }
 

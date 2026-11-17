@@ -151,3 +151,21 @@ fn run_locally_is_for_nextest_suites_and_an_empty_one_turns_the_command_off() {
 	.contains("is for nextest suites"));
 	assert!(err(&suite("run_locally = \"cargo `id`\"")).contains("printable ASCII"));
 }
+
+#[test]
+fn a_suite_can_name_the_job_it_comes_from() {
+	let suite = |extra: &str| format!("[[suite]]\nname = \"a\"\nartifact = \"b\"\n{extra}");
+	assert_eq!(
+		of(&suite("job = \"Tests\"")).suites[0].job.as_deref(),
+		Some("Tests")
+	);
+	assert_eq!(of(&suite("")).suites[0].job, None);
+	assert!(err(&suite("job = \"\"")).contains("`suite.job`"));
+	assert!(err(&suite("job = 3")).contains("must be a string"));
+	assert!(err(&suite(&format!("job = \"{}\"", "j".repeat(101)))).contains("1 to 100"));
+
+	let two = "[[suite]]\nname = \"a\"\nartifact = \"x\"\njob = \"Tests\"\n\n[[suite]]\nname = \"b\"\nartifact = \"y\"\njob = \"Tests\"";
+	assert!(err(two).contains("two suites name the same `job`"));
+	let different = two.replacen("job = \"Tests\"", "job = \"Lint\"", 1);
+	of(&different);
+}

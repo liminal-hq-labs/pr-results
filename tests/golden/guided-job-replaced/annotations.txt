@@ -1,0 +1,20 @@
+check 0: 2 annotations, 0 not shown
+- failure crates/pr-results-core/src/junit.rs:341-341
+  title: junit::sums_suite_time
+  message: assertion `left == right` failed
+      left: 1904
+     right: 1900
+    thread 'junit::sums_suite_time' (4121) panicked at crates/pr-results-core/src/junit.rs:341:9:
+    assertion `left == right` failed
+      left: 1904
+     right: 1900
+    stack backtrace:
+       0: rust_begin_unwind
+       1: core::panicking::panic_fmt
+       2: core::panicking::assert_failed_inner
+       3: pr_results_core::junit::tests::sums_suite_time
+    note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+- failure crates/pr-results-core/src/parse.rs:17-17
+  title: parse::always_fails
+  message: called `Option::unwrap()` on a `None` value
+    thread 'parse::always_fails' panicked at 'called `Option::unwrap()` on a `None` value', crates/pr-results-core/src/parse.rs:17:5

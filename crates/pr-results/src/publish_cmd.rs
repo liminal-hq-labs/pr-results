@@ -549,6 +549,7 @@ fn configured_sections(settings: &Settings, title: &str) -> Result<Vec<SectionPl
 			flavour: s.flavour,
 			path_prefix: s.path_prefix.clone(),
 			run_locally: s.run_locally.clone(),
+			job: s.job.clone(),
 		});
 	}
 	Ok(out)
@@ -614,6 +615,7 @@ fn inferred_names<'a>(
 			flavour: Flavour::Auto,
 			path_prefix: None,
 			run_locally: None,
+			job: None,
 		});
 	}
 	Ok(out)

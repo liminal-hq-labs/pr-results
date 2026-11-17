@@ -213,3 +213,97 @@ fn a_forgejo_comment_with_other_checks_never_says_check_run_or_github() {
 	}
 	assert_eq!(sc.target, Target::Forgejo);
 }
+
+/// A scenario whose one suite names the job `Rust job`.
+fn with_job(sc: Scenario) -> Scenario {
+	let mut sc = sc;
+	sc.sections[0].job = Some("Rust job".to_owned());
+	sc
+}
+
+#[test]
+fn a_suite_that_names_its_job_replaces_that_jobs_row_while_they_agree() {
+	let passed = with_job(passing().guided()).with_other_checks(vec![
+		other("Rust job", CheckState::Passed),
+		other("Format", CheckState::Passed),
+	]);
+	let text = body(&passed);
+	assert!(!text.contains("Rust job"), "{text}");
+	assert!(text.contains("Other checks: 1 passed"), "{text}");
+
+	let failed = with_job(run_failing().guided())
+		.with_other_checks(vec![other("Rust job", CheckState::Failed)]);
+	let text = body(&failed);
+	assert!(!text.contains("Rust job"), "{text}");
+	// The suite already says the tests failed: the heading does not count the job again.
+	assert!(!text.contains("other check"), "{text}");
+}
+
+#[test]
+fn a_row_stays_when_the_job_and_its_suite_disagree() {
+	// The job failed and uploaded nothing: the suite's own row cannot say so.
+	let mut nothing =
+		with_job(passing().guided()).with_other_checks(vec![other("Rust job", CheckState::Failed)]);
+	nothing.sections[0].suites.clear();
+	let text = body(&nothing);
+	assert!(text.contains("`Rust job`"), "{text}");
+	assert!(text.contains("1 other check needs attention"), "{text}");
+
+	// The job passed while its tests failed (a step that is allowed to fail).
+	let text = body(
+		&with_job(run_failing().guided())
+			.with_other_checks(vec![other("Rust job", CheckState::Passed)]),
+	);
+	assert!(text.contains("`Rust job`"), "{text}");
+
+	// A job that is still running, was skipped or was cancelled says something the suite does not.
+	for state in [
+		CheckState::Running,
+		CheckState::Skipped,
+		CheckState::Cancelled,
+	] {
+		let text =
+			body(&with_job(passing().guided()).with_other_checks(vec![other("Rust job", state)]));
+		assert!(text.contains("`Rust job`"), "{state:?}\n{text}");
+	}
+}
+
+#[test]
+fn only_the_job_that_is_named_is_replaced() {
+	let text = body(&with_job(passing().guided()).with_other_checks(vec![
+		other("Rust job", CheckState::Passed),
+		other("Rust job 2", CheckState::Passed),
+		other("rust job", CheckState::Passed),
+	]));
+	assert!(text.contains("`Rust job 2`"), "{text}");
+	assert!(text.contains("`rust job`"), "{text}");
+	assert!(!text.contains("`Rust job`"), "{text}");
+}
+
+#[test]
+fn the_plain_style_replaces_the_row_the_same_way() {
+	let text = body(&with_job(passing()).with_other_checks(vec![
+		other("Rust job", CheckState::Passed),
+		other("Format", CheckState::Failed),
+	]));
+	assert!(!text.contains("Rust job"), "{text}");
+	assert!(text.contains("| `Format` | **Failed** |"), "{text}");
+}
+
+/// A nextest report with one failing test.
+fn run_failing() -> Scenario {
+	Scenario::new(
+		"t",
+		"Example checks",
+		vec![section(
+			"Rust tests",
+			false,
+			load(&["nextest/fail.xml"], Flavour::Nextest),
+		)],
+	)
+	.comment_only()
+}
+
+fn body(sc: &Scenario) -> String {
+	sc.comment().body.to_string()
+}

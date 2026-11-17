@@ -163,7 +163,7 @@ schema = 1
 other_checks = true
 ```
 
-When the test jobs and the suites show the same thing, list the checks once. A project that runs its tests in a job per feature set has a suite and a check for each, and a failing test fails both, so the table would count the same problem twice. Leave the jobs out by name, and give the checks that stay a command, which the guided style shows beside one that failed:
+When the test jobs and the suites show the same thing, list the checks once. A project that runs its tests in a job per feature set has a suite and a check for each, and a failing test fails both, so the table would count the same problem twice. Tell each suite which job it comes from with `job`, and that job's row is left out. The row is left out only while the job and the suite agree: a job that failed and uploaded no results, or passed while its tests failed, still gets its row, since those are what the table is for. Give the checks that stay a command, which the guided style shows beside one that failed:
 
 ```toml
 # pr-results settings: the other jobs, without the ones the suites already show.
@@ -175,14 +175,25 @@ schema = 1
 
 [comment]
 other_checks = true
-other_checks_ignore = ["Test (*)"]
 
 [comment.check_commands]
 "Security audit" = "cargo audit"
 "Format" = "cargo fmt --all -- --check"
+
+[[suite]]
+name = "Tests (default)"
+artifact = "rust-test-results-default"
+flavour = "nextest"
+job = "Test (default)"
+
+[[suite]]
+name = "Tests (all-features)"
+artifact = "rust-test-results-all-features"
+flavour = "nextest"
+job = "Test (all-features)"
 ```
 
-The patterns are the language of the file patterns above: `*` matches any run of characters but `/`, so a name such as `build / test` needs `**`. A check that does not exist is not an error, so a pattern can stay when a job is renamed, and the cost is that a job that failed under a name nothing matches any more is shown again. In the guided style a table of other checks that all passed is folded into one line, `Other checks: 5 passed`, since there is nothing to act on.
+The job is the name GitHub shows for it, matrix legs included (`Test (default)`), and is matched exactly. A job that is renamed stops matching and shows up in the table again. `comment.other_checks_ignore` still leaves checks out by pattern, for a job that no suite stands in for, but it leaves them out whatever their result. The patterns of `other_checks_ignore` are the language of the file patterns above: `*` matches any run of characters but `/`, so a name such as `build / test` needs `**`. A check that does not exist is not an error, so a pattern can stay when a job is renamed, and the cost is that a job that failed under a name nothing matches any more is shown again. In the guided style a table of other checks that all passed is folded into one line, `Other checks: 5 passed`, since there is nothing to act on.
 
 It needs nothing new in the publisher workflow: `checks: write` covers the read. The table lists the commit's other check runs, failed ones first, and leaves out the suites' own check runs and the publisher's own job. A failed check is also said in the heading, for example `All 696 passed, 1 other check needs attention`. It works in the `workflow_run` publisher on GitHub only: on Forgejo, and when publishing from the job itself (`--from`), it has no effect and the notes in the job summary say so.
 

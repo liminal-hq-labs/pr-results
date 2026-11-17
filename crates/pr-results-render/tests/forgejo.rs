@@ -150,6 +150,7 @@ fn without_a_run_number_the_forgejo_footer_links_the_run_id() {
 		suites: &sc.sections[0].suites,
 		inputs_skipped: 0,
 		run_locally: None,
+		job: None,
 	}];
 	let options = pr_results_render::Options::default();
 	let input = pr_results_render::Input {

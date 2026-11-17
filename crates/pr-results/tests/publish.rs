@@ -917,3 +917,34 @@ fn other_checks_are_not_listed_by_default() {
 	assert_eq!(o.code, 0, "{}", o.err);
 	assert!(!fake.comments(7)[0].body.contains("Other checks"));
 }
+
+#[test]
+fn a_suite_that_names_its_job_replaces_that_jobs_row_in_the_comment() {
+	let dir = scratch("job");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"rust-test-results",
+		&[("junit.xml", &fixture("nextest/pass.xml"))],
+	);
+	fake.add_other_check("Tests", SHA, "completed", Some("success"), None);
+	fake.add_other_check("Security audit", SHA, "completed", Some("success"), None);
+	let config = dir.join("pr-results.toml");
+	std::fs::write(
+		&config,
+		"schema = 1\n\n[comment]\nother_checks = true\n\n[[suite]]\nname = \"Rust tests\"\nartifact = \"rust-test-results\"\nflavour = \"nextest\"\njob = \"Tests\"\n",
+	)
+	.unwrap();
+	let vars = publisher_env(&dir, &pr_event());
+
+	let o = invoke(
+		&["publish", "--config", config.to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let body = fake.comments(7)[0].body.clone();
+	assert!(!body.contains("`Tests`"), "{body}");
+	assert!(body.contains("Other checks: 1 passed"), "{body}");
+}

@@ -193,6 +193,7 @@ mod tests {
 			flavour: Flavour::Generic,
 			path_prefix: RepoPath::parse("apps/web/"),
 			run_locally: None,
+			job: None,
 		};
 		let plan = Plan::new(
 			"App",

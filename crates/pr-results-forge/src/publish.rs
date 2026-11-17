@@ -69,6 +69,8 @@ pub struct SectionPlan {
 	pub path_prefix: Option<RepoPath>,
 	/// What a command to run a failed test again starts with; see `Section::run_locally`.
 	pub run_locally: Option<String>,
+	/// The name of the job the section's results come from; see `Section::job`.
+	pub job: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -500,6 +502,7 @@ fn finish<H: Host>(
 			suites,
 			inputs_skipped: *skipped,
 			run_locally: p.run_locally.as_deref(),
+			job: p.job.as_deref(),
 		})
 		.collect();
 	let others = other_checks(gh, run, plan, artifacts.is_some(), &mut report);

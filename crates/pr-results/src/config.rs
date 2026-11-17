@@ -63,6 +63,9 @@ pub struct SuiteSettings {
 	/// What a command to run a failed test again starts with. `None` is the flavour's own and an
 	/// empty string turns the command off.
 	pub run_locally: Option<String>,
+	/// The name of the job this suite's results come from. With `comment.other_checks`, that job's
+	/// row is left out of the table while it agrees with the suite.
+	pub job: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -748,6 +751,7 @@ impl Reader<'_> {
 				"required",
 				"path_prefix",
 				"run_locally",
+				"job",
 			],
 			"suite.",
 		)?;
@@ -816,6 +820,10 @@ impl Reader<'_> {
 				Some(self.command(&c, span, "`suite.run_locally`")?)
 			}
 		};
+		let job = match self.string(t, "job", "suite.")? {
+			Some((j, span)) => Some(self.name(&j, span, "`suite.job`")?),
+			None => None,
+		};
 		Ok(SuiteSettings {
 			name,
 			check,
@@ -825,6 +833,7 @@ impl Reader<'_> {
 			required,
 			path_prefix,
 			run_locally,
+			job,
 		})
 	}
 
@@ -872,6 +881,16 @@ impl Reader<'_> {
 				return Err(self.err(
 					span,
 					"two suites have the same check name: give one a different `check`",
+				));
+			}
+		}
+		let mut jobs = BTreeSet::new();
+		for job in s.suites.iter().filter_map(|suite| suite.job.as_ref()) {
+			if !jobs.insert(job) {
+				let span = self.find(root, "suite").map_or(0..0, Spanned::span);
+				return Err(self.err(
+					span,
+					"two suites name the same `job`: a job's row is replaced by one suite",
 				));
 			}
 		}

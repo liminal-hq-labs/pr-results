@@ -402,6 +402,12 @@ fn render(
 }
 
 pub(crate) fn comment(i: &Input<'_>) -> Comment {
+	let visible = guided::visible_others(i.sections, i.other_checks);
+	let shown = Input {
+		other_checks: &visible,
+		..i.clone()
+	};
+	let i = &shown;
 	let infos: Vec<SectionInfo<'_>> = i.sections.iter().map(SectionInfo::new).collect();
 	let nothing = infos.iter().all(|s| s.verdict == Verdict::NoResults);
 	if nothing && !infos.iter().any(|s| s.section.required) {

@@ -9,7 +9,6 @@ title = "pr-results"
 [comment]
 style = "enhanced"                # guided, with emoji, Jax, a progress bar and alert blocks
 other_checks = true               # the commit's other jobs, so this is the pull request's one summary
-other_checks_ignore = ["Tests"]   # the Rust tests suite below already shows this job
 
 [comment.check_commands]
 "Format" = "cargo fmt --all -- --check"
@@ -24,3 +23,4 @@ artifact = "rust-test-results"
 files = ["**/junit.xml"]
 flavour = "nextest"
 run_locally = "cargo nextest run --workspace --locked"
+job = "Tests"                     # the job these results come from, so its row is not shown twice

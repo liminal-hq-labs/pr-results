@@ -70,6 +70,9 @@ pub struct Section<'a> {
 	/// What a command to run a failed test again starts with, from the settings. `None` is the
 	/// flavour's own (`cargo nextest run`) and an empty string turns the command off.
 	pub run_locally: Option<&'a str>,
+	/// The name of the job this suite's results come from, so that job's row in the table of other
+	/// checks can be left out when the suite already says the same.
+	pub job: Option<&'a str>,
 }
 
 /// Whether status words carry a mark in front of them: none, a plain glyph (✓ ✗ ↻ –) or an emoji.
