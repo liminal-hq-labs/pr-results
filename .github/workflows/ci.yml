@@ -300,6 +300,29 @@ jobs:
           grep -qF 'conclusion: failure' "$SMOKE/checks/0.md"
           grep -qF 'title: 1 failed, 4 passed, 1 skipped' "$SMOKE/checks/0.md"
 
+      # `wrap` runs a command that fails, records it, and fails the step with the command's own
+      # status, so the step is allowed to fail and its outcome is checked below.
+      - name: Wrap a failing command
+        id: wrap
+        continue-on-error: true
+        uses: ./ # zizmor: ignore[self-repository] actionlint rejects the `$/` form
+        with:
+          command: wrap
+          build: source
+          args: --name Wrapped --step failing-script --out ${{ runner.temp }}/wrapped/step.xml -- bash tests/fixtures/wrap/fails.sh
+
+      - name: Check what wrap wrote
+        env:
+          WRAP_OUTCOME: ${{ steps.wrap.outcome }}
+          WRAPPED: ${{ runner.temp }}/wrapped/step.xml
+        run: |
+          test "$WRAP_OUTCOME" = failure
+          test -s "$WRAPPED"
+          grep -qF 'message="exit status 7"' "$WRAPPED"
+          grep -qF 'classname="wrap:Wrapped"' "$WRAPPED"
+          grep -qF 'name="failing-script"' "$WRAPPED"
+          grep -qF 'broken on purpose' "$WRAPPED"
+
   pins:
     name: Release pins
     runs-on: ubuntu-24.04

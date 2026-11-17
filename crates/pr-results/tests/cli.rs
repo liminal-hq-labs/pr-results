@@ -62,8 +62,14 @@ fn help_is_spelled_the_canadian_way() {
 	] {
 		assert!(!help.contains(american), "help says {american}");
 	}
+	// The usage block shows the literal `--` that ends a command's flags; prose must use a dash.
+	let prose = help
+		.split("\n\n")
+		.filter(|block| !block.starts_with("usage:"))
+		.collect::<Vec<_>>()
+		.join("\n\n");
 	assert!(
-		!help.contains(" -- "),
+		!prose.contains(" -- "),
 		"a double hyphen stands in for a dash"
 	);
 	assert!(help.is_ascii());

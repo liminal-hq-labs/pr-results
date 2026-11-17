@@ -394,6 +394,48 @@ If the `suiteName` option is set, add `flavour = "jest"` to the suite: the file 
     if-no-files-found: ignore
 ```
 
+### Any command: wrap it
+
+A job that runs a formatter, a linter or an audit already knows whether it passed and what it printed. `pr-results wrap` runs the command once, exactly as before, and writes down how it ended, so the comment shows why it failed and nobody has to open the job. Use the action, and put the command after `--`:
+
+```yaml
+- name: Clippy
+  uses: liminal-hq-labs/pr-results@<full commit sha> # a release that has wrap
+  with:
+    command: wrap
+    args: --name Clippy --out results/clippy.xml -- cargo clippy --workspace --all-targets --locked -- -D warnings
+
+- name: Upload the clippy result
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: clippy-test-results
+    path: results/clippy.xml
+    if-no-files-found: ignore
+```
+
+The step still fails when the command does: `wrap` exits with the command's own status (`127` if it was not found, `128` plus the signal if it was killed), and the output still goes to the job's log, so a workflow command it writes keeps working. The arguments are split on whitespace, so a quoted argument with a space in it needs the binary instead. A suite reads what it wrote as the `steps` flavour, and `job` ties it to the job so the table of other checks does not list it twice:
+
+```toml
+# pr-results settings: a wrapped command as a suite of its own.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Clippy"
+artifact = "clippy-test-results"
+flavour = "steps"
+required = true
+job = "Clippy"
+```
+
+When it fails, the comment shows the step with the first and last lines of what the command printed (`--head` 5 and `--tail` 40 by default). `required = true` makes a job that died before it uploaded a failure, not a missing row. Clippy prints its first error early and ends with only "could not compile", so `--message-format=short` keeps each diagnostic on one line and fits the tail better.
+
+**Wrap only commands whose output is safe to publish.** GitHub masks a secret in a log, not in a file, so the kept output is written only when the command fails, never when it passes, and the step's title is the program and its first word (`cargo clippy`), not the rest of the command line. Formatting, linting and auditing are safe; a deploy or a login is not. Use `--step` to name a step yourself and `--no-output` to keep only the status and the time.
+
 ### Shell steps and Rust together: Desk
 
 Desk runs its checks as groups of steps and uploads one artefact per job, `results-<job>`, holding the converter's `steps.xml` and nextest's `nextest-*.xml`. The default `*-test-results*` misses those names, so Desk needs a settings file with two suites that each take their own files from every `results-*` artefact:

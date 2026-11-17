@@ -12,7 +12,7 @@ author: Liminal HQ
 
 inputs:
   command:
-    description: publish, render or validate-config
+    description: publish, render, validate-config or wrap
     default: publish
   args:
     description: Further arguments, split on whitespace, such as `--dry-run out` or the files for render
@@ -118,8 +118,11 @@ runs:
           validate-config)
             "$PR_RESULTS_BIN" validate-config "$PR_RESULTS_CONFIG" "${args[@]}"
             ;;
+          wrap)
+            "$PR_RESULTS_BIN" wrap "${args[@]}"
+            ;;
           *)
-            echo "::error::command must be publish, render or validate-config."
+            echo "::error::command must be publish, render, validate-config or wrap."
             exit 1
             ;;
         esac
