@@ -1,4 +1,5 @@
-# Link check settings: markdown only, and tolerant of rate limits and pages that need a sign-in.
+# Link check settings: markdown only, and tolerant of rate limits, a service that is briefly unavailable,
+# and pages that need a sign-in.
 #
 # (c) Copyright 2026 Liminal HQ, Scott Morris
 # SPDX-License-Identifier: Apache-2.0 OR MIT
@@ -8,7 +9,10 @@ no_progress = true
 exclude_path = ['tests/golden']
 max_concurrency = 8
 max_retries = 3
-accept = ["200..=299", "429"]
+# 429 is a rate limit and 503 is a service that is briefly unavailable. Neither says the page is gone
+# (a removed page is a 404), and GitHub's renderer for a markdown page answers an anonymous request
+# with 503 about one time in five, so without 503 a link that works fails the check at random.
+accept = ["200..=299", "429", "503"]
 exclude = [
 	# Opens the private advisory form, which answers a signed-out request with 404.
 	'^https://github\.com/liminal-hq-labs/pr-results/security/advisories/new$',
