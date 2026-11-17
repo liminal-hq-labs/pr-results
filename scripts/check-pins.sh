@@ -194,7 +194,7 @@ elif [[ -z "$source_line" || "$token_lines" -lt "$source_line" ]]; then
 	bad "$action sets GITHUB_TOKEN before the toolchain install and build steps"
 fi
 if grep -nE '^[[:space:]]*(GITHUB_TOKEN|GH_TOKEN):' .github/workflows/publish-test-results.yml >&2; then
-	bad "publish-test-results.yml must not put a token in the environment: only the action's last step gets one"
+	bad "publish-test-results.yml must not put a token in the environment: only the pinned workflow's last step gets one"
 fi
 
 # ---- every action and image is pinned ------------------------------------------------------

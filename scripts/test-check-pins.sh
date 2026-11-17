@@ -81,7 +81,7 @@ mutation 'Forgejo example tag differs' docs/adopting-forgejo.md "s/PR_RESULTS_TA
 mutation 'tag differs between the copies' .github/workflows/publish.yml 's/PR_RESULTS_TAG: .*/PR_RESULTS_TAG: v9.9.9/'
 
 mutation 'token set before the build step' action.yml 's/^\(        PR_RESULTS_RUST: 1.98.0\)$/\1\n        GITHUB_TOKEN: ${{ inputs.token }}/'
-mutation 'token in the dogfood job environment' .github/workflows/publish-test-results.yml 's/^    timeout-minutes: 30$/    timeout-minutes: 30\n    env:\n      GITHUB_TOKEN: ${{ github.token }}/'
+mutation 'token in the dogfood workflow environment' .github/workflows/publish-test-results.yml 's/^permissions: {}$/permissions: {}\n\nenv:\n  GITHUB_TOKEN: ${{ github.token }}/'
 
 mutation 'tag does not match the version' action.yml 's/PR_RESULTS_TAG: .*/PR_RESULTS_TAG: v9.9.9/'
 
