@@ -239,3 +239,28 @@ fn a_suite_can_read_what_cargo_writes() {
 	}
 	assert!(err(&suite("format = \"cargo\"")).contains("\"clippy-json\" or \"cargo-audit-json\""));
 }
+
+#[test]
+fn the_other_checks_table_can_be_kept_open() {
+	assert!(!of("").other_checks_open);
+	assert!(!of("[comment]\nstyle = \"enhanced\"").other_checks_open);
+	for style in ["guided", "enhanced"] {
+		let s = of(&format!(
+			"[comment]\nstyle = \"{style}\"\nother_checks = true\nother_checks_open = true"
+		));
+		assert!(s.other_checks_open);
+		assert!(s.options().other_checks_open);
+	}
+	// The style is the default, so no `style` key means guided, which can fold the table.
+	assert!(of("[comment]\nother_checks_open = true").other_checks_open);
+	assert!(!of("[comment]\nother_checks_open = false").other_checks_open);
+}
+
+#[test]
+fn keeping_the_table_open_needs_a_style_that_folds_it() {
+	let text = "[comment]\nstyle = \"plain\"\nother_checks_open = true";
+	assert!(err(text).contains("`comment.other_checks_open` needs `comment.style`"));
+	// Switching it off is always allowed, so a file can move between styles.
+	of("[comment]\nstyle = \"plain\"\nother_checks_open = false");
+	assert!(err("[comment]\nother_checks_open = \"yes\"").contains("other_checks_open"));
+}

@@ -124,6 +124,8 @@ pub struct Settings {
 	pub mascot: bool,
 	pub progress: bool,
 	pub alerts: bool,
+	/// Keep the table of other checks open when every one passed.
+	pub other_checks_open: bool,
 	/// List the commit's other check runs in the comment.
 	pub other_checks: bool,
 	/// Checks whose names match any of these are left out of that table.
@@ -152,6 +154,7 @@ impl Default for Settings {
 			mascot: false,
 			progress: false,
 			alerts: false,
+			other_checks_open: false,
 			other_checks: false,
 			other_checks_ignore: Vec::new(),
 			check_commands: Vec::new(),
@@ -182,6 +185,7 @@ impl Settings {
 			mascot: self.mascot,
 			progress: self.progress,
 			alerts: self.alerts,
+			other_checks_open: self.other_checks_open,
 			max_annotations: self.max_annotations,
 			flaky_annotations: self.flaky_annotations,
 			..Options::default()
@@ -397,6 +401,7 @@ impl Reader<'_> {
 				"progress",
 				"alerts",
 				"other_checks",
+				"other_checks_open",
 				"other_checks_ignore",
 				"check_commands",
 			],
@@ -437,6 +442,16 @@ impl Reader<'_> {
 		self.look(t, s)?;
 		if let Some(on) = self.boolean(t, "other_checks", "comment.")? {
 			s.other_checks = on;
+		}
+		if let Some(on) = self.boolean(t, "other_checks_open", "comment.")? {
+			if on && s.style == Style::Plain {
+				let at = self.find(t, "other_checks_open").map_or(0..0, |v| v.span());
+				return Err(self.err(
+					at,
+					"`comment.other_checks_open` needs `comment.style` of \"guided\" or \"enhanced\", since the plain style never folds the table",
+				));
+			}
+			s.other_checks_open = on;
 		}
 		if let Some(v) = self.find(t, "other_checks_ignore") {
 			s.other_checks_ignore = self.name_globs(v)?;

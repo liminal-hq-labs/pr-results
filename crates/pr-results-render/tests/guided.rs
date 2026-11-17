@@ -423,3 +423,78 @@ fn the_smallest_guided_comment_keeps_the_heading_the_totals_and_the_other_checks
 		assert!(!text.contains(dropped), "{dropped}\n{text}");
 	}
 }
+
+fn with_checks(mut sc: Scenario, checks: &[(&str, CheckState)], open: bool) -> Scenario {
+	sc = sc.guided().with_other_checks(
+		checks
+			.iter()
+			.map(|(name, state)| other(name, *state))
+			.collect(),
+	);
+	sc.options.other_checks_open = open;
+	sc
+}
+
+#[test]
+fn an_open_table_is_not_folded_when_every_other_check_passed() {
+	let all_passed = [
+		("Format", CheckState::Passed),
+		("Clippy", CheckState::Passed),
+	];
+	let folded = body(&with_checks(run(3, 0), &all_passed, false));
+	assert!(
+		folded.contains("<summary>Other checks: 2 passed</summary>"),
+		"{folded}"
+	);
+	assert!(!folded.contains("#### Other checks"));
+
+	let open = body(&with_checks(run(3, 0), &all_passed, true));
+	assert!(open.contains("#### Other checks"), "{open}");
+	assert!(!open.contains("<summary>Other checks"), "{open}");
+	assert!(open.contains("| `Format` |") && open.contains("| `Clippy` |"));
+}
+
+#[test]
+fn a_table_with_a_failure_in_it_is_the_same_open_or_not() {
+	let mixed = [
+		("Format", CheckState::Passed),
+		("Security audit", CheckState::Failed),
+	];
+	assert_eq!(
+		body(&with_checks(run(3, 0), &mixed, false)),
+		body(&with_checks(run(3, 0), &mixed, true))
+	);
+}
+
+#[test]
+fn the_plain_style_never_folds_so_the_setting_changes_nothing() {
+	let mut plain = run(3, 0).with_other_checks(vec![other("Format", CheckState::Passed)]);
+	let off = body(&plain);
+	plain.options.other_checks_open = true;
+	assert_eq!(plain.options.style, Style::Plain);
+	assert_eq!(off, body(&plain));
+	assert!(off.contains("#### Other checks") && !off.contains("<summary>Other checks"));
+}
+
+#[test]
+fn a_comment_with_no_results_keeps_the_table_open_too() {
+	let none = || {
+		Scenario::new(
+			"t",
+			"Example checks",
+			vec![section("Rust tests", false, Vec::new())],
+		)
+		.comment_only()
+	};
+	let all_passed = [("Format", CheckState::Passed)];
+	let folded = body(&with_checks(none(), &all_passed, false));
+	assert!(
+		folded.contains("<summary>Other checks: 1 passed</summary>"),
+		"{folded}"
+	);
+	let open = body(&with_checks(none(), &all_passed, true));
+	assert!(
+		open.contains("#### Other checks") && !open.contains("<summary>Other checks"),
+		"{open}"
+	);
+}
