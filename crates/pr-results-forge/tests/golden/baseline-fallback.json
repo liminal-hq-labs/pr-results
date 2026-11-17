@@ -1,0 +1,85 @@
+[
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/runs/5000/artifacts?per_page=100"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/artifacts/1002/zip"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/commits/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334/check-runs?check_name=Example%20Rust%20tests&filter=latest&per_page=100"
+  },
+  {
+    "body": {
+      "conclusion": "success",
+      "external_id": "pr-results:1:ci:Example Rust tests",
+      "head_sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+      "name": "Example Rust tests",
+      "output": {
+        "summary": "| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | Passed | 3 | 0 | 0 | 0 | 0.3 s |\n\n| Group | Passed | Failed | Skipped | Flaky | Time |\n| --- | ---: | ---: | ---: | ---: | ---: |\n| `suite` | 3 | 0 | 0 | 0 | 0.3 s |\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n",
+        "text": "#### Slowest tests\n\n| Test | Time |\n| --- | ---: |\n| `suite` › `c` › `a` | 0.1 s |\n| `suite` › `c` › `b` | 0.1 s |\n| `suite` › `c` › `c` | 0.1 s |\n",
+        "title": "3 passed"
+      },
+      "status": "completed"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/check-runs"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/8"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/pulls/8"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/workflows/1001/runs?head_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&event=push&status=completed&per_page=10"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/workflows/1001/runs?branch=release%2F1.x&event=push&status=completed&per_page=10"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/workflows/1001/runs?branch=main&event=push&status=completed&per_page=10"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/runs/900/artifacts?per_page=100"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/actions/artifacts/1001/zip"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/8/comments?per_page=100"
+  },
+  {
+    "body": {
+      "body": "<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=5000 -->\n### Example checks: All 3 passed\n\nEverything passed: 3 tests in 1 suite, in 0.3 s of test time.\n\nThis pull request adds 1 test against `main`, because `release/1.x` had no results to compare with.\n\n<details>\n<summary>Tests added (1)</summary>\n\nAdded:\n\n- `suite` › `c` › `c`\n\n</details>\n\n| Suite | Result | Passed | Failed | Skipped | Flaky | Time |\n| --- | --- | ---: | ---: | ---: | ---: | ---: |\n| `Rust tests` | Passed | 3 | 0 | 0 | 0 | 0.3 s |\n\n<details>\n<summary>Slowest tests (3)</summary>\n\n| Test | Time |\n| --- | ---: |\n| `suite` › `c` › `a` | 0.1 s |\n| `suite` › `c` › `b` | 0.1 s |\n| `suite` › `c` › `c` | 0.1 s |\n\n</details>\n\nCommit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/5000) · [artefacts](https://github.com/example/app/actions/runs/5000#artifacts) · pr-results 0.1.0\n"
+    },
+    "method": "POST",
+    "target": "/repos/example/app/issues/8/comments"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "target": "/repos/example/app/issues/8/comments?per_page=100"
+  }
+]

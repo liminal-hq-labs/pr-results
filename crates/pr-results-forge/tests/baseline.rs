@@ -248,7 +248,7 @@ fn a_host_that_cannot_look_for_a_baseline_has_none_and_asks_nothing() {
 }
 
 #[test]
-fn publishing_does_not_look_for_a_baseline_yet() {
+fn a_plan_with_the_default_options_looks_for_no_baseline() {
 	let env = Env::new();
 	env.artifact("rust-test-results", &[("results.xml", &common::passing(3))]);
 	let report = env.publish();

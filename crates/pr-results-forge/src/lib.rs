@@ -14,6 +14,7 @@
 
 mod api;
 mod archive;
+mod baseline;
 mod client;
 mod dry;
 mod fake;
@@ -32,6 +33,7 @@ pub use api::{
 	Method, Token,
 };
 pub use archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
+pub use baseline::BaselineGap;
 pub use client::{Client, Paging, RETRY_BUDGET_S};
 pub use dry::{requests_to_json, DryRun};
 pub use fake::{
