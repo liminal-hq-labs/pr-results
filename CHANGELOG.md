@@ -4,6 +4,15 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Added
+
+- `comment.other_checks_open` (decision D76): keeps the table of other checks open under `#### Other checks`, not folded into `Other checks: 5 passed`, when every check passed. It is for guided and enhanced and is refused with `style = "plain"`, which never folds the table. It changes nothing when a check is not passing, and the size budget's own fold of passing rows still applies.
+- The goldens `guided-other-checks-open` and `enhanced-other-checks-open`.
+
+### Changed
+
+- **Breaking for library users (0.x):** `Options` has a new public field, `other_checks_open`, and `Settings` has the same one.
+
 ## 0.3.0 — 2026-11-17
 
 ### Added
