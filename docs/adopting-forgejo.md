@@ -42,7 +42,7 @@ For runners that cannot use the composite action, copy the release tag and the *
   shell: bash
   env:
     PR_RESULTS_TAG: 'v0.3.0'
-    PR_RESULTS_SHA256: 'PLACEHOLDER'
+    PR_RESULTS_SHA256: '1d5a597aac06560990bf508118949e69fbecdfdb923bfc69832d985d2ca37263'
   run: |
     set -euo pipefail
     dir="$(mktemp -d "${RUNNER_TEMP}/pr-results.XXXXXX")"
