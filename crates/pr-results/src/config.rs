@@ -783,11 +783,14 @@ impl Reader<'_> {
 				"steps-times" | "steps-json" => {
 					return Err(self.err(
 						span,
-						"`suite.format` of \"steps-times\" and \"steps-json\" is not supported: use \"junit\" or \"sarif\"",
+						"`suite.format` of \"steps-times\" and \"steps-json\" is not supported: use one of the formats the settings list",
 					))
 				}
 				other => InputFormat::from_name(other).ok_or_else(|| {
-					self.err(span, "`suite.format` must be \"junit\" or \"sarif\"")
+					self.err(
+						span,
+						"`suite.format` must be \"junit\", \"sarif\", \"clippy-json\" or \"cargo-audit-json\"",
+					)
 				})?,
 			},
 		};

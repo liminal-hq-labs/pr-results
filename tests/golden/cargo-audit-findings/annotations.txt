@@ -1,0 +1,23 @@
+check 0: 4 annotations, 0 not shown
+- failure Cargo.lock:1-1
+  title: RUSTSEC-2020-0071
+  message: Potential segfault in the time crate
+    Unix-like operating systems may segfault due to dereferencing a dangling pointer.
+    The issue is in the use of localtime_r.
+    Patched versions: >=0.2.23
+    https://github.com/time-rs/time/issues/293
+- failure Cargo.lock:1-1
+  title: RUSTSEC-2022-0013
+  message: Regexes with large repetitions on empty sub-expressions take a very long time to parse
+    Denial of service.
+    Patched versions: >=1.5.5
+    https://github.com/rust-lang/regex/security/advisories/GHSA-m5pq-gvj9-9vr8
+- failure Cargo.lock:1-1
+  title: RUSTSEC-2021-0145
+  message: Potential unaligned read
+    On windows, atty dereferences a potentially unaligned pointer.
+    It is unmaintained.
+    https://github.com/softprops/atty/issues/50
+- failure Cargo.lock:1-1
+  title: yanked
+  message: No message was reported.

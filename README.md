@@ -17,7 +17,7 @@ pr-results reads the test and check results your CI produces and posts them to t
 - A pull request that runs several suites and should get one calm comment, not one bot comment per suite.
 - Pull requests from forks and Dependabot, where a test job's read-only token cannot post results, and the publisher runs afterwards through `workflow_run` instead.
 - A project that runs shell steps, where a red job should name the step that broke and how long each step took, and a format, lint or audit job whose comment should say why it failed (`pr-results wrap`).
-- A reviewer who wants the failing file and line annotated in the diff, and flaky tests kept apart from real failures, and static-analysis findings (SARIF) read the same way.
+- A reviewer who wants the failing file and line annotated in the diff, and flaky tests kept apart from real failures, and static-analysis findings read the same way, from SARIF or straight from `cargo clippy` and `cargo audit`.
 - An owner who wants every string from a test report escaped by one audited path, with the publisher pinned to a commit.
 
 ## What the comment will look like

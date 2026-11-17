@@ -9,6 +9,8 @@
 #![forbid(unsafe_code)]
 
 mod anonymize;
+mod ansi;
+mod cargo;
 mod error;
 mod flavour;
 mod glob;
@@ -20,6 +22,8 @@ mod sarif;
 mod trusted;
 
 pub use anonymize::anonymize_junit;
+pub use ansi::strip_ansi;
+pub use cargo::{parse_audit_json, parse_clippy_json};
 pub use error::ParseError;
 pub use glob::{Glob, GlobError, MAX_GLOB_BYTES};
 pub use junit::{parse_junit, parse_junit_in, Limits};
@@ -42,6 +46,8 @@ pub fn parse_report(
 	match format {
 		InputFormat::Junit => parse_junit_in(input, flavour, limits, path_prefix),
 		InputFormat::Sarif => parse_sarif(input, limits, path_prefix, fail_on),
+		InputFormat::ClippyJson => parse_clippy_json(input, limits, path_prefix, fail_on),
+		InputFormat::CargoAuditJson => parse_audit_json(input, limits, path_prefix, fail_on),
 	}
 }
 pub use safe::{Safe, Source, DEFAULT_MAX_CHARS};

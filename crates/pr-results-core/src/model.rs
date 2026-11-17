@@ -233,6 +233,10 @@ pub enum InputFormat {
 	Junit,
 	/// SARIF 2.1.0, the static-analysis results format.
 	Sarif,
+	/// `cargo clippy --message-format=json`: one JSON object per line.
+	ClippyJson,
+	/// `cargo audit --json`.
+	CargoAuditJson,
 }
 
 impl InputFormat {
@@ -240,13 +244,20 @@ impl InputFormat {
 		match self {
 			Self::Junit => "junit",
 			Self::Sarif => "sarif",
+			Self::ClippyJson => "clippy-json",
+			Self::CargoAuditJson => "cargo-audit-json",
 		}
 	}
 
 	pub fn from_name(name: &str) -> Option<Self> {
-		[Self::Junit, Self::Sarif]
-			.into_iter()
-			.find(|f| f.name() == name)
+		[
+			Self::Junit,
+			Self::Sarif,
+			Self::ClippyJson,
+			Self::CargoAuditJson,
+		]
+		.into_iter()
+		.find(|f| f.name() == name)
 	}
 
 	/// The files a suite reads when its settings name none.
@@ -254,6 +265,7 @@ impl InputFormat {
 		match self {
 			Self::Junit => "**/*.xml",
 			Self::Sarif => "**/*.sarif",
+			Self::ClippyJson | Self::CargoAuditJson => "**/*.json",
 		}
 	}
 }

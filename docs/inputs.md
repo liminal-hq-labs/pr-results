@@ -18,6 +18,8 @@ Everything here is untrusted input and is handled by the rules in [security.md](
 | Python (planned) | `unittest-xml-reporting` or `pytest --junitxml` | any | `junit`, flavour `python` | `classname` is the dotted module path. `file` from pytest. Not a flavour yet: read it as `generic` |
 | Generic JUnit | anything else (Gradle, GUT, cargo2junit) | any | `junit`, flavour `generic` | Surefire-style attributes only |
 | SARIF | a scanner (CodeQL, Semgrep, Trivy), or clippy through a converter | `*-test-results` artefacts, `**/*.sarif` | `sarif` | A run is a suite, a result a case. See [SARIF](#sarif) |
+| clippy JSON | `cargo clippy --message-format=json > clippy.json` | `*-test-results` artefacts, `**/*.json` | `clippy-json` | One object per line, ending with `build-finished`. See [Clippy and the audit](#clippy-and-the-audit) |
+| cargo audit JSON | `cargo audit --json > audit.json` | `*-test-results` artefacts, `**/*.json` | `cargo-audit-json` | One document. Findings are at `Cargo.lock`. See [Clippy and the audit](#clippy-and-the-audit) |
 | Generic step JSON (could) | a script | any | `steps-json` | The schema is below |
 
 Detection with `flavour = "auto"` picks by the root's `name` attribute (`nextest-run`, `vitest tests`, `bun test`, `jest tests`), by `assertions` attributes (bun), by an empty `name` beside an `id` on the root (Playwright) and by `[[ATTACHMENT|` (Playwright), and falls back to `generic`. A jest-junit file whose `suiteName` was changed reads as `generic` until the suite sets `flavour = "jest"`.
@@ -120,6 +122,15 @@ Everything here was read from real output: the sample projects under `tests/samp
 - Only the fields above are read and the rest are skipped without being stored, so a large report costs what its findings cost. The usual limits apply, and a file that cannot be read is counted and left out, as for JUnit.
 
 Rust projects can get SARIF from clippy with `clippy-sarif` (`cargo clippy --message-format=json | clippy-sarif > clippy.sarif`), and many scanners write it directly (`semgrep --sarif`, `trivy --format sarif`, CodeQL's `database analyze`).
+
+## Clippy and the audit
+
+A Rust project gets its linter and its dependency audit into the comment with nothing but a flag, a redirect and an upload. Both are findings, like [SARIF](#sarif): `fail_on` and the clean-run case are the same.
+
+- **Clippy** (`format = "clippy-json"`): each error or warning with a span is a case named by its lint and placed at its primary span, so the check run annotates the line. Summary lines (`2 warnings emitted`) are not findings, and the same diagnostic from building for several targets is counted once. A path outside the repository (a registry crate) keeps the finding and loses the location. A file with no `build-finished` line was cut short and is refused.
+- **The audit** (`format = "cargo-audit-json"`): a vulnerability is an error and a warning (unmaintained, unsound, yanked) is a warning, reported at `Cargo.lock` as `crate version › advisory id`. `cargo audit` itself fails only on vulnerabilities, so `fail_on = "error"` matches it, and the default `warning` is stricter.
+
+`cargo clippy --message-format=json` replaces the human-readable output on standard output with JSON, so the job's log loses it. Run the lint a second time without the flag (it is cached and fast), or use [`pr-results wrap`](adopting.md#any-command-wrap-it) when the log tail is enough.
 
 ## How report text is shown
 

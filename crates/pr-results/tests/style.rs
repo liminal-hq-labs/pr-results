@@ -217,5 +217,25 @@ fn a_setting_that_a_format_has_no_use_for_is_refused() {
 	.contains("is for nextest suites"));
 	assert!(err(&suite("format = \"junit\"\nfail_on = \"note\""))
 		.contains("is for formats that report findings"));
-	assert!(err(&suite("format = \"steps-json\"")).contains("use \"junit\" or \"sarif\""));
+	assert!(err(&suite("format = \"steps-json\"")).contains("one of the formats"));
+}
+
+#[test]
+fn a_suite_can_read_what_cargo_writes() {
+	use pr_results_core::InputFormat;
+	let suite = |extra: &str| format!("[[suite]]\nname = \"a\"\nartifact = \"b\"\n{extra}");
+	for (word, format) in [
+		("clippy-json", InputFormat::ClippyJson),
+		("cargo-audit-json", InputFormat::CargoAuditJson),
+	] {
+		let s = of(&suite(&format!("format = \"{word}\"\nfail_on = \"error\"")));
+		assert_eq!(s.suites[0].format, format, "{word}");
+		assert!(s.suites[0].files[0].is_match("out/result.json"), "{word}");
+		assert!(!s.suites[0].files[0].is_match("out/result.xml"), "{word}");
+		assert!(err(&suite(&format!(
+			"format = \"{word}\"\nflavour = \"nextest\""
+		)))
+		.contains("is for JUnit files"));
+	}
+	assert!(err(&suite("format = \"cargo\"")).contains("\"clippy-json\" or \"cargo-audit-json\""));
 }

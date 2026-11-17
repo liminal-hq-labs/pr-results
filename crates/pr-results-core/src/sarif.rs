@@ -22,7 +22,7 @@ use crate::trusted::RepoPath;
 
 /// What a stored piece of text costs besides its bytes, as for a JUnit report.
 const TEXT_OVERHEAD: usize = 40;
-const CASE_OVERHEAD: usize = 64;
+pub(crate) const CASE_OVERHEAD: usize = 64;
 
 #[derive(Deserialize, Default)]
 struct Doc {
@@ -175,7 +175,7 @@ fn json_error(e: serde_json::Error) -> ParseError {
 }
 
 /// Keeps at most `max` bytes of `text` and counts what is stored.
-fn capped(text: &str, max: usize, spent: &mut usize) -> Untrusted {
+pub(crate) fn capped(text: &str, max: usize, spent: &mut usize) -> Untrusted {
 	let kept = Untrusted::capped(text, max);
 	*spent = spent
 		.saturating_add(kept.len())
@@ -184,7 +184,11 @@ fn capped(text: &str, max: usize, spent: &mut usize) -> Untrusted {
 }
 
 /// What a run with no findings is: one case that passed.
-fn clean_scan(cases: &mut usize, text: &mut usize, limits: &Limits) -> Result<Case, ParseError> {
+pub(crate) fn clean_scan(
+	cases: &mut usize,
+	text: &mut usize,
+	limits: &Limits,
+) -> Result<Case, ParseError> {
 	*cases += 1;
 	if *cases > limits.max_cases {
 		return Err(ParseError::TooManyCases {
@@ -197,7 +201,7 @@ fn clean_scan(cases: &mut usize, text: &mut usize, limits: &Limits) -> Result<Ca
 	))
 }
 
-fn blank(name: Untrusted, status: Status) -> Case {
+pub(crate) fn blank(name: Untrusted, status: Status) -> Case {
 	Case {
 		name,
 		classname: Untrusted::default(),
@@ -292,7 +296,11 @@ fn case_of(
 /// The path a location names, when it is one inside the repository: relative, percent-decoded and
 /// without a scheme. An absolute path or a URL names a place this tool cannot map to the commit.
 fn relative_path(uri: &str) -> Option<String> {
-	let decoded = percent_decode(uri)?;
+	plain_relative(&percent_decode(uri)?)
+}
+
+/// The same for a path that is not a URI, so a `%` in it is a `%`.
+pub(crate) fn plain_relative(decoded: &str) -> Option<String> {
 	let path = decoded.trim_start_matches("./");
 	let scheme = path.split_once(':').is_some_and(|(s, _)| {
 		!s.is_empty()

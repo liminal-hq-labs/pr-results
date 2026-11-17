@@ -11,8 +11,8 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use pr_results_core::{
-	parse_junit, parse_sarif, CommentKey, Flavour, Limits, RepoSlug, RunId, ServerUrl, Severity,
-	Sha, Suite,
+	parse_audit_json, parse_clippy_json, parse_junit, parse_sarif, CommentKey, Flavour, Limits,
+	RepoSlug, RunId, ServerUrl, Severity, Sha, Suite,
 };
 use pr_results_render::{
 	check, comment, measure, status, CheckState, Comment, Conclusion, Degradation, Input, Level,
@@ -84,6 +84,22 @@ pub fn load_sarif(files: &[&str], fail_on: Severity) -> Vec<Suite> {
 	}
 	report.merge_same_named();
 	report.suites
+}
+
+/// The suites of a `cargo clippy --message-format=json` fixture.
+pub fn load_clippy(file: &str, fail_on: Severity) -> Vec<Suite> {
+	let bytes = std::fs::read(fixtures_dir().join(file)).unwrap();
+	parse_clippy_json(&bytes, &Limits::default(), None, fail_on)
+		.unwrap()
+		.suites
+}
+
+/// The suites of a `cargo audit --json` fixture.
+pub fn load_audit(file: &str, fail_on: Severity) -> Vec<Suite> {
+	let bytes = std::fs::read(fixtures_dir().join(file)).unwrap();
+	parse_audit_json(&bytes, &Limits::default(), None, fail_on)
+		.unwrap()
+		.suites
 }
 
 pub fn parse_text(xml: &str, flavour: Flavour) -> Vec<Suite> {
@@ -925,6 +941,63 @@ pub fn scenarios() -> Vec<Scenario> {
 				false,
 				load_sarif(&["sarif/hostile.sarif"], Severity::Warning),
 			)],
+		)
+		.guided(),
+	);
+
+	// What cargo writes itself: clippy's diagnostics and the audit's advisories.
+	all.push(
+		Scenario::new(
+			"cargo-clippy-findings",
+			"Example checks",
+			vec![section(
+				"Clippy",
+				false,
+				load_clippy("cargo/clippy.json", Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"cargo-audit-findings",
+			"Example checks",
+			vec![section(
+				"Audit",
+				false,
+				load_audit("cargo/audit.json", Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"cargo-audit-errors-only",
+			"Example checks",
+			vec![section(
+				"Audit",
+				false,
+				load_audit("cargo/audit.json", Severity::Error),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"cargo-clean",
+			"Example checks",
+			vec![
+				section(
+					"Clippy",
+					false,
+					load_clippy("cargo/clippy-clean.json", Severity::Warning),
+				),
+				section(
+					"Audit",
+					false,
+					load_audit("cargo/audit-clean.json", Severity::Warning),
+				),
+			],
 		)
 		.guided(),
 	);

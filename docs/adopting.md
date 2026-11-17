@@ -429,6 +429,56 @@ job = "Scan"
 
 `fail_on` decides which findings fail the check: at or above it, a finding fails; below it, it is skipped and does not turn the job red. A scan with no findings shows as one passing case. Only a relative path inside the repository gets an annotation, so set `path_prefix` when the tool reports paths from a subdirectory. Findings are counted as tests in the comment's sentences and table.
 
+### Clippy and the audit, with nothing else installed
+
+A Rust project can send both to the comment from what cargo writes. The lint reports each diagnostic at its line, and the audit reports each advisory at `Cargo.lock`:
+
+```yaml
+- name: Clippy
+  run: |
+    mkdir -p results
+    cargo clippy --workspace --all-targets --locked --message-format=json -- -D warnings > results/clippy.json
+
+- name: Audit
+  run: |
+    mkdir -p results
+    cargo audit --json > results/audit.json
+
+- name: Upload the results
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: lint-test-results
+    path: results/
+    if-no-files-found: ignore
+```
+
+```toml
+# pr-results settings: clippy and the audit, each a suite of its own.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Clippy"
+artifact = "lint-test-results"
+files = ["**/clippy.json"]
+format = "clippy-json"
+job = "Clippy"
+
+[[suite]]
+name = "Audit"
+artifact = "lint-test-results"
+files = ["**/audit.json"]
+format = "cargo-audit-json"
+fail_on = "error"  # cargo audit itself fails only on vulnerabilities
+job = "Security audit"
+```
+
+Both files go to one artefact and each suite takes its own by name. The step still fails the job when the tool fails, since the redirect does not hide the exit status, and `if: always()` uploads the file either way. `--message-format=json` puts JSON on standard output in place of the readable text, so the job's log loses it: run the lint again without the flag (it is cached), or use `pr-results wrap` below when the last lines of the log are enough.
+
 ### Any command: wrap it
 
 A job that runs a formatter, a linter or an audit already knows whether it passed and what it printed. `pr-results wrap` runs the command once, exactly as before, and writes down how it ended, so the comment shows why it failed and nobody has to open the job. Use the action, and put the command after `--`:

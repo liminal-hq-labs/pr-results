@@ -1095,3 +1095,121 @@ fn render_reads_sarif_with_the_same_settings() {
 		"{comment}"
 	);
 }
+
+fn cargo_config(format: &str, artifact: &str, extra: &str) -> String {
+	format!("schema = 1\ntitle = \"CI\"\n\n[[suite]]\nname = \"Rust\"\ncheck = \"CI Rust\"\nartifact = \"{artifact}\"\nformat = \"{format}\"\n{extra}")
+}
+
+#[test]
+fn clippy_diagnostics_in_a_json_artefact_become_annotated_findings() {
+	let dir = scratch("clippy-json");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"clippy-test-results",
+		&[("clippy.json", &fixture("cargo/clippy.json"))],
+	);
+	fake.set_tree(
+		SHA,
+		&[
+			"crates/pr-results-forge/src/publish.rs",
+			"src/lib.rs",
+			"src/main.rs",
+		],
+		false,
+	);
+	let config = dir.join("pr-results.toml");
+	std::fs::write(
+		&config,
+		cargo_config("clippy-json", "clippy-test-results", ""),
+	)
+	.unwrap();
+	let vars = publisher_env(&dir, &pr_event());
+
+	let o = invoke(
+		&["publish", "--config", config.to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let check = &fake.check_runs()[0];
+	assert_eq!(check.conclusion.as_deref(), Some("failure"));
+	assert_eq!(
+		check.annotations.len(),
+		3,
+		"the registry path has no location to annotate"
+	);
+	let body = fake.comments(7)[0].body.clone();
+	assert!(body.contains("`clippy::too_many_arguments`"), "{body}");
+	assert!(body.contains("4 tests failed in `Rust`"), "{body}");
+}
+
+#[test]
+fn an_audit_finds_its_advisories_at_the_lockfile_and_the_threshold_matches_cargo_audit() {
+	let dir = scratch("audit-json");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"audit-test-results",
+		&[("audit.json", &fixture("cargo/audit.json"))],
+	);
+	fake.set_tree(SHA, &["Cargo.lock"], false);
+	let config = dir.join("pr-results.toml");
+	std::fs::write(
+		&config,
+		cargo_config(
+			"cargo-audit-json",
+			"audit-test-results",
+			"fail_on = \"error\"\n",
+		),
+	)
+	.unwrap();
+	let vars = publisher_env(&dir, &pr_event());
+
+	let o = invoke(
+		&["publish", "--config", config.to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let check = &fake.check_runs()[0];
+	assert_eq!(
+		check.annotations.len(),
+		2,
+		"the two vulnerabilities, not the warnings"
+	);
+	assert!(check.annotations[0].to_string().contains("Cargo.lock"));
+	let body = fake.comments(7)[0].body.clone();
+	assert!(
+		body.contains("| `Rust` | \u{2717} **Failed** | 0 | 2 | 2 | 0 |"),
+		"{body}"
+	);
+}
+
+#[test]
+fn a_clean_audit_and_a_clean_build_pass() {
+	for (name, format, file) in [
+		("audit-clean", "cargo-audit-json", "cargo/audit-clean.json"),
+		("clippy-clean", "clippy-json", "cargo/clippy-clean.json"),
+	] {
+		let dir = scratch(name);
+		let fake = github_with_pr();
+		artifact(&fake, "x-test-results", &[("r.json", &fixture(file))]);
+		let config = dir.join("pr-results.toml");
+		std::fs::write(&config, cargo_config(format, "x-test-results", "")).unwrap();
+		let vars = publisher_env(&dir, &pr_event());
+		let o = invoke(
+			&["publish", "--config", config.to_str().unwrap()],
+			&vars,
+			&Factory::new(&fake),
+		);
+		assert_eq!(o.code, 0, "{name}: {}", o.err);
+		assert_eq!(
+			fake.check_runs()[0].conclusion.as_deref(),
+			Some("success"),
+			"{name}"
+		);
+	}
+}
