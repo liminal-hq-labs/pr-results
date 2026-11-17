@@ -199,6 +199,39 @@ The job is the name GitHub shows for it, matrix legs included (`Test (default)`)
 
 It needs nothing new in the publisher workflow: `checks: write` covers the read. The table lists the commit's other check runs, failed ones first, and leaves out the suites' own check runs and the publisher's own job. A failed check is also said in the heading, for example `All 696 passed, 1 other check needs attention`. It works in the `workflow_run` publisher on GitHub only: on Forgejo, and when publishing from the job itself (`--from`), it has no effect and the notes in the job summary say so.
 
+### Tests added and removed
+
+With the guided or enhanced style the comment can say how many tests the pull request adds and removes, compared with the base branch:
+
+> This pull request adds 3 tests and removes 2 against `main`. A renamed test counts as both.
+
+It is on by default, and says nothing when nothing differs or when there is nothing to compare with.
+
+It needs the base branch's own CI to have run the same workflow on a push and uploaded the same artefact names as the pull request's run, so a repository that already runs its CI on `main` gets it with no change. The publisher takes the run on the pull request's base commit, else the newest on its base branch, else the newest on `baseline.branch`. A pull request stacked on another branch with no run therefore compares against the default branch, and the sentence says so:
+
+> This pull request adds 3 tests against `main`, because `feature/base` had no results to compare with.
+
+A failed base run is fine, since it still ran its tests. A run from a fork, a pull request's own run, a cancelled run and an expired artefact are never used, and in each case the comment simply has no sentence (the job summary says why).
+
+Only JUnit suites that are not `steps` are compared, and only the suites both runs have: a suite the base run did not upload is left out on both sides, so a new suite is not reported as hundreds of added tests. A test is its suite's name and project, its class name and its name, so renaming a suite's title in the settings changes nothing, and a renamed test counts as one removed and one added.
+
+```toml
+# pr-results settings: the added and removed tests line.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[comment]
+test_delta = false   # turn the sentence off
+
+[baseline]
+branch = "main"      # last place to look; empty turns baselines off
+```
+
+`comment.test_delta = true` with an empty `baseline.branch` is refused, since the sentence could never appear. `baseline.workflow`, which earlier settings files may carry, is ignored: the workflow is the one that triggered the publisher. It uses the `actions: read` permission the publisher already has, and nothing more.
+
 ## 4. Try it without publishing
 
 Render the Markdown from local files with no network, to see what a pull request would get:
@@ -619,7 +652,7 @@ expected frame 12 to match dist/frames/0012.png
 Commit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b4c3d2e1f001122334) · [workflow run](https://github.com/example/app/actions/runs/19283746) · [artefacts](https://github.com/example/app/actions/runs/19283746#artifacts) · pr-results 0.1.0
 `````
 
-Two rules shape it. A raw HTML line (`<details>`, `<summary>`, `</details>`) holds only fixed words and numbers, because Markdown inside it is not rendered, so every name sits on a Markdown line of its own, in a code span. And the names are the suite's title, the test suite, its group and the test, with the section's title in front only when the comment has more than one section. A column comparing each suite with the base branch arrives with baseline comparison in v0.3.
+Two rules shape it. A raw HTML line (`<details>`, `<summary>`, `</details>`) holds only fixed words and numbers, because Markdown inside it is not rendered, so every name sits on a Markdown line of its own, in a code span. And the names are the suite's title, the test suite, its group and the test, with the section's title in front only when the comment has more than one section. A column comparing each suite with the base branch is not built; the only use of the base branch's results is the sentence about added and removed tests, described under [Tests added and removed](#tests-added-and-removed).
 
 The **guided** style, the default, writes the same run like this. The Desk steps are not nextest tests, so a failed step has no command; a failed nextest test would have a `Run it locally:` block under its excerpt:
 
