@@ -10,7 +10,7 @@
 
 pr-results reads the test and check results your CI produces and posts them to the pull request: one sticky comment for the whole run and one check run per suite, with annotations at the failing file and line. It reads JUnit from nextest (tuned) and step reports from shell-script projects (tuned), and from vitest, bun, jest and Playwright (tuned against real output), and it is safe on pull requests from forks by design.
 
-> **Status:** experimental. v0.2.0 adds in-job publishing and Forgejo support, and tunes the JavaScript JUnit readers against real reports. GitHub Actions and a disposable Forgejo runner have exercised publishing; real team mentions and notifications remain unverified. Interfaces and formats may change between minor versions; see [CHANGELOG.md](CHANGELOG.md).
+> **Status:** experimental. v0.3.0 adds the guided and enhanced comment styles, the commit's other checks in the comment, `pr-results wrap`, and readers for SARIF, clippy and `cargo audit` output. GitHub Actions and a disposable Forgejo runner have exercised publishing; real team mentions and notifications remain unverified, and the enhanced style's alert blocks and emoji are checked against goldens and the inert rules, not yet read by a screen reader. Interfaces and formats may change between minor versions; see [CHANGELOG.md](CHANGELOG.md).
 
 ## What it's for
 
@@ -51,7 +51,7 @@ The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks
 
 ## Install and run
 
-On **GitHub**, the publisher runs in a `workflow_run` workflow after CI finishes, so it works for fork and Dependabot pull requests. Look the release SHA up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.2.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation. The publisher runs on Linux, `x86_64` and `aarch64`, as a static musl binary. On other platforms build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results pr-results --locked`. macOS and Windows binaries are not shipped in v0.2, and Windows path handling in the zip reader and the file checks is untested.
+On **GitHub**, the publisher runs in a `workflow_run` workflow after CI finishes, so it works for fork and Dependabot pull requests. Look the release SHA up with `gh api repos/liminal-hq-labs/pr-results/git/ref/tags/v0.3.0` (an annotated tag needs one more step, to the commit it points to), and read [docs/releasing.md](docs/releasing.md) for how to check the binary's attestation. The publisher runs on Linux, `x86_64` and `aarch64`, as a static musl binary. On other platforms build from source with `cargo install --git https://github.com/liminal-hq-labs/pr-results pr-results --locked`. macOS and Windows binaries are not shipped in v0.3, and Windows path handling in the zip reader and the file checks is untested.
 
 The workflow:
 
@@ -74,7 +74,7 @@ jobs:
       checks: write # create and update check runs and annotations
       pull-requests: write # create and update the sticky comment
       contents: read # check out .github/ from the default branch
-    uses: liminal-hq-labs/pr-results/.github/workflows/publish.yml@<full commit sha> # v0.2.0
+    uses: liminal-hq-labs/pr-results/.github/workflows/publish.yml@<full commit sha> # v0.3.0
 ```
 
 On **Forgejo**, which has no `workflow_run` trigger, a final job downloads earlier jobs' artefacts and runs `pr-results publish --from results --forge forgejo` with the job token. It writes one commit status per suite in place of check runs. See [docs/adopting-forgejo.md](docs/adopting-forgejo.md) for the full setup.
