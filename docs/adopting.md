@@ -650,6 +650,8 @@ The **guided** style, the default, writes the same run like this. The Desk steps
 | … | … |
 
 </details>
+
+This comment is updated in place with the latest results.
 `````
 
 The top of the **enhanced** style for a run where everything passed, with Jax, an alert block and the bar:

@@ -8,10 +8,12 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 - `comment.other_checks_open` (decision D76): keeps the table of other checks open under `#### Other checks`, not folded into `Other checks: 5 passed`, when every check passed. It is for guided and enhanced and is refused with `style = "plain"`, which never folds the table. It changes nothing when a check is not passing, and the size budget's own fold of passing rows still applies.
 - The goldens `guided-other-checks-open` and `enhanced-other-checks-open`.
+- `comment.updated_note` (decision D77): one fixed line before the footer, `This comment is updated in place with the latest results.` (with ♻️ in front for emoji symbols), so a reader knows the comment is edited on every run. It is on in the guided and enhanced styles and refused as `true` with `style = "plain"`. It is left out of the job summary, which is written once. `Safe::without_line` in the core crate, and the guided and enhanced goldens carry the line.
 
 ### Changed
 
-- **Breaking for library users (0.x):** `Options` has a new public field, `other_checks_open`, and `Settings` has the same one.
+- **The default comment has one more line.** A settings file that says nothing about `comment.updated_note` now gets the note in the guided style, which is the default. Set `updated_note = false` to drop it. The plain style is unchanged byte for byte.
+- **Breaking for library users (0.x):** `Options` has new public fields, `other_checks_open` and `updated_note`, and `Settings` has the same two.
 
 ## 0.3.0 — 2026-11-17
 

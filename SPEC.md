@@ -233,6 +233,7 @@ It also changes the rest of the comment:
 - `symbols` defaults to `glyphs`.
 - Under a failure of a **nextest** suite, a `Run it locally:` block with `cargo nextest run -E 'binary_id(=<binary>) & test(=<test>)'`. The start of the command is the suite's `run_locally` setting, `cargo nextest run` by default and an empty string for none. The command is built only from a binary id of letters, digits, `_`, `:`, `/` and `-` and a test path of letters, digits, `_` and `:`, only when nothing was cut from either, and only when the start is printable ASCII with no quote, backtick or backslash. A name that is not like that gets no command, so no quote, `$`, backtick, `;`, line break or part of nextest's filter language in a test name can reach a shell or the filter. This makes the command's shape safe; it cannot make running the pull request's code safe, and the documents say so.
 - A table of other checks that holds only passing checks is folded into `<details>` under `Other checks: 5 passed`, since there is nothing to act on. `comment.other_checks_open = true` keeps it open under `#### Other checks` instead, so a project whose comment stands in for a script that listed every job can show them without a click. It changes nothing when a check is not passing (the table is open then anyway) and does not touch the size budget's own fold of five or more passing rows into one row, which is degradation, not layout. The plain style never folds the table, so `other_checks_open = true` is refused with `style = "plain"`.
+- A line before the footer, `This comment is updated in place with the latest results.`, with ♻️ in front when `symbols = "emoji"`. The comment is one sticky comment that the publisher edits on every run, and nothing else in it says so, so a reader cannot tell a current result from an old one except by comparing the commit link with the branch. It is written on the first post too, since the body is rendered before the publisher knows whether it will create or edit, and "is updated" stays true. `comment.updated_note = false` turns it off. It is not in the job summary, which is written once, and not in the plain style.
 - A `Slowest tests (5)` block, collapsed, of the five tests that took longest and at least 100 ms (a table of `0.0 s` would be noise).
 - With no results, a short account of what to look at: `No test results arrived for this run, so there are no tests to show.`, the failing checks, and a reminder that an upload step with `if: always()` still runs after a test fails.
 
@@ -324,6 +325,7 @@ progress = false                 # a bar of the tests that passed (on in enhance
 alerts = false                   # the summary in a GitHub alert block (on in enhanced)
 other_checks = false             # list the commit's other check runs (needs checks: read)
 other_checks_open = false        # keep that table open when every check passed (guided and enhanced)
+updated_note = true              # a line saying the comment is updated in place (off in plain)
 other_checks_ignore = []         # patterns for the names of checks to leave out of that table
 
 [comment.check_commands]
@@ -386,6 +388,7 @@ job = "Tests"                    # the job these results come from; its row leav
 | `suite.fail_on` | `warning` | For the findings formats: the lowest severity that fails, `note`, `warning` or `error`. A finding below it is skipped. An error for a JUnit suite |
 | `suite.run_locally` | `cargo nextest run` for nextest | What a command to run a failed test again starts with; an empty string turns it off. Only for `nextest` and `auto` suites |
 | `comment.other_checks` | `false` | List the commit's other check runs in a table of their own (GitHub, from `workflow_run`) |
+| `comment.updated_note` | `true`; `false` in `plain` | A line before the footer saying the comment is updated in place with the latest results. Refused when `true` with `plain`. Not in the job summary |
 | `comment.other_checks_open` | `false` | Keep that table open, not folded into one line, when every check passed. Guided and enhanced only (refused with `plain`, which never folds it) |
 | `checks.per_suite` | `true` | One check run per suite |
 | `checks.combined` | empty | Name of an optional combined check |
@@ -591,7 +594,7 @@ A manual workflow (`workflow_dispatch`, owner only) publishes the hostile fixtur
 | **v0.1** | JUnit `generic`, `nextest` and `steps` flavours; `publish` in `workflow_run` with verified pull request, sticky comment and one check run per suite; `pr-results.toml` and defaults; `Safe` escaping, limits and budgets; `render`; the composite action and the reusable workflow; Linux `x86_64` and `aarch64` binaries; goldens and hostile fixtures |
 | v0.2 | vitest, bun, jest-junit and Playwright flavours with `path_prefix`; annotations with file and line (attributes, Rust panics, JavaScript stacks); flaky from nextest retries; job summary |
 | v0.3 | Baseline comparison against the base branch (new and pre-existing failures, added and removed tests, slower suites and steps); combined check; `comment.mode = changes`; stale-run guard hardening |
-| Unreleased | `comment.other_checks`: the commit's other check runs in the comment's own table; the guided style (the new default), the enhanced style and its extras (`symbols = "emoji"`, `mascot`, `progress`, `alerts`), commands to run a failed nextest test again, `other_checks_ignore` and `check_commands`; `suite.job`; `pr-results wrap`; `suite.format` of `sarif`, `clippy-json` and `cargo-audit-json`, with `suite.fail_on` |
+| Unreleased | `comment.other_checks`: the commit's other check runs in the comment's own table; the guided style (the new default), the enhanced style and its extras (`symbols = "emoji"`, `mascot`, `progress`, `alerts`), commands to run a failed nextest test again, `other_checks_ignore` and `check_commands`; `comment.other_checks_open`; `comment.updated_note` (on by default in guided and enhanced); `suite.job`; `pr-results wrap`; `suite.format` of `sarif`, `clippy-json` and `cargo-audit-json`, with `suite.fail_on` |
 | v0.4 | Trends over N base runs (flaky rate, duration drift); Playwright attachment links; `steps-times` and `steps-json` inputs; Python, GUT and Gradle documented; graduation review |
 
 ## Open questions
