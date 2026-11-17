@@ -334,6 +334,20 @@ pub(crate) fn progress_line(total: &Counts) -> Option<Safe> {
 
 /// One line from Jax, in a fixed set of sentences, so a re-run with the same results writes the
 /// same words.
+/// The two sentences of the note that the comment is edited in place. `job_summary` drops them, since a
+/// run's job summary is written once and is not updated.
+pub(crate) const UPDATED_NOTE: &str = "This comment is updated in place with the latest results.";
+pub(crate) const UPDATED_NOTE_EMOJI: &str =
+	"\u{267b}\u{fe0f} This comment is updated in place with the latest results.";
+
+pub(crate) fn updated_note(symbols: Symbols) -> Safe {
+	t(if symbols == Symbols::Emoji {
+		UPDATED_NOTE_EMOJI
+	} else {
+		UPDATED_NOTE
+	})
+}
+
 pub(crate) fn mascot(mood: Mood) -> Safe {
 	t(match mood {
 		Mood::Clear => "\u{1f9a6} **Jax:** All clear. Every test passed.",

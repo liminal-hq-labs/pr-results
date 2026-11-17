@@ -264,3 +264,18 @@ fn keeping_the_table_open_needs_a_style_that_folds_it() {
 	of("[comment]\nstyle = \"plain\"\nother_checks_open = false");
 	assert!(err("[comment]\nother_checks_open = \"yes\"").contains("other_checks_open"));
 }
+
+#[test]
+fn the_updated_note_is_on_except_in_the_plain_style() {
+	assert!(of("").updated_note);
+	assert!(of("").options().updated_note);
+	assert!(of("[comment]\nstyle = \"enhanced\"").updated_note);
+	assert!(!of("[comment]\nstyle = \"plain\"").updated_note);
+	assert!(!of("[comment]\nupdated_note = false").updated_note);
+	assert!(!of("[comment]\nstyle = \"enhanced\"\nupdated_note = false").updated_note);
+	// Switching it off is always allowed, so a file can move between styles.
+	assert!(!of("[comment]\nstyle = \"plain\"\nupdated_note = false").updated_note);
+	assert!(err("[comment]\nstyle = \"plain\"\nupdated_note = true")
+		.contains("`comment.updated_note` needs `comment.style`"));
+	assert!(err("[comment]\nupdated_note = 1").contains("updated_note"));
+}

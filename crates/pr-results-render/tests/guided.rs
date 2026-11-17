@@ -18,7 +18,7 @@ use common::{
 	assert_inert_all, guided_truncation_base, other, parse_text, scenarios, section, Scenario,
 };
 use pr_results_core::Flavour;
-use pr_results_render::{measure, CheckState, Degradation, Style, Symbols, Target};
+use pr_results_render::{job_summary, measure, CheckState, Degradation, Style, Symbols, Target};
 
 /// A nextest report with `passed` passing and `failed` failing tests, each 200 ms.
 fn report(passed: usize, failed: usize) -> String {
@@ -497,4 +497,70 @@ fn a_comment_with_no_results_keeps_the_table_open_too() {
 		open.contains("#### Other checks") && !open.contains("<summary>Other checks"),
 		"{open}"
 	);
+}
+
+const NOTE: &str = "This comment is updated in place with the latest results.";
+
+#[test]
+fn the_comment_says_it_is_updated_in_place_just_before_the_footer() {
+	let text = body(&run(3, 1).guided());
+	assert_eq!(text.matches(NOTE).count(), 1, "{text}");
+	let (before, after) = text.split_once(NOTE).unwrap();
+	assert!(before.ends_with("\n\n"), "{text}");
+	assert!(after.starts_with("\n\nCommit ["), "{text}");
+
+	let enhanced = body(&run(3, 1).enhanced());
+	assert!(
+		enhanced.contains(&format!("\u{267b}\u{fe0f} {NOTE}")),
+		"{enhanced}"
+	);
+}
+
+#[test]
+fn the_note_follows_the_setting_and_the_plain_style_never_has_it() {
+	let mut off = run(3, 1).guided();
+	off.options.updated_note = false;
+	assert!(!body(&off).contains("updated in place"));
+
+	let mut plain = run(3, 1);
+	plain.options.updated_note = true;
+	assert_eq!(plain.options.style, Style::Plain);
+	assert!(!body(&plain).contains("updated in place"));
+}
+
+#[test]
+fn the_note_is_in_the_smallest_comment_and_in_one_with_no_results() {
+	let none = Scenario::new(
+		"t",
+		"Example checks",
+		vec![section("Rust tests", false, Vec::new())],
+	)
+	.comment_only()
+	.guided();
+	assert!(body(&none).contains(NOTE));
+
+	let mut tiny = run(3, 1).guided();
+	tiny.options.comment_limit = 600;
+	let c = tiny.comment();
+	assert!(
+		c.steps_taken.contains(&Degradation::Minimal),
+		"{:?}",
+		c.steps_taken
+	);
+}
+
+#[test]
+fn the_job_summary_leaves_the_note_out_since_it_is_written_once() {
+	for sc in [run(3, 1).guided(), run(3, 1).enhanced()] {
+		let c = sc.comment();
+		assert!(c.body.as_str().contains("updated in place"));
+		let summary = job_summary(&c);
+		assert!(
+			!summary.as_str().contains("updated in place"),
+			"{}",
+			summary.as_str()
+		);
+		assert!(!summary.as_str().contains("\n\n\n"));
+		assert!(summary.as_str().contains("Commit ["));
+	}
 }

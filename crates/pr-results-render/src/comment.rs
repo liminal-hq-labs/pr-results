@@ -276,6 +276,9 @@ fn render(
 			doc.block(line);
 		}
 		doc.block(t(wording::minimal_note(target)));
+		if guided && o.updated_note {
+			doc.block(guided::updated_note(o.symbols));
+		}
 		doc.block(footer(i.ctx));
 		return doc.build();
 	}
@@ -406,6 +409,9 @@ fn render(
 		doc.block(note);
 	}
 
+	if guided && o.updated_note {
+		doc.block(guided::updated_note(o.symbols));
+	}
 	doc.block(footer(i.ctx));
 	doc.build()
 }
@@ -500,6 +506,9 @@ fn no_results_guided(i: &Input<'_>) -> Comment {
 		o.other_checks_open,
 		&mut doc,
 	);
+	if o.updated_note {
+		doc.block(guided::updated_note(o.symbols));
+	}
 	doc.block(footer(i.ctx));
 	Comment {
 		body: doc.build(),
@@ -586,7 +595,11 @@ impl Open {
 }
 
 pub(crate) fn job_summary(c: &Comment, cap: usize) -> Safe {
-	let body = c.body.after_first_line();
+	let body = c
+		.body
+		.after_first_line()
+		.without_line(guided::UPDATED_NOTE)
+		.without_line(guided::UPDATED_NOTE_EMOJI);
 	if body.as_str().len() <= cap {
 		return body;
 	}

@@ -106,6 +106,8 @@ pub struct Options {
 	pub progress: bool,
 	/// The summary in a GitHub alert block. Guided style on GitHub only.
 	pub alerts: bool,
+	/// A line saying the comment is updated in place with the latest results. Guided style only.
+	pub updated_note: bool,
 	/// The table of other checks stays open when every one passed, not folded into a line.
 	/// Guided style only: the plain style never folds it.
 	pub other_checks_open: bool,
@@ -147,6 +149,7 @@ impl Default for Options {
 			mascot: false,
 			progress: false,
 			alerts: false,
+			updated_note: false,
 			other_checks_open: false,
 			comment_limit: 60_000,
 			summary_limit: 60_000,

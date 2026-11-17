@@ -177,6 +177,7 @@ impl Scenario {
 	pub fn guided(mut self) -> Self {
 		self.options.style = Style::Guided;
 		self.options.symbols = Symbols::Glyphs;
+		self.options.updated_note = true;
 		self
 	}
 

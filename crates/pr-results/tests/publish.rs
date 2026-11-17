@@ -753,9 +753,15 @@ fn the_comment_then_the_diagnostics_go_to_the_job_summary() {
 		let summary = std::fs::read_to_string(&file).unwrap();
 		let comment = &fake.comments(7)[0].body;
 		let body = comment.split_once('\n').unwrap().1;
+		// The comment is edited in place on every run, which a job summary is not, so only the
+		// comment says so.
+		let note = "This comment is updated in place with the latest results.\n\n";
+		assert!(body.contains(note), "{body}");
+		let body = body.replace(note, "");
 		assert!(!summary.contains("<!--"), "{summary}");
-		assert!(summary.starts_with(body), "{summary}");
-		let rest = summary.strip_prefix(body).unwrap();
+		assert!(!summary.contains("updated in place"), "{summary}");
+		assert!(summary.starts_with(&body), "{summary}");
+		let rest = summary.strip_prefix(&body).unwrap();
 		assert!(
 			rest.starts_with("\n### pr-results\n\n- Check run created"),
 			"{rest}"
