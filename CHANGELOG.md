@@ -17,6 +17,7 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ### Changed
 
+- This repository's own pull request comment uses the enhanced style and lists its other jobs, so the project shows what the style looks like on GitHub.
 - **The default comment is different.** A settings file that says nothing about `comment.style` now gets the guided style, with glyphs where the plain style had none. Set `style = "plain"` to keep the earlier layout, which is unchanged byte for byte. The renderer's own `Options::default()` is still plain; the settings are what default to guided.
 - **Breaking for library users (0.x):** `Style` and `Symbols::Emoji` are new, `Options` has the fields `style`, `mascot`, `progress` and `alerts`, `Section` has `run_locally`, `OtherCheck` has `command`, `SectionPlan` has `run_locally`, `Plan` has `other_checks_ignore` and `check_commands`, `SuiteSettings` has `run_locally`, and `Settings` has `style`, `mascot`, `progress`, `alerts`, `other_checks_ignore` and `check_commands`. `Degradation::ExtrasToCounts` also drops the slowest tests. None of the crates is published.
 - **Breaking for library users (0.x):** `pr_results_render::Input` has a new public field, `other_checks` (`&[]` for none), `Degradation` has a new first variant and `Degradation::ALL` has nine steps, `Plan` has the public fields `other_checks` and `own_run`, `FakeCheck` has `status` and `details_url`, and `Settings` has `other_checks`. None of the crates is published (`publish = false`).
