@@ -45,8 +45,8 @@ runs:
       shell: bash
       env:
         PR_RESULTS_TAG: v0.4.0
-        PR_RESULTS_SHA256_X86_64: PLACEHOLDER
-        PR_RESULTS_SHA256_AARCH64: PLACEHOLDER
+        PR_RESULTS_SHA256_X86_64: e98fafbe99ab2d8599c1c193874195ce35335a9fbded49eefd2a8ae00b3e31f9
+        PR_RESULTS_SHA256_AARCH64: 889972421a17f7d0fd00c10cabd4e341182d7d23db3dce13c2f7458f98f5a86b
       run: |
         set -euo pipefail
         case "$(uname -m)" in
