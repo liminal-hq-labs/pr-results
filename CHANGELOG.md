@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-17
+
 ### Added
 
 - `comment.other_checks` (SPEC S6, decision D69): with it on, the comment gains an `Other checks` table after the suite table, from the commit's check runs, ordered by what needs attention and then by name. It leaves out this tool's own check runs and the publisher's own workflow run, and a failed or action-required check is also said in the heading (`All 696 passed, 1 other check needs attention`). The first step of the budget folds five or more passing rows into one (`Degradation::OtherChecksCollapsed`). It is GitHub only, from `workflow_run` only, and says so in the notes where it does nothing; a listing that fails leaves the table out and still posts the results.
