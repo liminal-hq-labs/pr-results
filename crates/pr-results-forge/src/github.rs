@@ -17,9 +17,9 @@ use serde_json::{json, Value};
 use crate::api::{ApiRequest, Forge, ForgeError, Method};
 use crate::client::{Client, Paging, BACKOFF_S};
 use crate::host::{
-	comment_from, pull_from, Artifact, CheckResult, CheckRunInfo, CheckSpec, Comment,
-	CommentResult, CommentSpec, Host, HostKind, Pull, ResultSpec, ResultWritten, Tree,
-	EXTERNAL_ID_PREFIX,
+	comment_from, pull_from, ref_name, Artifact, BaselineQuery, CheckResult, CheckRunInfo,
+	CheckSpec, Comment, CommentResult, CommentSpec, Host, HostKind, Pull, ResultSpec,
+	ResultWritten, RunRef, Tree, EXTERNAL_ID_PREFIX,
 };
 use crate::sticky::{upsert_sticky, Sticky};
 
@@ -34,6 +34,9 @@ const CREATE_ATTEMPTS: usize = 3;
 /// A listed check's name is kept to this many characters: it comes from someone else's workflow.
 const CHECK_NAME_CHARS: usize = 200;
 const ANNOTATION_BATCH: usize = 50;
+/// How many runs one baseline lookup reads. A list comes newest first, and one page is enough
+/// unless that many runs in a row ended in a way that cannot be a baseline.
+const BASELINE_RUNS: &str = "10";
 
 /// GitHub's REST API over a [`Client`]: check runs for the sections and an issue comment, found
 /// by the marker and by author.
@@ -507,6 +510,36 @@ impl<F: Forge> Host for GitHub<F> {
 		)
 	}
 
+	/// One page of the workflow's completed push runs, narrowed by `head_sha` or `branch`, then
+	/// filtered here by [`pick_baseline`]. `exclude_pull_requests` would not do: it only empties
+	/// each run's `pull_requests` list, and does not leave out the runs of pull requests.
+	fn baseline_run(
+		&self,
+		workflow_id: u64,
+		query: &BaselineQuery<'_>,
+	) -> Result<Option<RunRef>, ForgeError> {
+		let req = self
+			.client
+			.get(&format!("actions/workflows/{workflow_id}/runs"))?;
+		let req = match query {
+			BaselineQuery::HeadSha(sha) => req.with_query("head_sha", sha.as_str()),
+			BaselineQuery::Branch(branch) => match ref_name(branch) {
+				Some(branch) => req.with_query("branch", branch),
+				None => return Ok(None),
+			},
+		}
+		.with_query("event", "push")
+		.with_query("status", "completed")
+		.with_query("per_page", BASELINE_RUNS);
+		let resp = Client::<F>::ok(self.client.request(&req)?, "listing workflow runs")?;
+		let body = resp.json()?;
+		let runs = body
+			.get("workflow_runs")
+			.and_then(Value::as_array)
+			.ok_or(ForgeError::Decode("a list was expected"))?;
+		Ok(pick_baseline(runs, self.client.repo(), query))
+	}
+
 	fn tree_paths(&self, sha: &Sha) -> Result<Tree, ForgeError> {
 		let req = self
 			.client
@@ -565,6 +598,66 @@ impl<F: Forge> Sticky for GitHub<F> {
 	}
 }
 
+/// The newest of `runs` that can be a baseline for `query` in `repo`: a completed push run whose
+/// conclusion is `success` or `failure` (a red base still has results, a cancelled or skipped
+/// one has none worth comparing with), made by `repo` itself and not by a fork that reuses a
+/// branch name, and on the commit or branch the query names. An entry that is not shaped like a
+/// run is skipped. The runs are not assumed to arrive in order: the newest is the one created
+/// last.
+pub(crate) fn pick_baseline(
+	runs: &[Value],
+	repo: &RepoSlug,
+	query: &BaselineQuery<'_>,
+) -> Option<RunRef> {
+	let mut best: Option<(&str, RunRef)> = None;
+	for run in runs {
+		let Some(found) = baseline_candidate(run, repo, query) else {
+			continue;
+		};
+		let created = run
+			.get("created_at")
+			.and_then(Value::as_str)
+			.unwrap_or_default();
+		let newer = best
+			.as_ref()
+			.is_none_or(|(at, b)| (created, found.id) > (*at, b.id));
+		if newer {
+			best = Some((created, found));
+		}
+	}
+	best.map(|(_, run)| run)
+}
+
+fn baseline_candidate(run: &Value, repo: &RepoSlug, query: &BaselineQuery<'_>) -> Option<RunRef> {
+	let text = |key: &str| run.get(key).and_then(Value::as_str);
+	let conclusion = text("conclusion").filter(|c| matches!(*c, "success" | "failure"))?;
+	if text("status") != Some("completed") || text("event") != Some("push") {
+		return None;
+	}
+	let from_this_repo = run
+		.get("head_repository")
+		.and_then(|r| r.get("full_name"))
+		.and_then(Value::as_str)
+		.is_some_and(|name| name.eq_ignore_ascii_case(&repo.to_string()));
+	if !from_this_repo {
+		return None;
+	}
+	let head_sha = Sha::parse(text("head_sha")?)?;
+	let on_target = match query {
+		BaselineQuery::HeadSha(sha) => head_sha == **sha,
+		BaselineQuery::Branch(branch) => text("head_branch") == Some(*branch),
+	};
+	if !on_target {
+		return None;
+	}
+	Some(RunRef {
+		id: RunId(run.get("id").and_then(Value::as_u64)?),
+		head_sha,
+		head_branch: text("head_branch").and_then(ref_name),
+		conclusion: conclusion.to_owned(),
+	})
+}
+
 fn annotation_json(a: &Annotation) -> Value {
 	json!({
 		"path": a.path.as_str(),
@@ -606,4 +699,194 @@ fn check_body(spec: &CheckSpec<'_>, create: bool, batch: &[Value]) -> Value {
 		o.insert("head_sha".to_owned(), Value::from(spec.head_sha.as_str()));
 	}
 	body
+}
+
+#[cfg(test)]
+#[allow(
+	clippy::unwrap_used,
+	clippy::expect_used,
+	clippy::panic,
+	clippy::indexing_slicing
+)]
+mod tests {
+	use super::*;
+
+	const REPO: &str = "example/app";
+	const BASE: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+
+	fn repo() -> RepoSlug {
+		RepoSlug::parse(REPO).unwrap()
+	}
+
+	fn run(id: u64, conclusion: Value) -> Value {
+		json!({
+			"id": id,
+			"head_sha": BASE,
+			"head_branch": "main",
+			"event": "push",
+			"status": "completed",
+			"conclusion": conclusion,
+			"created_at": format!("2026-11-01T10:00:{:02}Z", id % 60),
+			"head_repository": { "full_name": REPO },
+		})
+	}
+
+	fn by_branch(runs: &[Value]) -> Option<RunRef> {
+		pick_baseline(runs, &repo(), &BaselineQuery::Branch("main"))
+	}
+
+	fn by_sha(runs: &[Value]) -> Option<RunRef> {
+		let sha = Sha::parse(BASE).unwrap();
+		pick_baseline(runs, &repo(), &BaselineQuery::HeadSha(&sha))
+	}
+
+	#[test]
+	fn a_successful_run_is_a_baseline() {
+		let found = by_branch(&[run(5, json!("success"))]).unwrap();
+		assert_eq!(found.id, RunId(5));
+		assert_eq!(found.head_sha.as_str(), BASE);
+		assert_eq!(found.head_branch.as_deref(), Some("main"));
+		assert_eq!(found.conclusion, "success");
+	}
+
+	#[test]
+	fn a_failed_run_is_a_baseline_because_a_red_base_still_has_results() {
+		assert_eq!(
+			by_branch(&[run(5, json!("failure"))]).unwrap().conclusion,
+			"failure"
+		);
+		assert_eq!(
+			by_sha(&[run(5, json!("failure"))]).unwrap().conclusion,
+			"failure"
+		);
+	}
+
+	#[test]
+	fn a_run_that_did_not_finish_with_results_is_not_a_baseline() {
+		for conclusion in [
+			json!("cancelled"),
+			json!("skipped"),
+			json!("timed_out"),
+			json!("neutral"),
+			json!("stale"),
+			json!("action_required"),
+			json!("startup_failure"),
+			json!("Success"),
+			json!(null),
+			json!(true),
+		] {
+			assert_eq!(
+				by_branch(&[run(5, conclusion.clone())]),
+				None,
+				"{conclusion}"
+			);
+			assert_eq!(by_sha(&[run(5, conclusion.clone())]), None, "{conclusion}");
+		}
+		let mut running = run(5, json!("success"));
+		running["status"] = json!("in_progress");
+		assert_eq!(by_branch(&[running]), None);
+	}
+
+	#[test]
+	fn a_run_from_a_fork_is_not_a_baseline() {
+		let mut forked = run(5, json!("success"));
+		forked["head_repository"] = json!({ "full_name": "forker/app" });
+		assert_eq!(by_branch(std::slice::from_ref(&forked)), None);
+		assert_eq!(by_sha(std::slice::from_ref(&forked)), None);
+		for head_repository in [json!(null), json!({}), json!({ "full_name": 7 })] {
+			let mut run = run(5, json!("success"));
+			run["head_repository"] = head_repository;
+			assert_eq!(by_branch(&[run]), None);
+		}
+		let mut missing = run(5, json!("success"));
+		missing.as_object_mut().unwrap().remove("head_repository");
+		assert_eq!(by_branch(&[missing]), None);
+	}
+
+	#[test]
+	fn a_run_of_this_repository_is_found_whatever_the_case_of_its_name() {
+		let mut mixed = run(5, json!("success"));
+		mixed["head_repository"] = json!({ "full_name": "Example/App" });
+		assert!(by_branch(&[mixed]).is_some());
+	}
+
+	#[test]
+	fn a_pull_request_run_is_not_a_baseline() {
+		for event in ["pull_request", "pull_request_target", "workflow_dispatch"] {
+			let mut other = run(5, json!("success"));
+			other["event"] = json!(event);
+			assert_eq!(by_branch(&[other]), None, "{event}");
+		}
+	}
+
+	#[test]
+	fn nothing_found_is_none() {
+		assert_eq!(by_branch(&[]), None);
+		assert_eq!(by_sha(&[]), None);
+	}
+
+	#[test]
+	fn the_newest_acceptable_run_wins_whatever_the_order_of_the_list() {
+		let mut old = run(4, json!("success"));
+		old["created_at"] = json!("2026-11-01T09:00:00Z");
+		let mut new = run(5, json!("failure"));
+		new["created_at"] = json!("2026-11-01T11:00:00Z");
+		let mut newest_but_cancelled = run(6, json!("cancelled"));
+		newest_but_cancelled["created_at"] = json!("2026-11-01T12:00:00Z");
+		for order in [
+			[old.clone(), new.clone(), newest_but_cancelled.clone()],
+			[newest_but_cancelled.clone(), new.clone(), old.clone()],
+			[new.clone(), newest_but_cancelled.clone(), old.clone()],
+		] {
+			assert_eq!(by_branch(&order).unwrap().id, RunId(5));
+		}
+	}
+
+	#[test]
+	fn the_run_must_be_on_the_commit_or_branch_asked_for() {
+		let mut elsewhere = run(5, json!("success"));
+		elsewhere["head_sha"] = json!("b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2");
+		assert_eq!(by_sha(std::slice::from_ref(&elsewhere)), None);
+		assert!(by_branch(&[elsewhere]).is_some());
+		let mut other_branch = run(5, json!("success"));
+		other_branch["head_branch"] = json!("develop");
+		assert_eq!(by_branch(std::slice::from_ref(&other_branch)), None);
+		assert!(by_sha(&[other_branch]).is_some());
+	}
+
+	#[test]
+	fn entries_that_are_not_shaped_like_runs_are_skipped() {
+		let mut no_sha = run(7, json!("success"));
+		no_sha.as_object_mut().unwrap().remove("head_sha");
+		let mut bad_sha = run(8, json!("success"));
+		bad_sha["head_sha"] = json!("not-a-sha");
+		let mut no_id = run(9, json!("success"));
+		no_id.as_object_mut().unwrap().remove("id");
+		let mut string_id = run(10, json!("success"));
+		string_id["id"] = json!("10");
+		let junk = [
+			json!(null),
+			json!(42),
+			json!("run"),
+			json!([]),
+			json!({}),
+			no_sha,
+			bad_sha,
+			no_id,
+			string_id,
+		];
+		assert_eq!(by_branch(&junk), None);
+		let mut all = junk.to_vec();
+		all.push(run(5, json!("success")));
+		assert_eq!(by_branch(&all).unwrap().id, RunId(5));
+	}
+
+	#[test]
+	fn a_head_branch_that_cannot_be_shown_is_left_out_of_the_result() {
+		let mut run = run(5, json!("success"));
+		run["head_branch"] = json!(null);
+		let sha = Sha::parse(BASE).unwrap();
+		let found = pick_baseline(&[run], &repo(), &BaselineQuery::HeadSha(&sha)).unwrap();
+		assert_eq!(found.head_branch, None);
+	}
 }

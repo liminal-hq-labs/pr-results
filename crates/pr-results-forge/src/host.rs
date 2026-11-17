@@ -108,6 +108,27 @@ pub(crate) fn ref_name(s: &str) -> Option<String> {
 	ok.then(|| s.to_owned())
 }
 
+/// Which workflow run to take a baseline from. The workflow is named by the caller, and the run
+/// must be a completed push run of that workflow in this repository itself, never a fork's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaselineQuery<'a> {
+	/// The run on exactly this commit, such as the pull request's base commit.
+	HeadSha(&'a Sha),
+	/// The newest run on this branch, such as the base branch or `baseline.branch`.
+	Branch(&'a str),
+}
+
+/// A workflow run found as a baseline, reduced to what choosing its artefacts needs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunRef {
+	pub id: RunId,
+	pub head_sha: Sha,
+	/// `None` when the API gave none or one that is not a plausible branch name.
+	pub head_branch: Option<String>,
+	/// `success` or `failure`: a run that ended any other way is never offered as a baseline.
+	pub conclusion: String,
+}
+
 /// A comment as listed: its body is only the first [`BODY_PREFIX_BYTES`] bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comment {
@@ -212,6 +233,16 @@ pub trait Host {
 	/// to list.
 	fn check_runs(&self, _sha: &Sha) -> Result<Vec<CheckRunInfo>, ForgeError> {
 		Ok(Vec::new())
+	}
+	/// The newest completed push run of the workflow `workflow_id` in this repository that fits
+	/// `query` and ended in `success` or `failure`, whose artefacts are a baseline. A run from
+	/// a fork never qualifies. A host that cannot look for one has none to offer.
+	fn baseline_run(
+		&self,
+		_workflow_id: u64,
+		_query: &BaselineQuery<'_>,
+	) -> Result<Option<RunRef>, ForgeError> {
+		Ok(None)
 	}
 	fn upsert_result(&self, spec: &ResultSpec<'_>) -> Result<ResultWritten, ForgeError>;
 	fn upsert_comment(&self, spec: &CommentSpec<'_>) -> Result<CommentResult, ForgeError>;

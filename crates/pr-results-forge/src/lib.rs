@@ -34,13 +34,15 @@ pub use api::{
 pub use archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
 pub use client::{Client, Paging, RETRY_BUDGET_S};
 pub use dry::{requests_to_json, DryRun};
-pub use fake::{FakeCheck, FakeComment, FakeForge, FakeForgejo, FakePull, FakeStatus, Fault};
+pub use fake::{
+	FakeCheck, FakeComment, FakeForge, FakeForgejo, FakePull, FakeRun, FakeStatus, Fault,
+};
 pub use forgejo::{Forgejo, ACTIONS_ID, ACTIONS_LOGIN};
 pub use github::{GitHub, DEFAULT_BOT_LOGIN, DEFAULT_CHECK_APP};
 pub use host::{
-	Artifact, CheckResult, CheckRunInfo, CheckSpec, Comment, CommentAction, CommentResult,
-	CommentSpec, Host, HostKind, Pull, ResultSpec, ResultWritten, StatusSpec, Tree,
-	BODY_PREFIX_BYTES,
+	Artifact, BaselineQuery, CheckResult, CheckRunInfo, CheckSpec, Comment, CommentAction,
+	CommentResult, CommentSpec, Host, HostKind, Pull, ResultSpec, ResultWritten, RunRef,
+	StatusSpec, Tree, BODY_PREFIX_BYTES,
 };
 pub use publish::{
 	publish, publish_inputs, CheckReport, CommentReport, Failure, Inputs, Note, Plan, PublishError,

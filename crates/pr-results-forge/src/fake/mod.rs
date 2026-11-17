@@ -102,6 +102,50 @@ impl FakePull {
 	}
 }
 
+/// A workflow run as GitHub lists it for a workflow.
+#[derive(Debug, Clone)]
+pub struct FakeRun {
+	pub id: u64,
+	pub workflow_id: u64,
+	pub head_sha: String,
+	pub head_branch: Option<String>,
+	/// The repository the run's commit came from; `None` for a fork that has been deleted.
+	pub head_repo: Option<String>,
+	/// `push`, `pull_request` and so on.
+	pub event: String,
+	/// `completed`, or `in_progress` and so on for a run that has not finished.
+	pub status: String,
+	/// `success`, `failure`, `cancelled` and so on, once it has completed.
+	pub conclusion: Option<String>,
+	/// When it was made, which orders the listing newest first. Left empty, it is set when the
+	/// run is added so that a run added later is newer.
+	pub created_at: String,
+}
+
+impl FakeRun {
+	/// A completed push run of `repo`'s own, on `branch`, that ended in `conclusion`.
+	pub fn push(
+		id: u64,
+		workflow_id: u64,
+		repo: &str,
+		head_sha: &str,
+		branch: &str,
+		conclusion: &str,
+	) -> Self {
+		Self {
+			id,
+			workflow_id,
+			head_sha: head_sha.to_owned(),
+			head_branch: Some(branch.to_owned()),
+			head_repo: Some(repo.to_owned()),
+			event: "push".to_owned(),
+			status: "completed".to_owned(),
+			conclusion: Some(conclusion.to_owned()),
+			created_at: String::new(),
+		}
+	}
+}
+
 /// What a scripted fault does instead of answering.
 #[derive(Debug, Clone)]
 pub enum Fault {
@@ -195,6 +239,7 @@ struct State {
 	now: u64,
 	artifacts: Vec<Artifact>,
 	pulls: Vec<FakePull>,
+	runs: Vec<FakeRun>,
 	comments: Vec<FakeComment>,
 	checks: Vec<FakeCheck>,
 	trees: BTreeMap<String, (Vec<String>, bool)>,
@@ -230,6 +275,7 @@ impl FakeForge {
 				now: 1_700_000_000,
 				artifacts: Vec::new(),
 				pulls: Vec::new(),
+				runs: Vec::new(),
 				comments: Vec::new(),
 				checks: Vec::new(),
 				trees: BTreeMap::new(),
@@ -305,6 +351,22 @@ impl FakeForge {
 
 	pub fn add_pull(&self, pull: FakePull) {
 		self.with(|s| s.pulls.push(pull));
+	}
+
+	/// Adds a workflow run to what `actions/workflows/{id}/runs` lists.
+	pub fn add_workflow_run(&self, mut run: FakeRun) {
+		self.with(|s| {
+			if run.created_at.is_empty() {
+				let n = s.runs.len();
+				run.created_at = format!(
+					"2026-11-01T{:02}:{:02}:{:02}Z",
+					n / 3600 % 24,
+					n / 60 % 60,
+					n % 60
+				);
+			}
+			s.runs.push(run);
+		});
 	}
 
 	pub fn move_head(&self, number: u64, sha: &str) {
@@ -517,9 +579,38 @@ impl State {
 		})
 	}
 
+	fn run_json(&self, r: &FakeRun) -> Value {
+		json!({
+			"id": r.id,
+			"workflow_id": r.workflow_id,
+			"head_sha": r.head_sha,
+			"head_branch": r.head_branch,
+			"event": r.event,
+			"status": r.status,
+			"conclusion": r.conclusion,
+			"created_at": r.created_at,
+			"run_number": r.id,
+			"pull_requests": [],
+			"repository": { "full_name": self.repo },
+			"head_repository": r.head_repo.as_ref().map(|n| json!({ "full_name": n })),
+		})
+	}
+
 	/// One page of `items` (two to a page by default), with the `Link` to the next.
 	fn page(
 		&self,
+		path: &str,
+		query: &[(String, String)],
+		items: Vec<Value>,
+		wrap: Option<&str>,
+	) -> ApiResponse {
+		self.page_of(self.page_size, path, query, items, wrap)
+	}
+
+	/// The same with `size` items to a page.
+	fn page_of(
+		&self,
+		size: usize,
 		path: &str,
 		query: &[(String, String)],
 		items: Vec<Value>,
@@ -529,7 +620,6 @@ impl State {
 			.and_then(|p| p.parse().ok())
 			.unwrap_or(1)
 			.max(1);
-		let size = self.page_size;
 		let total = items.len();
 		let start = (page - 1).saturating_mul(size);
 		let slice: Vec<Value> = items.into_iter().skip(start).take(size).collect();
@@ -592,6 +682,30 @@ impl State {
 					})
 					.collect();
 				self.page(&path, &query, items, Some("artifacts"))
+			}
+			(Method::Get, ["actions", "workflows", workflow, "runs"]) => {
+				let workflow: u64 = workflow.parse().unwrap_or(0);
+				let mut runs: Vec<&FakeRun> = self
+					.runs
+					.iter()
+					.filter(|r| r.workflow_id == workflow)
+					.filter(|r| q(&query, "head_sha").is_none_or(|v| r.head_sha == v))
+					.filter(|r| {
+						q(&query, "branch").is_none_or(|v| r.head_branch.as_deref() == Some(v))
+					})
+					.filter(|r| q(&query, "event").is_none_or(|v| r.event == v))
+					.filter(|r| {
+						q(&query, "status")
+							.is_none_or(|v| r.status == v || r.conclusion.as_deref() == Some(v))
+					})
+					.collect();
+				runs.sort_by(|a, b| (&b.created_at, b.id).cmp(&(&a.created_at, a.id)));
+				let items = runs.into_iter().map(|r| self.run_json(r)).collect();
+				let size = q(&query, "per_page")
+					.and_then(|n| n.parse().ok())
+					.unwrap_or(self.page_size)
+					.clamp(1, 100);
+				self.page_of(size, &path, &query, items, Some("workflow_runs"))
 			}
 			(Method::Get, ["actions", "artifacts", id, "zip"]) => {
 				let id: u64 = id.parse().unwrap_or(0);
