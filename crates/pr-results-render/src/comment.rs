@@ -7,19 +7,21 @@ use pr_results_core::{Safe, Status};
 
 use crate::blocks::{
 	failure_lines, flaky_lines, footer, marker_line, other_head, other_row, other_row_labelled,
-	section_label, section_title, table_head, table_row, TITLE_CHARS,
+	section_label, section_title, slowest_block, slowest_overall, table_head, table_row,
+	TITLE_CHARS,
 };
 use crate::budget::{fit, Plan};
+use crate::guided::{self, Mood, Tally};
 use crate::text::{big, cat, count, forgejo_inert, noun, num, t, Doc};
-use crate::view::{entries, is_failure, Counts, Entry, SectionInfo, Verdict};
+use crate::view::{entries, is_failure, nextest_command, Counts, Entry, SectionInfo, Verdict};
 use crate::wording;
-use crate::{CheckState, Comment, Input, Options, OtherCheck, RunContext, Symbols, Target};
+use crate::{CheckState, Comment, Input, Options, OtherCheck, RunContext, Style, Symbols, Target};
 
 /// The heading line: `### Title: outcome`. The title is text from the settings file, so it goes
 /// through `Safe::text`, and the literal colon after it keeps it from joining the outcome. On
 /// Forgejo, which links a bare commit hash, `!12`, mathematics and `:emoji:` in ordinary text, a
 /// title that holds any of them goes in a code span instead.
-fn heading(target: Target, title: &str, outcome: Safe) -> Safe {
+fn heading(target: Target, title: &str, outcome: Safe, mark: Safe) -> Safe {
 	let shown = if title.trim().is_empty() {
 		t("Test results")
 	} else if target == Target::Forgejo && !forgejo_inert(title) {
@@ -27,13 +29,17 @@ fn heading(target: Target, title: &str, outcome: Safe) -> Safe {
 	} else {
 		Safe::text_max(title, TITLE_CHARS)
 	};
-	cat(&[t("### "), shown, t(": "), outcome])
+	cat(&[t("### "), mark, shown, t(": "), outcome])
 }
 
 /// `1 failure in 2 suites`, `All 696 passed`, `No results from 1 required suite`, and after any
 /// of them `, 1 other check failed` when another check on the commit did not pass.
 fn outcome(infos: &[SectionInfo<'_>], others: &[OtherCheck]) -> Safe {
-	let base = test_outcome(infos);
+	with_other_failures(test_outcome(infos), others)
+}
+
+/// `base`, then `, 1 other check needs attention` when another check failed or needs action.
+fn with_other_failures(base: Safe, others: &[OtherCheck]) -> Safe {
 	let failed = others
 		.iter()
 		.filter(|c| matches!(c.state, CheckState::Failed | CheckState::ActionRequired))
@@ -160,6 +166,9 @@ fn table(infos: &[SectionInfo<'_>], plan: &Plan, symbols: Symbols, doc: &mut Doc
 /// they were folded.
 const FOLD_OTHER_FROM: usize = 5;
 
+/// Slowest tests a guided comment lists.
+const GUIDED_SLOWEST: usize = 5;
+
 /// The most rows of other checks the table shows. The rest are counted under it, least pressing
 /// last, so what needs attention is never the part that is cut.
 const OTHER_ROWS: usize = 50;
@@ -170,6 +179,7 @@ fn other_checks_table(
 	checks: &[OtherCheck],
 	plan: &Plan,
 	symbols: Symbols,
+	guided: bool,
 	doc: &mut Doc,
 ) -> Option<u64> {
 	if checks.is_empty() {
@@ -188,8 +198,19 @@ fn other_checks_table(
 		.filter(|c| !(fold && c.state == CheckState::Passed))
 		.collect();
 
+	// A guided comment folds a table that holds nothing to act on into its summary line.
+	let all_passed = guided && checks.iter().all(|c| c.state == CheckState::Passed);
 	doc.blank();
-	doc.line(t("#### Other checks"));
+	if all_passed {
+		doc.line(t("<details>"));
+		doc.line(cat(&[
+			t("<summary>Other checks: "),
+			count(big(checks.len())),
+			t(" passed</summary>"),
+		]));
+	} else {
+		doc.line(t("#### Other checks"));
+	}
 	doc.blank();
 	for line in other_head() {
 		doc.line(line);
@@ -212,6 +233,10 @@ fn other_checks_table(
 			noun(left, " more check.", " more checks."),
 		]));
 	}
+	if all_passed {
+		doc.blank();
+		doc.line(t("</details>"));
+	}
 	fold.then(|| big(passing))
 }
 
@@ -224,12 +249,20 @@ fn render(
 ) -> Safe {
 	let o: &Options = i.options;
 	let target = i.ctx.target;
+	let guided = o.style == Style::Guided;
+	let tally = Tally::of(infos, i.other_checks);
+	let mood = tally.mood();
 	let mut doc = Doc::new();
 	doc.line(marker_line(i.ctx));
 	doc.line(heading(
 		i.ctx.target,
 		i.title,
 		outcome(infos, i.other_checks),
+		if guided {
+			guided::heading_mark(o.symbols, mood)
+		} else {
+			Safe::default()
+		},
 	));
 	let mut total = Counts::default();
 	for info in infos {
@@ -237,9 +270,20 @@ fn render(
 	}
 	if plan.minimal {
 		doc.block(totals_line(&total, infos.len()));
+		if let Some(line) = guided::other_checks_line(i.other_checks) {
+			doc.block(line);
+		}
 		doc.block(t(wording::minimal_note(target)));
 		doc.block(footer(i.ctx));
 		return doc.build();
+	}
+
+	if guided {
+		let blocks = guided::opening(&tally, infos, i.other_checks, o, target == Target::GitHub);
+		for lines in blocks {
+			doc.blank();
+			doc.lines(lines);
+		}
 	}
 
 	doc.blank();
@@ -253,7 +297,7 @@ fn render(
 		]));
 	}
 
-	let others_folded = other_checks_table(i.other_checks, plan, o.symbols, &mut doc);
+	let others_folded = other_checks_table(i.other_checks, plan, o.symbols, guided, &mut doc);
 
 	let titles: Vec<&str> = i.sections.iter().map(|s| s.title).collect();
 	let multi = (titles.len() > 1).then_some(titles.as_slice());
@@ -265,6 +309,12 @@ fn render(
 		doc.block(t("#### Failures"));
 		for (k, e) in failures.iter().take(shown).enumerate() {
 			doc.blank();
+			let command = guided
+				.then(|| {
+					let prefix = i.sections.get(e.section).and_then(|s| s.run_locally);
+					nextest_command(prefix, e.suite, e.case)
+				})
+				.flatten();
 			let (lines, body) = failure_lines(
 				k + 1,
 				m,
@@ -272,6 +322,7 @@ fn render(
 				section_title(multi, e),
 				plan.excerpt_lines,
 				target,
+				command.as_ref(),
 			);
 			excerpts_cut |= plan.excerpt_lines < o.excerpt_lines && body > plan.excerpt_lines;
 			doc.lines(lines);
@@ -301,6 +352,18 @@ fn render(
 		} else {
 			doc.blank();
 			doc.lines(flaky_lines(flaky, multi, o.max_failures, o.symbols));
+		}
+	}
+
+	if guided {
+		let rows = slowest_overall(i.sections, GUIDED_SLOWEST);
+		if !rows.is_empty() {
+			if plan.slowest {
+				doc.blank();
+				doc.lines(slowest_block(&rows, multi));
+			} else {
+				notes.push(t(wording::slowest_left_out(target)));
+			}
 		}
 	}
 
@@ -339,10 +402,20 @@ fn render(
 }
 
 pub(crate) fn comment(i: &Input<'_>) -> Comment {
+	let visible = guided::visible_others(i.sections, i.other_checks);
+	let shown = Input {
+		other_checks: &visible,
+		..i.clone()
+	};
+	let i = &shown;
 	let infos: Vec<SectionInfo<'_>> = i.sections.iter().map(SectionInfo::new).collect();
 	let nothing = infos.iter().all(|s| s.verdict == Verdict::NoResults);
 	if nothing && !infos.iter().any(|s| s.section.required) {
-		return no_results(i.ctx, i.title);
+		return if i.options.style == Style::Guided {
+			no_results_guided(i)
+		} else {
+			no_results(i.ctx, i.title)
+		};
 	}
 	let failures = entries(i.sections, is_failure);
 	let flaky = entries(i.sections, |s| s == Status::Flaky);
@@ -355,9 +428,63 @@ pub(crate) fn comment(i: &Input<'_>) -> Comment {
 pub(crate) fn no_results(ctx: &RunContext, title: &str) -> Comment {
 	let mut doc = Doc::new();
 	doc.line(marker_line(ctx));
-	doc.line(heading(ctx.target, title, t("No results")));
+	doc.line(heading(ctx.target, title, t("No results"), Safe::default()));
 	doc.block(t("No results were uploaded for this run."));
 	doc.block(footer(ctx));
+	Comment {
+		body: doc.build(),
+		steps_taken: Vec::new(),
+	}
+}
+
+/// The guided comment for a run that uploaded nothing: what to look at, and the other checks.
+fn no_results_guided(i: &Input<'_>) -> Comment {
+	let o = i.options;
+	let tally = Tally::of(&[], i.other_checks);
+	let mood = Mood::NoTests;
+	let mut doc = Doc::new();
+	doc.line(marker_line(i.ctx));
+	doc.line(heading(
+		i.ctx.target,
+		i.title,
+		with_other_failures(t("No results"), i.other_checks),
+		guided::heading_mark(o.symbols, mood),
+	));
+	let mut paragraphs = Vec::new();
+	if o.mascot {
+		paragraphs.push(guided::mascot(mood));
+	}
+	paragraphs.push(t(
+		"No test results arrived for this run, so there are no tests to show.",
+	));
+	if o.alerts && i.ctx.target == Target::GitHub {
+		doc.blank();
+		doc.lines(guided::alert(mood, &paragraphs));
+	} else {
+		for p in paragraphs {
+			doc.block(p);
+		}
+	}
+	let bullets = guided::attention_lines(&[], i.other_checks, o.symbols);
+	if !bullets.is_empty() {
+		doc.blank();
+		doc.lines(bullets);
+	}
+	doc.block(t(
+		"The test jobs may have stopped before their upload step. An upload step with `if: always()` still runs after a test fails.",
+	));
+	if tally.other_running > 0 {
+		doc.block(cat(&[
+			count(tally.other_running),
+			noun(
+				tally.other_running,
+				" other check is still running.",
+				" other checks are still running.",
+			),
+		]));
+	}
+	other_checks_table(i.other_checks, &Plan::start(o), o.symbols, true, &mut doc);
+	doc.block(footer(i.ctx));
 	Comment {
 		body: doc.build(),
 		steps_taken: Vec::new(),

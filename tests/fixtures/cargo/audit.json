@@ -1,0 +1,122 @@
+{
+  "database": {
+    "advisory-count": 912,
+    "last-commit": "6f1c2d",
+    "last-updated": "2026-11-10T00:00:00+00:00"
+  },
+  "lockfile": {
+    "dependency-count": 312
+  },
+  "settings": {
+    "target_arch": [],
+    "target_os": [],
+    "severity": null,
+    "ignore": [],
+    "informational_warnings": [
+      "unmaintained"
+    ]
+  },
+  "vulnerabilities": {
+    "found": true,
+    "count": 2,
+    "list": [
+      {
+        "advisory": {
+          "id": "RUSTSEC-2020-0071",
+          "package": "time",
+          "title": "Potential segfault in the time crate",
+          "description": "Unix-like operating systems may segfault due to dereferencing a dangling pointer.\nThe issue is in the use of localtime_r.",
+          "date": "2020-11-18",
+          "aliases": [
+            "CVE-2020-26235"
+          ],
+          "categories": [
+            "code-execution"
+          ],
+          "url": "https://github.com/time-rs/time/issues/293"
+        },
+        "versions": {
+          "patched": [
+            ">=0.2.23"
+          ],
+          "unaffected": [
+            "=0.2.0"
+          ]
+        },
+        "package": {
+          "name": "time",
+          "version": "0.1.45",
+          "source": "registry+https://github.com/rust-lang/crates.io-index"
+        }
+      },
+      {
+        "advisory": {
+          "id": "RUSTSEC-2020-0071",
+          "package": "time",
+          "title": "Potential segfault in the time crate",
+          "description": "Same advisory listed again for another copy.",
+          "url": "https://github.com/time-rs/time/issues/293"
+        },
+        "versions": {
+          "patched": [
+            ">=0.2.23"
+          ],
+          "unaffected": []
+        },
+        "package": {
+          "name": "time",
+          "version": "0.1.45"
+        }
+      },
+      {
+        "advisory": {
+          "id": "RUSTSEC-2022-0013",
+          "package": "regex",
+          "title": "Regexes with large repetitions on empty sub-expressions take a very long time to parse",
+          "description": "Denial of service.",
+          "url": "https://github.com/rust-lang/regex/security/advisories/GHSA-m5pq-gvj9-9vr8"
+        },
+        "versions": {
+          "patched": [
+            ">=1.5.5"
+          ],
+          "unaffected": []
+        },
+        "package": {
+          "name": "regex",
+          "version": "1.5.4"
+        }
+      }
+    ]
+  },
+  "warnings": {
+    "unmaintained": [
+      {
+        "kind": "unmaintained",
+        "package": {
+          "name": "atty",
+          "version": "0.2.14"
+        },
+        "advisory": {
+          "id": "RUSTSEC-2021-0145",
+          "package": "atty",
+          "title": "Potential unaligned read",
+          "description": "On windows, atty dereferences a potentially unaligned pointer.\nIt is unmaintained.",
+          "url": "https://github.com/softprops/atty/issues/50"
+        },
+        "versions": null
+      }
+    ],
+    "yanked": [
+      {
+        "kind": "yanked",
+        "package": {
+          "name": "foo",
+          "version": "1.0.0"
+        },
+        "advisory": null,
+        "versions": null
+      }
+    ]
+  }
+}

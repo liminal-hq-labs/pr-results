@@ -12,8 +12,8 @@ use std::io::Read;
 use std::path::Path;
 
 use pr_results_core::{
-	parse_junit_in, Flavour, Glob, Limits as ParseLimits, RepoSlug, Report, RunId, ServerUrl, Sha,
-	Suite,
+	parse_report, Flavour, Glob, InputFormat, Limits as ParseLimits, RepoSlug, Report, RunId,
+	ServerUrl, Severity, Sha, Suite,
 };
 use pr_results_render::{check, comment, Conclusion, Input, RunContext, Section, Target};
 
@@ -45,6 +45,8 @@ struct Owned {
 	check_name: String,
 	required: bool,
 	suites: Vec<Suite>,
+	run_locally: Option<String>,
+	job: Option<String>,
 }
 
 pub(crate) fn render(a: &RenderArgs, io: &mut Streams<'_>) -> Result<u8, CliError> {
@@ -66,6 +68,8 @@ pub(crate) fn render(a: &RenderArgs, io: &mut Streams<'_>) -> Result<u8, CliErro
 			required: s.required,
 			suites: &s.suites,
 			inputs_skipped: 0,
+			run_locally: s.run_locally.as_deref(),
+			job: s.job.as_deref(),
 		})
 		.collect();
 	let input = Input {
@@ -156,6 +160,8 @@ fn sections(a: &RenderArgs, settings: &Settings, title: &str) -> Result<Vec<Owne
 			check_name: config::default_check_name(title, "tests"),
 			required: false,
 			suites: Vec::new(),
+			run_locally: None,
+			job: None,
 		}];
 		reports = vec![Report::default()];
 		flavours = vec![a.flavour.unwrap_or(Flavour::Auto)];
@@ -171,6 +177,8 @@ fn sections(a: &RenderArgs, settings: &Settings, title: &str) -> Result<Vec<Owne
 					.unwrap_or_else(|| config::default_check_name(title, &s.name)),
 				required: s.required,
 				suites: Vec::new(),
+				run_locally: s.run_locally.clone(),
+				job: s.job.clone(),
 			})
 			.collect();
 		reports = settings.suites.iter().map(|_| Report::default()).collect();
@@ -199,7 +207,13 @@ fn sections(a: &RenderArgs, settings: &Settings, title: &str) -> Result<Vec<Owne
 			.suites
 			.get(index)
 			.and_then(|s| s.path_prefix.as_ref());
-		let parsed = parse_junit_in(&bytes, flavour, &limits, prefix)
+		let (format, fail_on) = settings
+			.suites
+			.get(index)
+			.map_or((InputFormat::Junit, Severity::Warning), |s| {
+				(s.format, s.fail_on)
+			});
+		let parsed = parse_report(&bytes, format, flavour, &limits, prefix, fail_on)
 			.map_err(|e| CliError::usage(format!("{}: {e}", path.display())))?;
 		if let Some(report) = reports.get_mut(index) {
 			report.suites.extend(parsed.suites);

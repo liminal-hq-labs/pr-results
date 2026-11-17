@@ -571,6 +571,8 @@ fn input_borrows_only_what_it_needs() {
 		required: false,
 		suites: &suites,
 		inputs_skipped: 0,
+		run_locally: None,
+		job: None,
 	}];
 	let options = Options::default();
 	let input = Input {

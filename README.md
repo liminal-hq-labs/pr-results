@@ -16,13 +16,13 @@ pr-results reads the test and check results your CI produces and posts them to t
 
 - A pull request that runs several suites and should get one calm comment, not one bot comment per suite.
 - Pull requests from forks and Dependabot, where a test job's read-only token cannot post results, and the publisher runs afterwards through `workflow_run` instead.
-- A project that runs shell steps, where a red job should name the step that broke and how long each step took.
-- A reviewer who wants the failing file and line annotated in the diff, and flaky tests kept apart from real failures.
+- A project that runs shell steps, where a red job should name the step that broke and how long each step took, and a format, lint or audit job whose comment should say why it failed (`pr-results wrap`).
+- A reviewer who wants the failing file and line annotated in the diff, and flaky tests kept apart from real failures, and static-analysis findings read the same way, from SARIF or straight from `cargo clippy` and `cargo audit`.
 - An owner who wants every string from a test report escaped by one audited path, with the publisher pinned to a commit.
 
 ## What the comment will look like
 
-This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The example illustrates the layout; the publisher has also run on real pull requests.
+This is a **mock** of the comment in the plain style, written by hand in the shape of the renderer's output to show the layout. The example illustrates the layout; the publisher has also run on real pull requests.
 
 > ### Example checks: 1 failure in 2 suites
 >
@@ -44,6 +44,8 @@ This is a **mock** of the comment, written by hand in the shape of the renderer'
 > - `Rust tests` › `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
 
 In the real comment each failure is a `<details open>` block and the flaky list is a collapsed `<details>`.
+
+The default, **guided**, style adds a summary in plain sentences, a list of what needs attention, a command to run a failed nextest test again and the slowest tests. The **enhanced** style adds emoji, a line from Jax, a progress bar and GitHub alert blocks, each of which is a setting of its own. **Plain** is the table, the failures and the footer. See [docs/adopting.md](docs/adopting.md#comment-styles).
 
 The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks-like).
 

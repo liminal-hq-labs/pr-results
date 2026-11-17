@@ -18,6 +18,7 @@ pub enum Command {
 	Publish(PublishArgs),
 	Render(RenderArgs),
 	ValidateConfig(PathBuf),
+	Wrap(WrapArgs),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +40,25 @@ pub struct RenderArgs {
 	pub flavour: Option<Flavour>,
 	pub files: Vec<PathBuf>,
 	pub out: Option<PathBuf>,
+}
+
+/// The most lines `wrap` keeps from either end of a command's output.
+pub const MAX_WRAP_LINES: usize = 200;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WrapArgs {
+	pub out: PathBuf,
+	/// The suite's name; the command's program when left out.
+	pub name: Option<String>,
+	/// The step's title; the program and its first word when left out.
+	pub step: Option<String>,
+	/// Lines kept from the start of the output.
+	pub head: usize,
+	/// Lines kept from the end of the output.
+	pub tail: usize,
+	/// Record only the status and the time, never the output.
+	pub no_output: bool,
+	pub command: Vec<String>,
 }
 
 /// A mistake in the arguments. The text may quote an argument, so it is printed through
@@ -91,6 +111,7 @@ pub fn parse(args: &[String]) -> Result<Command, UsageError> {
 		Some("publish") => publish(&mut cursor),
 		Some("render") => render(&mut cursor),
 		Some("validate-config") => validate_config(&mut cursor),
+		Some("wrap") => wrap(&mut cursor),
 		Some("collect") => Err(usage(
 			"collect is not available yet: render and publish read the files themselves",
 		)),
@@ -172,6 +193,66 @@ fn render(c: &mut Cursor<'_>) -> Result<Command, UsageError> {
 	Ok(Command::Render(a))
 }
 
+fn wrap(c: &mut Cursor<'_>) -> Result<Command, UsageError> {
+	let mut out: Option<PathBuf> = None;
+	let mut a = WrapArgs {
+		out: PathBuf::new(),
+		name: None,
+		step: None,
+		head: 5,
+		tail: 40,
+		no_output: false,
+		command: Vec::new(),
+	};
+	let lines = |flag: &str, text: &str| {
+		text.parse::<usize>()
+			.ok()
+			.filter(|n| *n <= MAX_WRAP_LINES)
+			.ok_or_else(|| {
+				usage(format!(
+					"{flag} must be a whole number from 0 to {MAX_WRAP_LINES}"
+				))
+			})
+	};
+	let title = |flag: &str, text: &str| {
+		if text.trim().is_empty() || text.chars().any(char::is_control) {
+			Err(usage(format!("{flag} must be some printable text")))
+		} else {
+			Ok(text.to_owned())
+		}
+	};
+	while let Some(arg) = c.take() {
+		let (flag, inline) = split_flag(arg);
+		match flag {
+			"--" => {
+				while let Some(word) = c.take() {
+					a.command.push(word.to_owned());
+				}
+			}
+			"--out" => out = Some(PathBuf::from(c.value(flag, inline)?)),
+			"--name" => a.name = Some(title(flag, c.value(flag, inline)?)?),
+			"--step" => a.step = Some(title(flag, c.value(flag, inline)?)?),
+			"--head" => a.head = lines(flag, c.value(flag, inline)?)?,
+			"--tail" => a.tail = lines(flag, c.value(flag, inline)?)?,
+			"--no-output" if inline.is_none() => a.no_output = true,
+			"--help" | "-h" => return Ok(Command::Help),
+			_ if arg.starts_with('-') => {
+				return Err(usage(format!("unknown argument for wrap: {arg}")))
+			}
+			_ => {
+				return Err(usage(
+					"wrap needs `--` before the command, as in `wrap --out FILE -- cargo test`",
+				))
+			}
+		}
+	}
+	a.out = out.ok_or_else(|| usage("wrap needs --out FILE"))?;
+	if a.command.is_empty() {
+		return Err(usage("wrap needs a command after `--`"));
+	}
+	Ok(Command::Wrap(a))
+}
+
 fn validate_config(c: &mut Cursor<'_>) -> Result<Command, UsageError> {
 	let mut path: Option<PathBuf> = None;
 	while let Some(arg) = c.take() {
@@ -200,6 +281,56 @@ mod tests {
 
 	fn args(list: &[&str]) -> Vec<String> {
 		list.iter().map(|s| (*s).to_owned()).collect()
+	}
+
+	#[test]
+	fn wrap_takes_its_flags_then_the_command_after_a_double_dash() {
+		let Command::Wrap(w) = parse(&args(&[
+			"wrap",
+			"--out",
+			"r/c.xml",
+			"--name=Clippy",
+			"--head",
+			"3",
+			"--tail=9",
+			"--no-output",
+			"--",
+			"cargo",
+			"clippy",
+			"--",
+			"-D",
+			"warnings",
+		]))
+		.unwrap() else {
+			panic!("wrap")
+		};
+		assert_eq!(w.out, PathBuf::from("r/c.xml"));
+		assert_eq!(
+			(w.name.as_deref(), w.head, w.tail, w.no_output),
+			(Some("Clippy"), 3, 9, true)
+		);
+		assert_eq!(w.command, ["cargo", "clippy", "--", "-D", "warnings"]);
+		let Command::Wrap(d) = parse(&args(&["wrap", "--out", "x", "--", "true"])).unwrap() else {
+			panic!("wrap")
+		};
+		assert_eq!(
+			(d.head, d.tail, d.no_output, d.name, d.step),
+			(5, 40, false, None, None)
+		);
+	}
+
+	#[test]
+	fn wrap_refuses_what_it_cannot_run() {
+		let err = |list: &[&str]| parse(&args(list)).unwrap_err().0;
+		assert!(err(&["wrap", "--", "true"]).contains("--out"));
+		assert!(err(&["wrap", "--out", "x"]).contains("a command"));
+		assert!(err(&["wrap", "--out", "x", "--"]).contains("a command"));
+		assert!(err(&["wrap", "--out", "x", "cargo", "test"]).contains("before the command"));
+		assert!(err(&["wrap", "--out", "x", "--bogus", "--", "true"]).contains("unknown argument"));
+		assert!(err(&["wrap", "--out", "x", "--head", "201", "--", "true"]).contains("0 to 200"));
+		assert!(err(&["wrap", "--out", "x", "--tail", "-1", "--", "true"]).contains("0 to 200"));
+		assert!(err(&["wrap", "--out", "x", "--name", " ", "--", "true"]).contains("printable"));
+		assert!(err(&["wrap", "--out", "x", "--step", "a\nb", "--", "true"]).contains("printable"));
 	}
 
 	#[test]

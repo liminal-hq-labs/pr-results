@@ -1,0 +1,21 @@
+check 0: 3 annotations, 0 not shown
+- failure crates/pr-results-forge/src/publish.rs:454-454
+  title: clippy::too_many_arguments
+  message: this function has too many arguments (8/7)
+    error: this function has too many arguments (8/7)
+       --> crates/pr-results-forge/src/publish.rs:454:1
+        |
+    454 | fn finish<H: Host>(
+        | ^^^^^^^^^^^^^^^^^^
+        |
+        = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#too_many_arguments
+- failure src/lib.rs:12-12
+  title: clippy::needless_return
+  message: unneeded `return` statement
+    warning: unneeded `return` statement
+      --> src/lib.rs:12:5
+- failure src/main.rs:8-8
+  title: E0308
+  message: mismatched types
+    error[E0308]: mismatched types
+     --> src/main.rs:8:9

@@ -41,6 +41,8 @@ impl Degradation {
 /// What a render shows, cumulatively reduced by the steps taken so far.
 #[derive(Debug, Clone)]
 pub(crate) struct Plan {
+	/// The slowest tests of a guided comment are listed.
+	pub slowest: bool,
 	/// Passing other checks as one row.
 	pub collapse_other_checks: bool,
 	/// Flaky tests as a count only.
@@ -58,6 +60,7 @@ pub(crate) struct Plan {
 impl Plan {
 	pub fn start(options: &Options) -> Self {
 		Self {
+			slowest: true,
 			collapse_other_checks: false,
 			extras_as_counts: false,
 			excerpt_lines: options.excerpt_lines,
@@ -70,7 +73,10 @@ impl Plan {
 	fn apply(&mut self, step: Degradation) {
 		match step {
 			Degradation::OtherChecksCollapsed => self.collapse_other_checks = true,
-			Degradation::ExtrasToCounts => self.extras_as_counts = true,
+			Degradation::ExtrasToCounts => {
+				self.extras_as_counts = true;
+				self.slowest = false;
+			}
 			Degradation::Excerpt8 => self.excerpt_lines = self.excerpt_lines.min(8),
 			Degradation::Excerpt3 => self.excerpt_lines = self.excerpt_lines.min(3),
 			Degradation::Failures20 => self.max_failures = self.max_failures.min(20),

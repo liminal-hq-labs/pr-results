@@ -1,0 +1,51 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "@everyone GH-123 <img src=x onerror=alert(1)>" } },
+      "results": [
+        {
+          "ruleId": "@owner/team #1 `x` | pipe",
+          "level": "error",
+          "message": { "text": "[y](https://example.invalid) <script>alert(1)</script> GH-123 \u202e reversed" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "../../etc/passwd" }, "region": { "startLine": 1 } } }
+          ]
+        },
+        {
+          "ruleId": "absolute",
+          "level": "error",
+          "message": { "text": "an absolute path cannot be mapped to the commit" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "file:///home/runner/work/app/app/src/a.rs" }, "region": { "startLine": 4 } } }
+          ]
+        },
+        {
+          "ruleId": "url",
+          "level": "error",
+          "message": { "text": "a url" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "https://example.invalid/x.rs" }, "region": { "startLine": 4 } } }
+          ]
+        },
+        {
+          "ruleId": "bad-lines",
+          "level": "error",
+          "message": { "text": "a line of zero and a line that does not fit" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "src/x.rs" }, "region": { "startLine": 0 } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "src/y.rs" }, "region": { "startLine": 99999999999 } } }
+          ]
+        },
+        {
+          "ruleId": "ok",
+          "level": "error",
+          "message": { "text": "a real location" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "src/ok.rs" }, "region": { "startLine": 7 } } }
+          ]
+        }
+      ]
+    }
+  ]
+}

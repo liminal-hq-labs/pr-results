@@ -15,8 +15,8 @@ use std::cell::Cell;
 use std::fmt;
 
 use pr_results_core::{
-	parse_junit_in, CommentKey, Flavour, Glob, Limits, Marker, RepoPath, Report, RunId, Safe,
-	ServerUrl, Sha, Status, Suite, TrustedUrl,
+	parse_report, CommentKey, Flavour, Glob, InputFormat, Limits, Marker, RepoPath, Report, RunId,
+	Safe, ServerUrl, Severity, Sha, Status, Suite, TrustedUrl,
 };
 use pr_results_render::{
 	check_with_paths, comment, job_summary, status, CheckState, Comment, Conclusion, Input,
@@ -67,6 +67,14 @@ pub struct SectionPlan {
 	pub flavour: Flavour,
 	/// Put in front of every path the section's reports name.
 	pub path_prefix: Option<RepoPath>,
+	/// What a command to run a failed test again starts with; see `Section::run_locally`.
+	pub run_locally: Option<String>,
+	/// The name of the job the section's results come from; see `Section::job`.
+	pub job: Option<String>,
+	/// How the section's files are written, and (for a findings format) how serious a finding
+	/// has to be to fail.
+	pub format: InputFormat,
+	pub fail_on: Severity,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +86,10 @@ pub struct Plan {
 	pub post_comment: bool,
 	/// Whether to list the commit's other check runs in the comment (`comment.other_checks`).
 	pub other_checks: bool,
+	/// Checks whose names match any of these are left out of the table.
+	pub other_checks_ignore: Vec<Glob>,
+	/// How to run a named check on your own machine, shown beside it when it fails.
+	pub check_commands: Vec<(String, String)>,
 	/// The run this publisher is itself running in, when it is not the run being reported on. Its
 	/// own job is still going while it reads, so listing it would show a check that is never done.
 	pub own_run: Option<RunId>,
@@ -106,6 +118,8 @@ impl Plan {
 			key,
 			post_comment: true,
 			other_checks: false,
+			other_checks_ignore: Vec::new(),
+			check_commands: Vec::new(),
 			own_run: None,
 			sections,
 			options: Options::default(),
@@ -491,6 +505,8 @@ fn finish<H: Host>(
 			required: p.required,
 			suites,
 			inputs_skipped: *skipped,
+			run_locally: p.run_locally.as_deref(),
+			job: p.job.as_deref(),
 		})
 		.collect();
 	let others = other_checks(gh, run, plan, artifacts.is_some(), &mut report);
@@ -630,11 +646,13 @@ fn load<H: Host>(
 				.iter()
 				.filter(|e| section.files.iter().any(|g| g.is_match(&e.name)))
 			{
-				match parse_junit_in(
+				match parse_report(
 					&entry.data,
+					section.format,
 					section.flavour,
 					&plan.parse,
 					section.path_prefix.as_ref(),
+					section.fail_on,
 				) {
 					Ok(parsed) => out.suites.extend(parsed.suites),
 					Err(_) => {
@@ -760,10 +778,16 @@ fn other_checks<H: Host>(
 	listed
 		.iter()
 		.filter(|c| !c.ours && !plan.own_run.is_some_and(|own| in_run(c, own)))
+		.filter(|c| !plan.other_checks_ignore.iter().any(|g| g.is_match(&c.name)))
 		.take(MAX_OTHER_CHECKS)
 		.map(|c| OtherCheck {
 			name: c.name.clone(),
 			state: state_of(c),
+			command: plan
+				.check_commands
+				.iter()
+				.find(|(name, _)| *name == c.name)
+				.map(|(_, command)| command.clone()),
 		})
 		.collect()
 }

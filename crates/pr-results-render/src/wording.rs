@@ -81,3 +81,13 @@ pub(crate) fn other_checks_combined(target: Target) -> &'static str {
 		Target::Forgejo => " passing checks were combined into one row to fit the size limit.",
 	}
 }
+
+/// After a guided comment's list of the slowest tests was left out.
+pub(crate) fn slowest_left_out(target: Target) -> &'static str {
+	match target {
+		Target::GitHub => {
+			"The list of slowest tests was left out to fit GitHub's size limit. Each check run lists its ten slowest."
+		}
+		Target::Forgejo => "The list of slowest tests was left out to fit the size limit.",
+	}
+}

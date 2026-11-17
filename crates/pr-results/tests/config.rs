@@ -18,7 +18,7 @@ use pr_results::config::{
 };
 use pr_results_core::Flavour;
 use pr_results_forge::HostKind;
-use pr_results_render::Symbols;
+use pr_results_render::{Style, Symbols};
 
 fn err(text: &str) -> String {
 	Settings::parse(text).unwrap_err().to_string()
@@ -31,7 +31,9 @@ fn an_empty_file_is_the_defaults() {
 	assert_eq!(s.key.as_str(), "ci");
 	assert_eq!(s.mode, CommentMode::Always);
 	assert_eq!((s.max_failures, s.excerpt_lines), (20, 20));
-	assert_eq!(s.symbols, Symbols::Text);
+	assert_eq!(s.style, Style::Guided);
+	assert_eq!(s.symbols, Symbols::Glyphs);
+	assert_eq!((s.mascot, s.progress, s.alerts), (false, false, false));
 	assert_eq!((s.max_annotations, s.flaky_annotations), (50, false));
 	assert!(s.suites.is_empty());
 	assert_eq!(s.limits.max_files, 500);
@@ -161,8 +163,8 @@ fn a_value_of_the_wrong_kind_or_size_is_named() {
 		"line 1: `suite` must be an array of tables, `[[suite]]`"
 	);
 	assert_eq!(
-		err("[comment]\nsymbols = \"emoji\""),
-		"line 2: `comment.symbols` must be \"text\" or \"glyphs\""
+		err("[comment]\nsymbols = \"sparkles\""),
+		"line 2: `comment.symbols` must be \"text\", \"glyphs\" or \"emoji\""
 	);
 	assert!(err("[comment]\nkey = \"Bad Key\"").starts_with("line 2: `comment.key` must be"));
 	assert!(err("[limits]\nmax_files = 0").contains("from 1 to 10000"));
@@ -220,7 +222,8 @@ fn only_junit_is_a_format_and_only_known_flavours_exist() {
 	assert!(Settings::parse(&suite("format = \"junit\"")).is_ok());
 	assert!(err(&suite("format = \"steps-times\"")).contains("not supported"));
 	assert!(err(&suite("format = \"steps-json\"")).contains("not supported"));
-	assert!(err(&suite("format = \"tap\"")).contains("must be \"junit\""));
+	assert!(err(&suite("format = \"tap\""))
+		.contains("must be \"junit\", \"sarif\", \"clippy-json\" or \"cargo-audit-json\""));
 	assert!(err(&suite("flavour = \"mocha\"")).contains("`suite.flavour` must be"));
 	for f in [
 		"auto",

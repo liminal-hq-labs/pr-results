@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "clippy",
+          "version": "0.1.98",
+          "informationUri": "https://rust-lang.github.io/rust-clippy/",
+          "rules": [
+            { "id": "clippy::too_many_arguments", "shortDescription": { "text": "too many arguments" } }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "clippy::too_many_arguments",
+          "level": "error",
+          "message": { "text": "this function has too many arguments (8/7)" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "crates/pr-results-forge/src/publish.rs", "uriBaseId": "%SRCROOT%" },
+                "region": { "startLine": 454, "startColumn": 1 }
+              }
+            }
+          ],
+          "partialFingerprints": { "primaryLocationLineHash": "9f3c" }
+        },
+        {
+          "ruleId": "clippy::needless_return",
+          "level": "warning",
+          "message": { "text": "unneeded `return` statement" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "src/lib.rs" }, "region": { "startLine": 12 } } }
+          ]
+        },
+        {
+          "ruleId": "clippy::doc_markdown",
+          "level": "note",
+          "message": { "text": "item in documentation is missing backticks\nhelp: try `FooBar`" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "src/a%20b.rs" }, "region": { "startLine": 3 } } }
+          ]
+        }
+      ]
+    }
+  ]
+}

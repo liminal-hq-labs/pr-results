@@ -23,6 +23,7 @@ mod blocks;
 mod budget;
 mod check;
 mod comment;
+mod guided;
 mod text;
 mod view;
 mod wording;
@@ -66,13 +67,29 @@ pub struct Section<'a> {
 	pub suites: &'a [Suite],
 	/// Files that were found but could not be read or went over a limit.
 	pub inputs_skipped: usize,
+	/// What a command to run a failed test again starts with, from the settings. `None` is the
+	/// flavour's own (`cargo nextest run`) and an empty string turns the command off.
+	pub run_locally: Option<&'a str>,
+	/// The name of the job this suite's results come from, so that job's row in the table of other
+	/// checks can be left out when the suite already says the same.
+	pub job: Option<&'a str>,
 }
 
-/// Whether status words carry a glyph in front of them.
+/// Whether status words carry a mark in front of them: none, a plain glyph (✓ ✗ ↻ –) or an emoji.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Symbols {
 	Text,
 	Glyphs,
+	Emoji,
+}
+
+/// How much the comment says beyond its tables. Plain is the table, the failures and the footer.
+/// Guided adds a summary in fixed words, what needs attention, the slowest tests and a command to
+/// run a failed test again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Style {
+	Plain,
+	Guided,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +99,13 @@ pub struct Options {
 	/// Lines of each failure's body.
 	pub excerpt_lines: usize,
 	pub symbols: Symbols,
+	pub style: Style,
+	/// A line from Jax, the Liminal HQ otter, in fixed words. Guided style only.
+	pub mascot: bool,
+	/// A bar of the tests that passed. Guided style only.
+	pub progress: bool,
+	/// The summary in a GitHub alert block. Guided style on GitHub only.
+	pub alerts: bool,
 	/// Character limits, counted after escaping. Each is held to 65,535 when used, GitHub's own
 	/// limit for a check run's summary and text and just under its limit for a comment.
 	pub comment_limit: usize,
@@ -116,6 +140,10 @@ impl Default for Options {
 			max_failures: 20,
 			excerpt_lines: 20,
 			symbols: Symbols::Text,
+			style: Style::Plain,
+			mascot: false,
+			progress: false,
+			alerts: false,
 			comment_limit: 60_000,
 			summary_limit: 60_000,
 			text_limit: 60_000,
@@ -145,6 +173,8 @@ pub enum CheckState {
 pub struct OtherCheck {
 	pub name: String,
 	pub state: CheckState,
+	/// How to run the check on your own machine, from the settings. Trusted.
+	pub command: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,7 +195,7 @@ pub struct Input<'a> {
 pub enum Degradation {
 	/// Passing checks from other workflows as one row.
 	OtherChecksCollapsed,
-	/// Flaky tests as a count, not a list.
+	/// Flaky tests as a count, not a list, and no slowest tests.
 	ExtrasToCounts,
 	/// Failure excerpts of 8 lines.
 	Excerpt8,

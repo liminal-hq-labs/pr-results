@@ -117,6 +117,8 @@ fn failure_layout(ctx: &RunContext, title: &str, targets: &[String]) -> Option<S
 		required: false,
 		suites: &suites,
 		inputs_skipped: 0,
+		run_locally: None,
+		job: None,
 	}];
 	let input = Input {
 		ctx,
@@ -159,6 +161,8 @@ fn check_run_body(ctx: &RunContext, title: &str, targets: &[String]) -> Option<S
 		required: false,
 		suites: &suites,
 		inputs_skipped: 0,
+		run_locally: None,
+		job: None,
 	}];
 	let input = Input {
 		ctx,

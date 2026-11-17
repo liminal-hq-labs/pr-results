@@ -11,11 +11,12 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use pr_results_core::{
-	parse_junit, CommentKey, Flavour, Limits, RepoSlug, RunId, ServerUrl, Sha, Suite,
+	parse_audit_json, parse_clippy_json, parse_junit, parse_sarif, CommentKey, Flavour, Limits,
+	RepoSlug, RunId, ServerUrl, Severity, Sha, Suite,
 };
 use pr_results_render::{
 	check, comment, measure, status, CheckState, Comment, Conclusion, Degradation, Input, Level,
-	Options, OtherCheck, RunContext, Section, StatusState, Symbols, Target,
+	Options, OtherCheck, RunContext, Section, StatusState, Style, Symbols, Target,
 };
 
 pub const SHA: &str = "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334";
@@ -73,6 +74,34 @@ pub fn load(files: &[&str], flavour: Flavour) -> Vec<Suite> {
 	report.suites
 }
 
+/// The suites of SARIF fixtures, failing at `fail_on` and above.
+pub fn load_sarif(files: &[&str], fail_on: Severity) -> Vec<Suite> {
+	let mut report = pr_results_core::Report::default();
+	for file in files {
+		let bytes = std::fs::read(fixtures_dir().join(file)).unwrap();
+		let parsed = parse_sarif(&bytes, &Limits::default(), None, fail_on).unwrap();
+		report.suites.extend(parsed.suites);
+	}
+	report.merge_same_named();
+	report.suites
+}
+
+/// The suites of a `cargo clippy --message-format=json` fixture.
+pub fn load_clippy(file: &str, fail_on: Severity) -> Vec<Suite> {
+	let bytes = std::fs::read(fixtures_dir().join(file)).unwrap();
+	parse_clippy_json(&bytes, &Limits::default(), None, fail_on)
+		.unwrap()
+		.suites
+}
+
+/// The suites of a `cargo audit --json` fixture.
+pub fn load_audit(file: &str, fail_on: Severity) -> Vec<Suite> {
+	let bytes = std::fs::read(fixtures_dir().join(file)).unwrap();
+	parse_audit_json(&bytes, &Limits::default(), None, fail_on)
+		.unwrap()
+		.suites
+}
+
 pub fn parse_text(xml: &str, flavour: Flavour) -> Vec<Suite> {
 	let mut report = parse_junit(xml.as_bytes(), flavour, &Limits::default()).unwrap();
 	report.merge_same_named();
@@ -86,6 +115,8 @@ pub struct OwnedSection {
 	pub required: bool,
 	pub suites: Vec<Suite>,
 	pub inputs_skipped: usize,
+	pub run_locally: Option<String>,
+	pub job: Option<String>,
 }
 
 pub fn section(title: &str, required: bool, suites: Vec<Suite>) -> OwnedSection {
@@ -95,6 +126,8 @@ pub fn section(title: &str, required: bool, suites: Vec<Suite>) -> OwnedSection 
 		required,
 		suites,
 		inputs_skipped: 0,
+		run_locally: None,
+		job: None,
 	}
 }
 
@@ -134,6 +167,29 @@ impl Scenario {
 		self
 	}
 
+	/// The guided style, which is what the settings give when they say nothing.
+	pub fn guided(mut self) -> Self {
+		self.options.style = Style::Guided;
+		self.options.symbols = Symbols::Glyphs;
+		self
+	}
+
+	/// The guided style with emoji, Jax, the bar and the alert block.
+	pub fn enhanced(mut self) -> Self {
+		self = self.guided();
+		self.options.symbols = Symbols::Emoji;
+		self.options.mascot = true;
+		self.options.progress = true;
+		self.options.alerts = true;
+		self
+	}
+
+	/// The same scenario under another name, for the same input in another style.
+	pub fn named(mut self, name: &str) -> Self {
+		self.name = name.to_owned();
+		self
+	}
+
 	pub fn with_options(mut self, options: Options) -> Self {
 		self.options = options;
 		self
@@ -155,6 +211,8 @@ impl Scenario {
 				required: s.required,
 				suites: &s.suites,
 				inputs_skipped: s.inputs_skipped,
+				run_locally: s.run_locally.as_deref(),
+				job: s.job.as_deref(),
 			})
 			.collect();
 		let input = Input {
@@ -297,6 +355,7 @@ pub fn other(name: &str, state: CheckState) -> OtherCheck {
 	OtherCheck {
 		name: name.to_owned(),
 		state,
+		command: None,
 	}
 }
 
@@ -349,7 +408,11 @@ pub fn truncation_limits() -> Vec<(Degradation, usize)> {
 }
 
 pub fn truncation_limits_for(target: Target) -> Vec<(Degradation, usize)> {
-	let base = truncation_base_for(target);
+	limits_of(&truncation_base_for(target))
+}
+
+/// The same for any base scenario.
+pub fn limits_of(base: &Scenario) -> Vec<(Degradation, usize)> {
 	let mut found: Vec<(Degradation, usize)> = Vec::new();
 	let mut limit = usize::MAX;
 	for _ in 0..24 {
@@ -380,6 +443,73 @@ pub fn truncation_scenarios() -> Vec<Scenario> {
 			sc
 		})
 		.collect()
+}
+
+/// The truncation base in the guided style, with other checks so every step has something to cut.
+pub fn guided_truncation_base() -> Scenario {
+	let mut checks: Vec<OtherCheck> = (1..=6)
+		.map(|n| other(&format!("Job number {n} of the matrix"), CheckState::Passed))
+		.collect();
+	checks.push(other_with(
+		"Security audit",
+		CheckState::Failed,
+		"cargo audit",
+	));
+	let mut sc = truncation_base().guided().with_other_checks(checks);
+	sc.name = "guided-truncation-base".to_owned();
+	sc
+}
+
+pub fn guided_truncation_scenarios() -> Vec<Scenario> {
+	limits_of(&guided_truncation_base())
+		.into_iter()
+		.map(|(step, limit)| {
+			let mut sc = guided_truncation_base();
+			sc.name = format!("guided-truncated-{}", step.name());
+			sc.options.comment_limit = limit;
+			sc
+		})
+		.collect()
+}
+
+pub fn other_with(name: &str, state: CheckState, command: &str) -> OtherCheck {
+	OtherCheck {
+		name: name.to_owned(),
+		state,
+		command: Some(command.to_owned()),
+	}
+}
+
+/// The checks of a project with a few jobs: all of them passing but one.
+fn project_checks(audit: CheckState) -> Vec<OtherCheck> {
+	vec![
+		other("Format", CheckState::Passed),
+		other("Clippy (default)", CheckState::Passed),
+		other("Clippy (no-default-features)", CheckState::Passed),
+		other("Clippy (all-features)", CheckState::Passed),
+		other_with("Security audit", audit, "cargo audit"),
+	]
+}
+
+/// A nextest report with failing tests whose names are not safe to put in a command, and one that is.
+fn awkward_names() -> String {
+	let mut cases = String::new();
+	for name in [
+		"it_is_fine",
+		"quote'; echo hi; '",
+		"has space",
+		"back`tick`",
+		"dollar$(id)",
+		"line\nbreak",
+		"caf\u{e9}",
+		"test(=x) | test(=y)",
+	] {
+		let name = name.replace('&', "&amp;").replace('<', "&lt;");
+		cases.push_str(&format!(
+			"<testcase name=\"{name}\" classname=\"app\" time=\"0.2\"><failure message=\"boom\"/></testcase>"
+		));
+	}
+	format!("<testsuites><testsuite name=\"app\">{cases}</testsuite></testsuites>")
 }
 
 pub fn scenarios() -> Vec<Scenario> {
@@ -434,6 +564,7 @@ pub fn scenarios() -> Vec<Scenario> {
 	));
 
 	all.extend(truncation_scenarios());
+	all.extend(guided_truncation_scenarios());
 
 	let mut skipped_inputs = section("Playwright", false, Vec::new());
 	skipped_inputs.inputs_skipped = 2;
@@ -624,6 +755,289 @@ pub fn scenarios() -> Vec<Scenario> {
 			other("line one\nline two", CheckState::Passed),
 		]),
 	);
+
+	// The guided style: the same inputs again, with what it adds.
+	let pass = || {
+		section(
+			"Rust tests",
+			false,
+			load(&["nextest/pass.xml"], Flavour::Nextest),
+		)
+	};
+	let fail = || {
+		section(
+			"Rust tests",
+			false,
+			load(
+				&["nextest/fail.xml", "nextest/retries-exhausted.xml"],
+				Flavour::Nextest,
+			),
+		)
+	};
+	let flaky = || {
+		section(
+			"Rust tests",
+			false,
+			load(&["nextest/flaky.xml"], Flavour::Nextest),
+		)
+	};
+	let multi = || {
+		let mut skipped_inputs = section("Playwright", false, Vec::new());
+		skipped_inputs.inputs_skipped = 2;
+		vec![
+			section(
+				"Rust tests",
+				false,
+				load(&["nextest/pass.xml"], Flavour::Nextest),
+			),
+			section(
+				"Frontend tests",
+				false,
+				load(
+					&["vitest/pass.xml", "vitest/fail-with-stack.xml"],
+					Flavour::Vitest,
+				),
+			),
+			section(
+				"Desk steps",
+				true,
+				load(&["steps/step-fail.xml"], Flavour::Steps),
+			),
+			skipped_inputs,
+		]
+	};
+	let hostile_other = || {
+		vec![
+			other(
+				"@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe",
+				CheckState::Failed,
+			),
+			other_with(
+				"</details> > [!CAUTION]",
+				CheckState::ActionRequired,
+				"cargo test -- --nocapture",
+			),
+			other("line one\nline two", CheckState::Passed),
+		]
+	};
+	let hostile_title =
+		"@everyone GH-123 <img src=x onerror=alert(1)> [x](https://example.invalid)";
+	let mut with_job = fail();
+	with_job.job = Some("Tests".to_owned());
+	let mut guided = vec![
+		Scenario::new("guided-job-replaced", "Example checks", vec![with_job]).with_other_checks({
+			let mut checks = project_checks(CheckState::Failed);
+			checks.push(other("Tests", CheckState::Failed));
+			checks
+		}),
+		Scenario::new("guided-all-pass", "Example checks", vec![pass()])
+			.with_other_checks(project_checks(CheckState::Passed)),
+		Scenario::new("guided-failures", "Example checks", vec![fail()])
+			.with_other_checks(project_checks(CheckState::Failed)),
+		Scenario::new("guided-flaky", "Example checks", vec![flaky()]),
+		Scenario::new("guided-multiple-suites", "Example checks", multi())
+			.with_other_checks(project_checks(CheckState::Failed)),
+		Scenario::new(
+			"guided-no-results-optional",
+			"Example checks",
+			vec![section("Rust tests", false, Vec::new())],
+		)
+		.with_other_checks(vec![
+			other("Format", CheckState::Passed),
+			other("Docs build", CheckState::Running),
+			other_with("Security audit", CheckState::Failed, "cargo audit"),
+		]),
+		Scenario::new(
+			"guided-no-results-required",
+			"Example checks",
+			vec![section("Desk steps", true, Vec::new())],
+		),
+		Scenario::new(
+			"guided-hostile",
+			hostile_title,
+			vec![
+				section(
+					"@owner/team #1 | pipe",
+					false,
+					load(&["hostile/strings.xml"], Flavour::Generic),
+				),
+				section("GH", false, Vec::new()),
+			],
+		)
+		.with_other_checks(hostile_other()),
+		Scenario::new(
+			"guided-awkward-names",
+			"Example checks",
+			vec![section(
+				"Rust tests",
+				false,
+				parse_text(&awkward_names(), Flavour::Nextest),
+			)],
+		),
+		Scenario::new("guided-forgejo-failures", "Example checks", vec![fail()]).forgejo(),
+		Scenario::new(
+			"guided-forgejo-no-results",
+			"Example checks",
+			vec![section("Rust tests", false, Vec::new())],
+		)
+		.forgejo(),
+	];
+	for sc in &mut guided {
+		*sc = sc.clone().guided();
+		sc.checks = sc.target == Target::GitHub && sc.name != "guided-awkward-names";
+	}
+	all.extend(guided);
+
+	// Findings from a SARIF file, shown as the suite they are, with annotations in the check run.
+	all.push(
+		Scenario::new(
+			"sarif-findings",
+			"Example checks",
+			vec![section(
+				"Clippy",
+				false,
+				load_sarif(&["sarif/clippy.sarif"], Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"sarif-errors-only",
+			"Example checks",
+			vec![section(
+				"Clippy",
+				false,
+				load_sarif(&["sarif/clippy.sarif"], Severity::Error),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"sarif-clean-and-multi",
+			"Example checks",
+			vec![
+				section(
+					"Scanners",
+					false,
+					load_sarif(&["sarif/multi-run.sarif"], Severity::Warning),
+				),
+				section(
+					"Semgrep",
+					false,
+					load_sarif(&["sarif/clean.sarif"], Severity::Warning),
+				),
+			],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"sarif-hostile",
+			"Example checks",
+			vec![section(
+				"Scan",
+				false,
+				load_sarif(&["sarif/hostile.sarif"], Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
+
+	// What cargo writes itself: clippy's diagnostics and the audit's advisories.
+	all.push(
+		Scenario::new(
+			"cargo-clippy-findings",
+			"Example checks",
+			vec![section(
+				"Clippy",
+				false,
+				load_clippy("cargo/clippy.json", Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"cargo-audit-findings",
+			"Example checks",
+			vec![section(
+				"Audit",
+				false,
+				load_audit("cargo/audit.json", Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"cargo-audit-errors-only",
+			"Example checks",
+			vec![section(
+				"Audit",
+				false,
+				load_audit("cargo/audit.json", Severity::Error),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"cargo-clean",
+			"Example checks",
+			vec![
+				section(
+					"Clippy",
+					false,
+					load_clippy("cargo/clippy-clean.json", Severity::Warning),
+				),
+				section(
+					"Audit",
+					false,
+					load_audit("cargo/audit-clean.json", Severity::Warning),
+				),
+			],
+		)
+		.guided(),
+	);
+
+	// Everything the enhanced style adds, and what it leaves out on Forgejo.
+	let mut enhanced = vec![
+		Scenario::new("enhanced-all-pass", "Example checks", vec![pass()])
+			.with_other_checks(project_checks(CheckState::Passed)),
+		Scenario::new("enhanced-failures", "Example checks", vec![fail()])
+			.with_other_checks(project_checks(CheckState::Failed)),
+		Scenario::new("enhanced-flaky", "Example checks", vec![flaky()]),
+		Scenario::new("enhanced-multiple-suites", "Example checks", multi())
+			.with_other_checks(project_checks(CheckState::Failed)),
+		Scenario::new(
+			"enhanced-no-results",
+			"Example checks",
+			vec![section("Rust tests", false, Vec::new())],
+		)
+		.with_other_checks(vec![other_with(
+			"Security audit",
+			CheckState::Failed,
+			"cargo audit",
+		)]),
+		Scenario::new(
+			"enhanced-hostile",
+			hostile_title,
+			vec![section(
+				"@owner/team #1 | pipe",
+				false,
+				load(&["hostile/strings.xml"], Flavour::Generic),
+			)],
+		)
+		.with_other_checks(hostile_other()),
+		Scenario::new("enhanced-forgejo-failures", "Example checks", vec![fail()]).forgejo(),
+	];
+	for sc in &mut enhanced {
+		*sc = sc.clone().enhanced();
+		sc.checks = false;
+	}
+	all.extend(enhanced);
 
 	all.push(Scenario::new(
 		"no-results-required",

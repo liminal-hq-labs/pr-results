@@ -62,8 +62,14 @@ fn help_is_spelled_the_canadian_way() {
 	] {
 		assert!(!help.contains(american), "help says {american}");
 	}
+	// The usage block shows the literal `--` that ends a command's flags; prose must use a dash.
+	let prose = help
+		.split("\n\n")
+		.filter(|block| !block.starts_with("usage:"))
+		.collect::<Vec<_>>()
+		.join("\n\n");
 	assert!(
-		!help.contains(" -- "),
+		!prose.contains(" -- "),
 		"a double hyphen stands in for a dash"
 	);
 	assert!(help.is_ascii());
@@ -173,7 +179,7 @@ fn render_writes_what_the_golden_scenarios_hold() {
 	let config = dir.join("rust.toml");
 	std::fs::write(
 		&config,
-		"title = \"Example checks\"\n\n[[suite]]\nname = \"Rust tests\"\ncheck = \"Example Rust tests\"\nartifact = \"x\"\nflavour = \"nextest\"\n",
+		"title = \"Example checks\"\n\n[comment]\nstyle = \"plain\"\n\n[[suite]]\nname = \"Rust tests\"\ncheck = \"Example Rust tests\"\nartifact = \"x\"\nflavour = \"nextest\"\n",
 	)
 	.unwrap();
 	let out = dir.join("out");

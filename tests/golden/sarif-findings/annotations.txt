@@ -1,0 +1,7 @@
+check 0: 2 annotations, 0 not shown
+- failure crates/pr-results-forge/src/publish.rs:454-454
+  title: clippy::too_many_arguments
+  message: this function has too many arguments (8/7)
+- failure src/lib.rs:12-12
+  title: clippy::needless_return
+  message: unneeded `return` statement

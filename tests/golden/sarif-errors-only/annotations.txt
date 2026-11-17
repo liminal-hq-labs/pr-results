@@ -1,0 +1,4 @@
+check 0: 1 annotations, 0 not shown
+- failure crates/pr-results-forge/src/publish.rs:454-454
+  title: clippy::too_many_arguments
+  message: this function has too many arguments (8/7)

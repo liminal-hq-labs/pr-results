@@ -3,7 +3,8 @@
 // (c) Copyright 2026 Liminal HQ, Scott Morris
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! `publish`, `render` and `validate-config`. The exit codes are the same everywhere:
+//! `publish`, `render`, `validate-config` and `wrap`. The exit codes are the same everywhere, except
+//! for `wrap`, which exits with the command's own status:
 //!
 //! - `0`: it published (even when tests failed), rendered, validated, or had nothing to do.
 //! - `1`: publishing itself failed, and the message says what.
@@ -21,6 +22,7 @@ pub mod event;
 mod local;
 mod publish_cmd;
 mod render_cmd;
+mod wrap_cmd;
 
 use std::io::Write;
 
@@ -40,6 +42,8 @@ Usage:
                      [--bot-login LOGIN] [--forge github|forgejo] [--fail-on-failures]
   pr-results render [--config PATH] [--title TEXT] [--flavour NAME] FILE... [--out DIR]
   pr-results validate-config PATH
+  pr-results wrap --out FILE [--name NAME] [--step TITLE] [--head N] [--tail N] [--no-output]
+                  -- COMMAND [ARGS...]
   pr-results --version
   pr-results --help
 
@@ -55,6 +59,11 @@ render    Turn local JUnit files into the comment and check Markdown, with no ne
           checks/N.md.
 validate-config
           Check a settings file and exit 0 if it is valid.
+wrap      Run COMMAND, let its output through, and write how it went to FILE as step JUnit
+          for the publisher: a failed step carries the first --head (default 5) and last
+          --tail (default 40) lines of its output, and nothing is kept when it passed.
+          Exits with the command's own status (127 not found, 126 not runnable, 128+N for a
+          signal). --no-output keeps only the status and the time.
 
 The settings file is .github/pr-results.toml. See SPEC.md for every setting.
 ";
@@ -198,6 +207,7 @@ pub fn run<X: ForgeFactory>(
 		Command::Publish(a) => publish_cmd::publish_command(&a, vars, factory, io),
 		Command::Render(a) => render_cmd::render(&a, io),
 		Command::ValidateConfig(path) => render_cmd::validate(&path, io),
+		Command::Wrap(a) => wrap_cmd::wrap(&a, io),
 	};
 	match result {
 		Ok(code) => code,

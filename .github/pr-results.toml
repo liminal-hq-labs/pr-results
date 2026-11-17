@@ -6,9 +6,21 @@
 schema = 1
 title = "pr-results"
 
+[comment]
+style = "enhanced"                # guided, with emoji, Jax, a progress bar and alert blocks
+other_checks = true               # the commit's other jobs, so this is the pull request's one summary
+
+[comment.check_commands]
+"Format" = "cargo fmt --all -- --check"
+"Clippy" = "cargo clippy --workspace --all-targets --locked -- -D warnings"
+"Licence headers" = "bash scripts/check-headers.sh"
+"Release pins" = "bash scripts/check-pins.sh"
+
 [[suite]]
 name = "Rust tests"
 check = "pr-results Rust tests"
 artifact = "rust-test-results"
 files = ["**/junit.xml"]
 flavour = "nextest"
+run_locally = "cargo nextest run --workspace --locked"
+job = "Tests"                     # the job these results come from, so its row is not shown twice

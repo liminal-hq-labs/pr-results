@@ -108,6 +108,45 @@ files = ["**/junit.xml"]
 flavour = "nextest"
 ```
 
+### Comment styles
+
+The comment comes in three styles, set by `comment.style`. **`guided`** is the default: a summary in plain sentences, a list of what needs attention, a command to run a failed nextest test again, and the slowest tests. **`plain`** is the table, the failures and the footer, as the tool wrote them before the styles. **`enhanced`** is guided with emoji, a line from Jax, a progress bar and GitHub alert blocks, which suits a Liminal HQ project that wants them. Each extra is also a setting of its own, so a project can take one without the others:
+
+```toml
+# pr-results settings: the enhanced style, without Jax.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[comment]
+style = "enhanced"  # plain | guided | enhanced
+mascot = false      # any of mascot, progress and alerts can be switched off, or on in guided
+symbols = "glyphs"  # text | glyphs | emoji: ✓ ✗ ↻ – in place of the emoji
+```
+
+`mascot`, `progress` and `alerts` need the guided or the enhanced style: a file that turns one on in the plain style is refused. The progress bar writes its words first (`737 of 738 tests passed`) and the shapes after, so a screen reader reads the sentence before it reads the bar; set `symbols = "text"` for words with no marks at all. Alert blocks are written for GitHub only. Nothing from a report is put in an alert, in Jax's line or in the summary sentence: they hold fixed sentences and numbers, and the names are in the list under them.
+
+The command to run a failed test again is written for nextest suites, from the suite's binary and test name, and only when both are made of letters, digits and the few separators a Rust path has: a name that is not gets no command. It starts with `cargo nextest run`. A project that runs its tests under a feature set says so in the suite, and an empty string turns the command off:
+
+```toml
+# pr-results settings: a command that matches how the job ran the tests.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Tests (all-features)"
+artifact = "rust-test-results-all-features"
+flavour = "nextest"
+run_locally = "cargo nextest run --all-features"
+```
+
+The command makes the shape of what you paste safe. It does not make the code safe: the test is code from the pull request, so run it as you would anything from a pull request.
+
 ### Other checks in the comment
 
 A project whose CI is several jobs (format, clippy, audit) alongside the tests can have the comment say how each one ended, so it stands in for a script that posts such a summary:
@@ -123,6 +162,38 @@ schema = 1
 [comment]
 other_checks = true
 ```
+
+When the test jobs and the suites show the same thing, list the checks once. A project that runs its tests in a job per feature set has a suite and a check for each, and a failing test fails both, so the table would count the same problem twice. Tell each suite which job it comes from with `job`, and that job's row is left out. The row is left out only while the job and the suite agree: a job that failed and uploaded no results, or passed while its tests failed, still gets its row, since those are what the table is for. Give the checks that stay a command, which the guided style shows beside one that failed:
+
+```toml
+# pr-results settings: the other jobs, without the ones the suites already show.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[comment]
+other_checks = true
+
+[comment.check_commands]
+"Security audit" = "cargo audit"
+"Format" = "cargo fmt --all -- --check"
+
+[[suite]]
+name = "Tests (default)"
+artifact = "rust-test-results-default"
+flavour = "nextest"
+job = "Test (default)"
+
+[[suite]]
+name = "Tests (all-features)"
+artifact = "rust-test-results-all-features"
+flavour = "nextest"
+job = "Test (all-features)"
+```
+
+The job is the name GitHub shows for it, matrix legs included (`Test (default)`), and is matched exactly. A job that is renamed stops matching and shows up in the table again. `comment.other_checks_ignore` still leaves checks out by pattern, for a job that no suite stands in for, but it leaves them out whatever their result. The patterns of `other_checks_ignore` are the language of the file patterns above: `*` matches any run of characters but `/`, so a name such as `build / test` needs `**`. A check that does not exist is not an error, so a pattern can stay when a job is renamed, and the cost is that a job that failed under a name nothing matches any more is shown again. In the guided style a table of other checks that all passed is folded into one line, `Other checks: 5 passed`, since there is nothing to act on.
 
 It needs nothing new in the publisher workflow: `checks: write` covers the read. The table lists the commit's other check runs, failed ones first, and leaves out the suites' own check runs and the publisher's own job. A failed check is also said in the heading, for example `All 696 passed, 1 other check needs attention`. It works in the `workflow_run` publisher on GitHub only: on Forgejo, and when publishing from the job itself (`--from`), it has no effect and the notes in the job summary say so.
 
@@ -323,6 +394,133 @@ If the `suiteName` option is set, add `flavour = "jest"` to the suite: the file 
     if-no-files-found: ignore
 ```
 
+### Static-analysis results: SARIF
+
+A scanner that writes SARIF needs no wrapper and no converter. Upload the file and read it as a suite of its own. A finding becomes a failure at the line it names, in the comment and as an annotation in the diff:
+
+```yaml
+- name: Scan
+  run: semgrep --config auto --sarif --output results/semgrep.sarif
+
+- name: Upload the scan
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: semgrep-test-results
+    path: results/semgrep.sarif
+    if-no-files-found: ignore
+```
+
+```toml
+# pr-results settings: a scanner's SARIF as a suite.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Semgrep"
+artifact = "semgrep-test-results"
+format = "sarif"
+fail_on = "warning"  # note | warning | error: findings below it are counted as skipped
+job = "Scan"
+```
+
+`fail_on` decides which findings fail the check: at or above it, a finding fails; below it, it is skipped and does not turn the job red. A scan with no findings shows as one passing case. Only a relative path inside the repository gets an annotation, so set `path_prefix` when the tool reports paths from a subdirectory. Findings are counted as tests in the comment's sentences and table.
+
+### Clippy and the audit, with nothing else installed
+
+A Rust project can send both to the comment from what cargo writes. The lint reports each diagnostic at its line, and the audit reports each advisory at `Cargo.lock`:
+
+```yaml
+- name: Clippy
+  run: |
+    mkdir -p results
+    cargo clippy --workspace --all-targets --locked --message-format=json -- -D warnings > results/clippy.json
+
+- name: Audit
+  run: |
+    mkdir -p results
+    cargo audit --json > results/audit.json
+
+- name: Upload the results
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: lint-test-results
+    path: results/
+    if-no-files-found: ignore
+```
+
+```toml
+# pr-results settings: clippy and the audit, each a suite of its own.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Clippy"
+artifact = "lint-test-results"
+files = ["**/clippy.json"]
+format = "clippy-json"
+job = "Clippy"
+
+[[suite]]
+name = "Audit"
+artifact = "lint-test-results"
+files = ["**/audit.json"]
+format = "cargo-audit-json"
+fail_on = "error"  # cargo audit itself fails only on vulnerabilities
+job = "Security audit"
+```
+
+Both files go to one artefact and each suite takes its own by name. The step still fails the job when the tool fails, since the redirect does not hide the exit status, and `if: always()` uploads the file either way. `--message-format=json` puts JSON on standard output in place of the readable text, so the job's log loses it: run the lint again without the flag (it is cached), or use `pr-results wrap` below when the last lines of the log are enough.
+
+### Any command: wrap it
+
+A job that runs a formatter, a linter or an audit already knows whether it passed and what it printed. `pr-results wrap` runs the command once, exactly as before, and writes down how it ended, so the comment shows why it failed and nobody has to open the job. Use the action, and put the command after `--`:
+
+```yaml
+- name: Clippy
+  uses: liminal-hq-labs/pr-results@<full commit sha> # a release that has wrap
+  with:
+    command: wrap
+    args: --name Clippy --out results/clippy.xml -- cargo clippy --workspace --all-targets --locked -- -D warnings
+
+- name: Upload the clippy result
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: clippy-test-results
+    path: results/clippy.xml
+    if-no-files-found: ignore
+```
+
+The step still fails when the command does: `wrap` exits with the command's own status (`127` if it was not found, `128` plus the signal if it was killed), and the output still goes to the job's log, so a workflow command it writes keeps working. The arguments are split on whitespace, so a quoted argument with a space in it needs the binary instead. A suite reads what it wrote as the `steps` flavour, and `job` ties it to the job so the table of other checks does not list it twice:
+
+```toml
+# pr-results settings: a wrapped command as a suite of its own.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Clippy"
+artifact = "clippy-test-results"
+flavour = "steps"
+required = true
+job = "Clippy"
+```
+
+When it fails, the comment shows the step with the first and last lines of what the command printed (`--head` 5 and `--tail` 40 by default). `required = true` makes a job that died before it uploaded a failure, not a missing row. Clippy prints its first error early and ends with only "could not compile", so `--message-format=short` keeps each diagnostic on one line and fits the tail better.
+
+**Wrap only commands whose output is safe to publish.** GitHub masks a secret in a log, not in a file, so the kept output is written only when the command fails, never when it passes, and the step's title is the program and its first word (`cargo clippy`), not the rest of the command line. Formatting, linting and auditing are safe; a deploy or a login is not. Use `--step` to name a step yourself and `--no-output` to keep only the status and the time.
+
 ### Shell steps and Rust together: Desk
 
 Desk runs its checks as groups of steps and uploads one artefact per job, `results-<job>`, holding the converter's `steps.xml` and nextest's `nextest-*.xml`. The default `*-test-results*` misses those names, so Desk needs a settings file with two suites that each take their own files from every `results-*` artefact:
@@ -379,7 +577,7 @@ It lists the run's artefacts, downloads the ones your suites name (an expired ar
 
 ## What the comment looks like
 
-Layout rules: a heading with the product's title and a one-phrase outcome, one table row per suite, failures first, everything long collapsed, no emoji. This is the Markdown the comment carries for a product with one failing step and a flaky Rust test (a hand-made example in the shape of the outputs in `tests/golden/`; the hash and run id are placeholders):
+Layout rules, for every style: a heading with the product's title and a one-phrase outcome, one table row per suite, failures first, everything long collapsed. There are no emoji unless the settings ask for them. This is the Markdown of the **plain** style for a product with one failing step and a flaky Rust test (a hand-made example in the shape of the outputs in `tests/golden/`; the hash and run id are placeholders):
 
 `````markdown
 <!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=19283746 -->
@@ -421,9 +619,53 @@ Commit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b
 
 Two rules shape it. A raw HTML line (`<details>`, `<summary>`, `</details>`) holds only fixed words and numbers, because Markdown inside it is not rendered, so every name sits on a Markdown line of its own, in a code span. And the names are the suite's title, the test suite, its group and the test, with the section's title in front only when the comment has more than one section. A column comparing each suite with the base branch arrives with baseline comparison in v0.3.
 
-When the comment is too long for GitHub it gives things up in a fixed order and says what it left out in a line of its own: the flaky list becomes a count, failure excerpts shrink to 8 and then 3 lines, failures are listed up to 20, then 5, then not at all, passing suites become one row, and last of all only the heading, the totals and the footer remain.
+The **guided** style, the default, writes the same run like this. The Desk steps are not nextest tests, so a failed step has no command; a failed nextest test would have a `Run it locally:` block under its excerpt:
 
-When everything passes, the comment shrinks to the heading, the table and the footer. When no results were uploaded it says so and links the run. When the CI run was cancelled or skipped, nothing is posted.
+`````markdown
+<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=19283746 -->
+### Example checks: 1 failure in 2 suites
+
+1 failed test needs attention. 696 tests passed, 1 of them only after a retry.
+
+- ✗ 1 test failed in `Desk steps`.
+- ↻ 1 test in `Rust tests` passed only after a retry, so it may be flaky.
+
+| Suite | Result | Passed | Failed | Skipped | Flaky | Time |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `Desk steps` | ✗ **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s |
+| `Rust tests` | ✓ Passed | 672 | 0 | 0 | 1 | 47.0 s |
+
+#### Failures
+
+(the failure and the flaky list are as in the plain style)
+
+<details>
+<summary>Slowest tests (5)</summary>
+
+| Test | Time |
+| --- | ---: |
+| `Desk steps` › `check (dos)` › `Emulator` › `Example binary in a headless emulator` | 18.2 s |
+| … | … |
+
+</details>
+`````
+
+The top of the **enhanced** style for a run where everything passed, with Jax, an alert block and the bar:
+
+`````markdown
+### ✅ Example checks: All 3 passed, 1 skipped
+
+> [!TIP]
+> 🦦 **Jax:** All clear. Every test passed.
+>
+> Everything passed: 3 tests (1 skipped) in 1 suite and 5 other checks, in 0.3 s of test time.
+
+3 of 3 tests passed ▰▰▰▰▰▰▰▰▰▰
+`````
+
+When the comment is too long for GitHub it gives things up in a fixed order and says what it left out in a line of its own: the passing other checks become one row, the flaky list becomes a count and the slowest tests are left out, failure excerpts shrink to 8 and then 3 lines, failures are listed up to 20, then 5, then not at all, passing suites become one row, and last of all only the heading, the totals and the footer remain.
+
+When everything passes, the plain comment shrinks to the heading, the table and the footer, and the guided one adds its summary sentence. When no results were uploaded it says so and links the run, and the guided style also says what to look at. When the CI run was cancelled or skipped, nothing is posted.
 
 ## Migrating from another reporter
 
