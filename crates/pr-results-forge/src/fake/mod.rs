@@ -72,6 +72,8 @@ pub struct FakePull {
 	/// `None` for a fork that has been deleted.
 	pub head_repo: Option<String>,
 	pub base_repo: String,
+	pub base_ref: String,
+	pub base_sha: String,
 	/// Whether `commits/{sha}/pulls` lists it. A pull request from a fork may be missing there.
 	pub in_commit_listing: bool,
 }
@@ -85,6 +87,8 @@ impl FakePull {
 			head_ref: branch.to_owned(),
 			head_repo: Some(repo.to_owned()),
 			base_repo: repo.to_owned(),
+			base_ref: "main".to_owned(),
+			base_sha: "a".repeat(40),
 			in_commit_listing: true,
 		}
 	}
@@ -505,7 +509,11 @@ impl State {
 				"ref": p.head_ref,
 				"repo": p.head_repo.as_ref().map(|r| json!({ "full_name": r })),
 			},
-			"base": { "repo": { "full_name": p.base_repo } },
+			"base": {
+				"ref": p.base_ref,
+				"sha": p.base_sha,
+				"repo": { "full_name": p.base_repo },
+			},
 		})
 	}
 

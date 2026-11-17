@@ -144,6 +144,8 @@ fn the_account_pull_requests_and_tree_decode_from_the_sourced_shapes() {
 	assert_eq!(pull.head_ref, "feature");
 	assert_eq!(pull.head_repo.as_deref(), Some("alice/app"));
 	assert_eq!(pull.base_repo.as_deref(), Some("alice/app"));
+	assert_eq!(pull.base_ref.as_deref(), Some("main"));
+	assert_eq!(pull.base_sha, Sha::parse(&"a".repeat(40)));
 
 	let sha = Sha::parse(SHA).unwrap();
 	let merged = host().pulls_for_commit(&sha).unwrap();
