@@ -4,6 +4,16 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Added
+
+- `comment.other_checks` (SPEC S6, decision D69): with it on, the comment gains an `Other checks` table after the suite table, from the commit's check runs, ordered by what needs attention and then by name. It leaves out this tool's own check runs and the publisher's own workflow run, and a failed or action-required check is also said in the heading (`All 696 passed, 1 other check needs attention`). The first step of the budget folds five or more passing rows into one (`Degradation::OtherChecksCollapsed`). It is GitHub only, from `workflow_run` only, and says so in the notes where it does nothing; a listing that fails leaves the table out and still posts the results.
+- `Host::check_runs`, `CheckRunInfo`, the renderer's `OtherCheck` and `CheckState`, `FakeForge::add_other_check`, and the goldens `other-checks`, `other-checks-glyphs`, `other-checks-all-pass` and `other-checks-hostile`.
+
+### Changed
+
+- **Breaking for library users (0.x):** `pr_results_render::Input` has a new public field, `other_checks` (`&[]` for none), `Degradation` has a new first variant and `Degradation::ALL` has nine steps, `Plan` has the public fields `other_checks` and `own_run`, `FakeCheck` has `status` and `details_url`, and `Settings` has `other_checks`. None of the crates is published (`publish = false`).
+- `comment.other_checks = true` is no longer refused by the settings loader.
+
 ## 0.2.0 — 2026-11-12
 
 ### Added

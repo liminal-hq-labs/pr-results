@@ -15,7 +15,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use pr_results_core::{Flavour, Glob, Limits as ParseLimits, RepoSlug, ServerUrl};
+use pr_results_core::{Flavour, Glob, Limits as ParseLimits, RepoSlug, RunId, ServerUrl};
 use pr_results_forge::{
 	publish, publish_inputs, requests_to_json, ApiRequest, ArchiveLimits, CaBundle, DryRun, Forge,
 	ForgeError, Forgejo, GitHub, Host, HostKind, Method, Plan, PublishReport, SectionPlan, Token,
@@ -52,6 +52,9 @@ struct Environment {
 	/// `GITHUB_API_URL`, if the runner set one. Whether it is usable is decided with the forge.
 	api_env: Option<String>,
 	event: Event,
+	/// The run this publisher is itself in (`GITHUB_RUN_ID`), when it is not the run it reports
+	/// on: its own job is not a check worth listing.
+	own_run: Option<RunId>,
 }
 
 pub(crate) fn publish_command<X: ForgeFactory>(
@@ -400,12 +403,21 @@ fn environment(
 			"the event is for another repository than GITHUB_REPOSITORY",
 		));
 	}
+	let own_run = if in_job {
+		None
+	} else {
+		get("GITHUB_RUN_ID")
+			.and_then(|s| s.parse::<u64>().ok())
+			.filter(|n| *n > 0)
+			.map(RunId)
+	};
 	Ok(Environment {
 		repo,
 		server,
 		server_text,
 		api_env,
 		event,
+		own_run,
 	})
 }
 
@@ -466,7 +478,8 @@ fn execute<H: Host>(
 	} else {
 		configured_sections(settings, &title)?
 	};
-	let plan = plan(settings, &title, sections);
+	let mut plan = plan(settings, &title, sections);
+	plan.own_run = env.own_run;
 	let report = if let Some((files, skipped)) = local {
 		if skipped > 0 {
 			io.say(&format!("Skipped {skipped} links or non-regular inputs."));
@@ -490,6 +503,7 @@ fn execute<H: Host>(
 fn plan(settings: &Settings, title: &str, sections: Vec<SectionPlan>) -> Plan {
 	let mut plan = Plan::new(title, settings.key.clone(), sections, VERSION);
 	plan.post_comment = settings.mode == CommentMode::Always;
+	plan.other_checks = settings.other_checks;
 	plan.options = settings.options();
 	let l = &settings.limits;
 	plan.archive = ArchiveLimits {

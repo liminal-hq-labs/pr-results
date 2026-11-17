@@ -14,8 +14,8 @@ use pr_results_core::{
 	parse_junit, CommentKey, Flavour, Limits, RepoSlug, RunId, ServerUrl, Sha, Suite,
 };
 use pr_results_render::{
-	check, comment, measure, status, Comment, Conclusion, Degradation, Input, Level, Options,
-	RunContext, Section, StatusState, Symbols, Target,
+	check, comment, measure, status, CheckState, Comment, Conclusion, Degradation, Input, Level,
+	Options, OtherCheck, RunContext, Section, StatusState, Symbols, Target,
 };
 
 pub const SHA: &str = "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334";
@@ -104,6 +104,7 @@ pub struct Scenario {
 	pub title: String,
 	pub sections: Vec<OwnedSection>,
 	pub options: Options,
+	pub other_checks: Vec<OtherCheck>,
 	/// Whether the check runs and annotations are written too.
 	pub checks: bool,
 	pub target: Target,
@@ -116,6 +117,7 @@ impl Scenario {
 			title: title.to_owned(),
 			sections,
 			options: Options::default(),
+			other_checks: Vec::new(),
 			checks: true,
 			target: Target::GitHub,
 		}
@@ -124,6 +126,11 @@ impl Scenario {
 	/// The scenario for Forgejo: a comment and a commit status per section.
 	pub fn forgejo(mut self) -> Self {
 		self.target = Target::Forgejo;
+		self
+	}
+
+	pub fn with_other_checks(mut self, checks: Vec<OtherCheck>) -> Self {
+		self.other_checks = checks;
 		self
 	}
 
@@ -154,6 +161,7 @@ impl Scenario {
 			ctx: &ctx,
 			title: &self.title,
 			sections: &sections,
+			other_checks: &self.other_checks,
 			options: &self.options,
 		};
 		f(&input)
@@ -285,6 +293,27 @@ pub fn synthetic_nextest(
 
 /// The base of the `truncated-*` scenarios: enough failures, flaky tests and passing suites that
 /// every step of the budget has something to cut.
+pub fn other(name: &str, state: CheckState) -> OtherCheck {
+	OtherCheck {
+		name: name.to_owned(),
+		state,
+	}
+}
+
+/// One check of each state, out of order, so the table's own ordering is what a golden shows.
+pub fn other_checks_mix() -> Vec<OtherCheck> {
+	vec![
+		other("Format", CheckState::Passed),
+		other("Docs build", CheckState::Running),
+		other("Security audit", CheckState::Failed),
+		other("Clippy (default)", CheckState::Passed),
+		other("Release dry run", CheckState::Skipped),
+		other("Deploy preview", CheckState::ActionRequired),
+		other("Clippy (all-features)", CheckState::Passed),
+		other("Nightly", CheckState::Cancelled),
+	]
+}
+
 pub fn truncation_base() -> Scenario {
 	truncation_base_for(Target::GitHub)
 }
@@ -538,6 +567,63 @@ pub fn scenarios() -> Vec<Scenario> {
 		hostile_sections.push(section(title, false, parse_text(&text, flavour)));
 	}
 	all.push(Scenario::new("js-hostile", evil, hostile_sections));
+
+	let rust_fail = || {
+		section(
+			"Rust tests",
+			false,
+			load(&["nextest/fail.xml"], Flavour::Nextest),
+		)
+	};
+	all.push(
+		Scenario::new("other-checks", "Example checks", vec![rust_fail()])
+			.comment_only()
+			.with_other_checks(other_checks_mix()),
+	);
+	all.push(
+		Scenario::new("other-checks-glyphs", "Example checks", vec![rust_fail()])
+			.comment_only()
+			.with_other_checks(other_checks_mix())
+			.with_options(Options {
+				symbols: Symbols::Glyphs,
+				..Options::default()
+			}),
+	);
+	all.push(
+		Scenario::new(
+			"other-checks-all-pass",
+			"Example checks",
+			vec![section(
+				"Rust tests",
+				false,
+				load(&["nextest/pass.xml"], Flavour::Nextest),
+			)],
+		)
+		.comment_only()
+		.with_other_checks(vec![
+			other("Format", CheckState::Passed),
+			other("Security audit", CheckState::Failed),
+		]),
+	);
+	all.push(
+		Scenario::new(
+			"other-checks-hostile",
+			"Example checks",
+			vec![section(
+				"Rust tests",
+				false,
+				load(&["nextest/pass.xml"], Flavour::Nextest),
+			)],
+		)
+		.comment_only()
+		.with_other_checks(vec![
+			other(
+				"@everyone @owner/team GH-123 #1 `x` [y](https://example.invalid) <img src=x onerror=alert(1)> | pipe",
+				CheckState::Failed,
+			),
+			other("line one\nline two", CheckState::Passed),
+		]),
+	);
 
 	all.push(Scenario::new(
 		"no-results-required",

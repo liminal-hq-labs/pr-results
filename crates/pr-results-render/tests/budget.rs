@@ -168,6 +168,7 @@ fn every_step_says_what_it_left_out() {
 		let body = sc.comment().body.to_string();
 		assert_ne!(body, previous, "{step:?} changed nothing");
 		let said = match step {
+			Degradation::OtherChecksCollapsed => "passing checks were combined",
 			Degradation::ExtrasToCounts => "The list of 8 flaky tests was left out",
 			Degradation::Excerpt8 => "shortened to 8 lines",
 			Degradation::Excerpt3 => "shortened to 3 lines",
@@ -236,6 +237,7 @@ fn forgejo_outputs_fit_at_every_limit_and_say_what_they_left_out() {
 		sc.options.comment_limit = limit;
 		let body = sc.comment().body.to_string();
 		let said = match step {
+			Degradation::OtherChecksCollapsed => "passing checks were combined",
 			Degradation::ExtrasToCounts => "The list of 8 flaky tests was left out",
 			Degradation::Excerpt8 => "shortened to 8 lines",
 			Degradation::Excerpt3 => "shortened to 3 lines",

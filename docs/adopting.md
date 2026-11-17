@@ -108,6 +108,24 @@ files = ["**/junit.xml"]
 flavour = "nextest"
 ```
 
+### Other checks in the comment
+
+A project whose CI is several jobs (format, clippy, audit) alongside the tests can have the comment say how each one ended, so it stands in for a script that posts such a summary:
+
+```toml
+# pr-results settings: the other jobs of the commit, in a table under the suites.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[comment]
+other_checks = true
+```
+
+It needs nothing new in the publisher workflow: `checks: write` covers the read. The table lists the commit's other check runs, failed ones first, and leaves out the suites' own check runs and the publisher's own job. A failed check is also said in the heading, for example `All 696 passed, 1 other check needs attention`. It works in the `workflow_run` publisher on GitHub only: on Forgejo, and when publishing from the job itself (`--from`), it has no effect and the notes in the job summary say so.
+
 ## 4. Try it without publishing
 
 Render the Markdown from local files with no network, to see what a pull request would get:
@@ -411,7 +429,7 @@ When everything passes, the comment shrinks to the heading, the table and the fo
 
 - **Reporters that run in the test job** (a unit-test reporter action, a script that posts a comment) cannot post on fork or Dependabot pull requests. Move the upload to artefacts and use the publisher, then delete the in-job reporter steps.
 - **Several reporter steps in one publisher workflow**, one per suite, post one comment each. The publisher replaces them all: delete them and keep one comment.
-- **A script that builds its own comment** can be retired once `other_checks = true` (v0.3) lists the commit's other check runs in the same comment.
+- **A script that builds its own comment**, such as a summary of which jobs passed, can be retired once `comment.other_checks = true` lists the commit's other check runs in the same comment ([below](#other-checks-in-the-comment)). The publisher reads them once, when it runs, so a check from a slower workflow that is still going is shown as Running and is not updated later.
 - **Check names.** Default check names are `<title> <suite name>`, so they do not collide with job names. The job summary warns when a configured name equals a job name.
 
 ## Publishing in the same run

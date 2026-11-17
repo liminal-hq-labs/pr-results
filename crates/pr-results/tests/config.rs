@@ -70,7 +70,7 @@ mode = "off"
 max_failures = 5
 excerpt_lines = 8
 symbols = "glyphs"
-other_checks = false
+other_checks = true
 
 [checks]
 per_suite = true
@@ -107,6 +107,7 @@ path_prefix = ""
 	assert_eq!(s.mode, CommentMode::Off);
 	assert_eq!((s.max_failures, s.excerpt_lines), (5, 8));
 	assert_eq!(s.symbols, Symbols::Glyphs);
+	assert!(s.other_checks);
 	assert_eq!((s.max_annotations, s.flaky_annotations), (500, true));
 	assert_eq!(s.limits.max_artifact_bytes, 1_000_000);
 	assert_eq!(s.limits.max_file_bytes, 0x10000);
@@ -243,7 +244,6 @@ fn settings_for_later_versions_are_refused_not_ignored() {
 	assert!(err("[comment]\nmode = \"changes\"").contains("arrives in v0.3"));
 	assert!(err("[comment]\nmode = \"failures\"").contains("arrives in v0.3"));
 	assert!(err("[comment]\nmode = \"loud\"").contains("must be"));
-	assert!(err("[comment]\nother_checks = true").contains("arrives in v0.3"));
 	assert!(err("[checks]\nper_suite = false").contains("arrives with the combined check"));
 	assert!(err("[checks]\ncombined = \"All\"").contains("arrives in v0.3"));
 }

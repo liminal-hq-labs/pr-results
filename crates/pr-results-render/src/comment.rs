@@ -6,14 +6,14 @@
 use pr_results_core::{Safe, Status};
 
 use crate::blocks::{
-	failure_lines, flaky_lines, footer, marker_line, section_label, section_title, table_head,
-	table_row, TITLE_CHARS,
+	failure_lines, flaky_lines, footer, marker_line, other_head, other_row, other_row_labelled,
+	section_label, section_title, table_head, table_row, TITLE_CHARS,
 };
 use crate::budget::{fit, Plan};
 use crate::text::{big, cat, count, forgejo_inert, noun, num, t, Doc};
 use crate::view::{entries, is_failure, Counts, Entry, SectionInfo, Verdict};
 use crate::wording;
-use crate::{Comment, Input, Options, RunContext, Symbols, Target};
+use crate::{CheckState, Comment, Input, Options, OtherCheck, RunContext, Symbols, Target};
 
 /// The heading line: `### Title: outcome`. The title is text from the settings file, so it goes
 /// through `Safe::text`, and the literal colon after it keeps it from joining the outcome. On
@@ -30,8 +30,31 @@ fn heading(target: Target, title: &str, outcome: Safe) -> Safe {
 	cat(&[t("### "), shown, t(": "), outcome])
 }
 
-/// `1 failure in 2 suites`, `All 696 passed`, `No results from 1 required suite`.
-fn outcome(infos: &[SectionInfo<'_>]) -> Safe {
+/// `1 failure in 2 suites`, `All 696 passed`, `No results from 1 required suite`, and after any
+/// of them `, 1 other check failed` when another check on the commit did not pass.
+fn outcome(infos: &[SectionInfo<'_>], others: &[OtherCheck]) -> Safe {
+	let base = test_outcome(infos);
+	let failed = others
+		.iter()
+		.filter(|c| matches!(c.state, CheckState::Failed | CheckState::ActionRequired))
+		.count();
+	if failed == 0 {
+		return base;
+	}
+	let failed = big(failed);
+	cat(&[
+		base,
+		t(", "),
+		count(failed),
+		noun(
+			failed,
+			" other check needs attention",
+			" other checks need attention",
+		),
+	])
+}
+
+fn test_outcome(infos: &[SectionInfo<'_>]) -> Safe {
 	let mut total = Counts::default();
 	let mut missing = 0u64;
 	for info in infos {
@@ -133,6 +156,65 @@ fn table(infos: &[SectionInfo<'_>], plan: &Plan, symbols: Symbols, doc: &mut Doc
 	None
 }
 
+/// Passing checks fold into one row only from this many: fewer save less than the note that says
+/// they were folded.
+const FOLD_OTHER_FROM: usize = 5;
+
+/// The most rows of other checks the table shows. The rest are counted under it, least pressing
+/// last, so what needs attention is never the part that is cut.
+const OTHER_ROWS: usize = 50;
+
+/// The table of the commit's other checks: what needs attention first, then by name. Passing
+/// checks fold into one row when the plan says. Returns how many passing checks were folded.
+fn other_checks_table(
+	checks: &[OtherCheck],
+	plan: &Plan,
+	symbols: Symbols,
+	doc: &mut Doc,
+) -> Option<u64> {
+	if checks.is_empty() {
+		return None;
+	}
+	let mut sorted: Vec<&OtherCheck> = checks.iter().collect();
+	sorted.sort_by(|a, b| a.state.cmp(&b.state).then_with(|| a.name.cmp(&b.name)));
+
+	let passing = sorted
+		.iter()
+		.filter(|c| c.state == CheckState::Passed)
+		.count();
+	let fold = plan.collapse_other_checks && passing >= FOLD_OTHER_FROM;
+	let rows: Vec<&OtherCheck> = sorted
+		.into_iter()
+		.filter(|c| !(fold && c.state == CheckState::Passed))
+		.collect();
+
+	doc.blank();
+	doc.line(t("#### Other checks"));
+	doc.blank();
+	for line in other_head() {
+		doc.line(line);
+	}
+	for c in rows.iter().take(OTHER_ROWS) {
+		doc.line(other_row(&c.name, c.state, symbols));
+	}
+	if fold {
+		let label = cat(&[
+			count(big(passing)),
+			noun(big(passing), " passing check", " passing checks"),
+		]);
+		doc.line(other_row_labelled(&label, CheckState::Passed, symbols));
+	}
+	if rows.len() > OTHER_ROWS {
+		let left = big(rows.len() - OTHER_ROWS);
+		doc.block(cat(&[
+			t("\u{2026}and "),
+			count(left),
+			noun(left, " more check.", " more checks."),
+		]));
+	}
+	fold.then(|| big(passing))
+}
+
 fn render(
 	i: &Input<'_>,
 	infos: &[SectionInfo<'_>],
@@ -144,7 +226,11 @@ fn render(
 	let target = i.ctx.target;
 	let mut doc = Doc::new();
 	doc.line(marker_line(i.ctx));
-	doc.line(heading(i.ctx.target, i.title, outcome(infos)));
+	doc.line(heading(
+		i.ctx.target,
+		i.title,
+		outcome(infos, i.other_checks),
+	));
 	let mut total = Counts::default();
 	for info in infos {
 		total.add(&info.counts);
@@ -166,6 +252,8 @@ fn render(
 			t("."),
 		]));
 	}
+
+	let others_folded = other_checks_table(i.other_checks, plan, o.symbols, &mut doc);
 
 	let titles: Vec<&str> = i.sections.iter().map(|s| s.title).collect();
 	let multi = (titles.len() > 1).then_some(titles.as_slice());
@@ -238,6 +326,9 @@ fn render(
 	}
 	if let Some(k) = folded {
 		early.push(cat(&[count(k), t(wording::passing_combined(target))]));
+	}
+	if let Some(k) = others_folded {
+		early.push(cat(&[count(k), t(wording::other_checks_combined(target))]));
 	}
 	for note in early {
 		doc.block(note);

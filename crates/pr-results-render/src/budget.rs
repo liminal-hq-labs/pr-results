@@ -10,7 +10,8 @@ use crate::{Degradation, Options};
 
 impl Degradation {
 	/// Every step, in the order they are taken.
-	pub const ALL: [Degradation; 8] = [
+	pub const ALL: [Degradation; 9] = [
+		Degradation::OtherChecksCollapsed,
 		Degradation::ExtrasToCounts,
 		Degradation::Excerpt8,
 		Degradation::Excerpt3,
@@ -24,6 +25,7 @@ impl Degradation {
 	/// The step as a lower-case, hyphenated word, for file names and logs.
 	pub fn name(self) -> &'static str {
 		match self {
+			Self::OtherChecksCollapsed => "other-checks-collapsed",
 			Self::ExtrasToCounts => "extras-to-counts",
 			Self::Excerpt8 => "excerpt-8",
 			Self::Excerpt3 => "excerpt-3",
@@ -39,6 +41,8 @@ impl Degradation {
 /// What a render shows, cumulatively reduced by the steps taken so far.
 #[derive(Debug, Clone)]
 pub(crate) struct Plan {
+	/// Passing other checks as one row.
+	pub collapse_other_checks: bool,
 	/// Flaky tests as a count only.
 	pub extras_as_counts: bool,
 	/// Lines of each failure's body.
@@ -54,6 +58,7 @@ pub(crate) struct Plan {
 impl Plan {
 	pub fn start(options: &Options) -> Self {
 		Self {
+			collapse_other_checks: false,
 			extras_as_counts: false,
 			excerpt_lines: options.excerpt_lines,
 			max_failures: options.max_failures,
@@ -64,6 +69,7 @@ impl Plan {
 
 	fn apply(&mut self, step: Degradation) {
 		match step {
+			Degradation::OtherChecksCollapsed => self.collapse_other_checks = true,
 			Degradation::ExtrasToCounts => self.extras_as_counts = true,
 			Degradation::Excerpt8 => self.excerpt_lines = self.excerpt_lines.min(8),
 			Degradation::Excerpt3 => self.excerpt_lines = self.excerpt_lines.min(3),

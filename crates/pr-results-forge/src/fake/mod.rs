@@ -50,6 +50,10 @@ pub struct FakeCheck {
 	/// The app that made it.
 	pub app_slug: String,
 	pub conclusion: Option<String>,
+	/// `completed`, or `queued` or `in_progress` for a check that has not finished.
+	pub status: String,
+	/// The page the check links to, such as a job of a workflow run.
+	pub details_url: Option<String>,
 	pub title: String,
 	pub summary: String,
 	pub text: String,
@@ -347,6 +351,8 @@ impl FakeForge {
 				external_id: external_id.map(str::to_owned),
 				app_slug: app_slug.to_owned(),
 				conclusion: Some("success".to_owned()),
+				status: "completed".to_owned(),
+				details_url: None,
 				title: "other".to_owned(),
 				summary: "other".to_owned(),
 				text: String::new(),
@@ -355,6 +361,26 @@ impl FakeForge {
 			});
 			id
 		})
+	}
+
+	/// Another job's check run, as a listing shows it: how far it got and where it links.
+	pub fn add_other_check(
+		&self,
+		name: &str,
+		head_sha: &str,
+		status: &str,
+		conclusion: Option<&str>,
+		details_url: Option<&str>,
+	) -> u64 {
+		let id = self.add_check(name, head_sha, None);
+		self.with(|s| {
+			if let Some(c) = s.checks.iter_mut().find(|c| c.id == id) {
+				c.status = status.to_owned();
+				c.conclusion = conclusion.map(str::to_owned);
+				c.details_url = details_url.map(str::to_owned);
+			}
+		});
+		id
 	}
 
 	pub fn add_comment(&self, pr: u64, login: &str, body: &str) -> u64 {
@@ -723,6 +749,7 @@ impl State {
 						json!({
 							"id": c.id, "name": c.name, "head_sha": c.head_sha,
 							"external_id": c.external_id, "conclusion": c.conclusion,
+							"status": c.status, "details_url": c.details_url,
 							"app": { "slug": c.app_slug },
 							"output": { "annotations_count": c.annotations.len() },
 						})
@@ -824,6 +851,8 @@ impl State {
 					external_id: None,
 					app_slug: "github-actions".to_owned(),
 					conclusion: None,
+					status: "completed".to_owned(),
+					details_url: None,
 					title: String::new(),
 					summary: String::new(),
 					text: String::new(),

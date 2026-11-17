@@ -107,6 +107,8 @@ pub struct Settings {
 	pub max_failures: usize,
 	pub excerpt_lines: usize,
 	pub symbols: Symbols,
+	/// List the commit's other check runs in the comment.
+	pub other_checks: bool,
 	pub max_annotations: usize,
 	pub flaky_annotations: bool,
 	pub limits: Limits,
@@ -125,6 +127,7 @@ impl Default for Settings {
 			max_failures: options.max_failures,
 			excerpt_lines: options.excerpt_lines,
 			symbols: options.symbols,
+			other_checks: false,
 			max_annotations: options.max_annotations,
 			flaky_annotations: options.flaky_annotations,
 			limits: Limits::default(),
@@ -401,14 +404,8 @@ impl Reader<'_> {
 				_ => return Err(self.err(span, "`comment.symbols` must be \"text\" or \"glyphs\"")),
 			};
 		}
-		if let (Some(v), Some(true)) = (
-			self.find(t, "other_checks"),
-			self.boolean(t, "other_checks", "comment.")?,
-		) {
-			return Err(self.err(
-				v.span(),
-				"`comment.other_checks` arrives in v0.3: leave it false",
-			));
+		if let Some(on) = self.boolean(t, "other_checks", "comment.")? {
+			s.other_checks = on;
 		}
 		Ok(())
 	}

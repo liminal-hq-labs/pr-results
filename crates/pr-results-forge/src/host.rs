@@ -133,6 +133,25 @@ pub struct CheckResult {
 	pub annotations_rejected: usize,
 }
 
+/// The start of every `external_id` this tool gives a check run, ahead of the comment key and the
+/// check's name. It is how a listing tells our own check runs from other tools'.
+pub(crate) const EXTERNAL_ID_PREFIX: &str = "pr-results:1:";
+
+/// A check run on the commit as another tool or job reports it. The name is untrusted: whoever
+/// wrote that workflow chose it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckRunInfo {
+	pub name: String,
+	/// `queued`, `in_progress`, `completed` and so on.
+	pub status: String,
+	/// `success`, `failure`, `cancelled` and so on, once it has completed.
+	pub conclusion: Option<String>,
+	/// The page the check links to, such as a job in a workflow run.
+	pub details_url: Option<String>,
+	/// A check run this tool wrote: its `external_id` is ours and our app made it.
+	pub ours: bool,
+}
+
 /// What to write for one comment.
 #[derive(Debug, Clone, Copy)]
 pub struct CommentSpec<'a> {
@@ -170,6 +189,11 @@ pub trait Host {
 	fn pulls_for_commit(&self, sha: &Sha) -> Result<Vec<Pull>, ForgeError>;
 	fn pulls_by_head(&self, owner: &str, branch: &str) -> Result<Vec<Pull>, ForgeError>;
 	fn tree_paths(&self, sha: &Sha) -> Result<Tree, ForgeError>;
+	/// The check runs on a commit, the latest of each name. A forge without check runs has none
+	/// to list.
+	fn check_runs(&self, _sha: &Sha) -> Result<Vec<CheckRunInfo>, ForgeError> {
+		Ok(Vec::new())
+	}
 	fn upsert_result(&self, spec: &ResultSpec<'_>) -> Result<ResultWritten, ForgeError>;
 	fn upsert_comment(&self, spec: &CommentSpec<'_>) -> Result<CommentResult, ForgeError>;
 }
