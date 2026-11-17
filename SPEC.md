@@ -209,7 +209,7 @@ For shell-step projects, a converter in the product (Desk's `tools/steps-junit`,
 
 ### The sticky comment
 
-Layout rules: a heading with the product's title and a one-phrase outcome; one table row per suite; failures first and expanded only as far as the budget allows; everything long inside `<details>`; no emoji unless the settings ask for them. Status is in words, with a mark before them chosen by `comment.symbols`: none (`text`), ✓ ✗ ↻ – (`glyphs`) or emoji (`emoji`). How much the comment says around those tables is its [style](#comment-styles). Times are written `1 m 47 s` and `0.4 s`. Numbers use a thin space as the thousands separator (`1 978`), as Canadian style allows. A column of deltas against the base branch is added only when a baseline was found, which arrives with baseline comparison in v0.3 and does not exist before it. The table of other checks, when it is asked for, follows the suite table.
+Layout rules: a heading with the product's title and a one-phrase outcome; one table row per suite; failures first and expanded only as far as the budget allows; everything long inside `<details>`; no emoji unless the settings ask for them. Status is in words, with a mark before them chosen by `comment.symbols`: none (`text`), ✓ ✗ ↻ – (`glyphs`) or emoji (`emoji`). How much the comment says around those tables is its [style](#comment-styles). Times are written `1 m 47 s` and `0.4 s`. Numbers use a thin space as the thousands separator (`1 978`), as Canadian style allows. A column of deltas against the base branch is not built; only the sentence about added and removed tests uses a baseline. The table of other checks, when it is asked for, follows the suite table.
 
 The full layout, with a worked example, is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks-like). Each failure is a `<details open>` block: `<summary>Failure N of M</summary>`, then on Markdown lines the name as `` `suite` › `group` › `name` `` (the section's title in front when the comment has more than one section, and a group that repeats the suite's name left out), the message and the time, the number of earlier attempts and of attempts the report could not keep, and the excerpt in a code block, headed "First N of M lines" or "Last N of M lines" when it is cut. **A raw HTML line holds only trusted words and numbers**, because Markdown inside a raw HTML line is not rendered: names are never put in a `<summary>`, but on a Markdown line after a blank line. Flaky tests are a collapsed section, one line each. Every name, message and path is shown in a code span or a code block. The footer links the commit, the workflow run, its artefacts and shows the version. When everything passes, the comment shrinks to the heading (`All 696 passed`), the table and the footer. When no results were uploaded it says `No results were uploaded for this run.` and links the run. When the CI run was cancelled or skipped, the publisher does nothing.
 
@@ -232,7 +232,9 @@ It also changes the rest of the comment:
 
 - `symbols` defaults to `glyphs`.
 - Under a failure of a **nextest** suite, a `Run it locally:` block with `cargo nextest run -E 'binary_id(=<binary>) & test(=<test>)'`. The start of the command is the suite's `run_locally` setting, `cargo nextest run` by default and an empty string for none. The command is built only from a binary id of letters, digits, `_`, `:`, `/` and `-` and a test path of letters, digits, `_` and `:`, only when nothing was cut from either, and only when the start is printable ASCII with no quote, backtick or backslash. A name that is not like that gets no command, so no quote, `$`, backtick, `;`, line break or part of nextest's filter language in a test name can reach a shell or the filter. This makes the command's shape safe; it cannot make running the pull request's code safe, and the documents say so.
-- A table of other checks that holds only passing checks is folded into `<details>` under `Other checks: 5 passed`, since there is nothing to act on.
+- A table of other checks that holds only passing checks is folded into `<details>` under `Other checks: 5 passed`, since there is nothing to act on. `comment.other_checks_open = true` keeps it open under `#### Other checks` instead, so a project whose comment stands in for a script that listed every job can show them without a click. It changes nothing when a check is not passing (the table is open then anyway) and does not touch the size budget's own fold of five or more passing rows into one row, which is degradation, not layout. The plain style never folds the table, so `other_checks_open = true` is refused with `style = "plain"`.
+- When a baseline was found and its tests differ from the run's, one sentence after the summary and its list and before the table: "This pull request adds 3 tests and removes 2 against `main`. A renamed test counts as both.", and a collapsed list of the names (`Tests added (3) and removed (2)`, up to 20 of each, the rest counted). Added and removed tests are compared by identity, see *Added and removed tests* below. The branch is in a code span and cut to 100 characters, since it is the author's. When the base branch itself had no results, it says which was used instead: "…against `main`, because `fix/x` had no results to compare with." The sentence is not written when nothing differs, or when there is no baseline, and it is never written in the plain style. It is one of the extras the size budget gives up first (`ExtrasToCounts`): the sentence stays, the list goes, and a line says so. `comment.test_delta = false` turns it off.
+- A line before the footer, `This comment is updated in place with the latest results.`, with ♻️ in front when `symbols = "emoji"`. The comment is one sticky comment that the publisher edits on every run, and nothing else in it says so, so a reader cannot tell a current result from an old one except by comparing the commit link with the branch. It is written on the first post too, since the body is rendered before the publisher knows whether it will create or edit, and "is updated" stays true. `comment.updated_note = false` turns it off. It is not in the job summary, which is written once, and not in the plain style.
 - A `Slowest tests (5)` block, collapsed, of the five tests that took longest and at least 100 ms (a table of `0.0 s` would be noise).
 - With no results, a short account of what to look at: `No test results arrived for this run, so there are no tests to show.`, the failing checks, and a reminder that an upload step with `if: always()` still runs after a test fails.
 
@@ -293,7 +295,7 @@ Truncation cuts at a `char` boundary and never inside an escape sequence, becaus
 
 ### Job summary
 
-The publisher writes the comment body without its marker (`job_summary`) to `GITHUB_STEP_SUMMARY` (else `FORGEJO_STEP_SUMMARY`), then a short diagnostics block (`### pr-results`): the lines of the log, which are the checks written and their annotation counts, the comments, and every note such as "no open pull request matches this run", each a count and fixed words. The summary is held to 900 KiB (`JOB_SUMMARY_CAP_BYTES`), under the 1 MiB a step may write on either forge. A body over the cap is cut after a whole line, any open code fence or `<details>` is closed, and a last line says how many lines were left out; the comment limit of 65 535 characters keeps the comment far under the cap, so the cut is the guard for a limit raised later. A cancelled or skipped run writes none. Inputs found per suite, files skipped and the baseline run used join the diagnostics with the features that produce them.
+The publisher writes the comment body without its marker (`job_summary`) to `GITHUB_STEP_SUMMARY` (else `FORGEJO_STEP_SUMMARY`), then a short diagnostics block (`### pr-results`): the lines of the log, which are the checks written and their annotation counts, the comments, and every note such as "no open pull request matches this run", each a count and fixed words. The summary is held to 900 KiB (`JOB_SUMMARY_CAP_BYTES`), under the 1 MiB a step may write on either forge. A body over the cap is cut after a whole line, any open code fence or `<details>` is closed, and a last line says how many lines were left out; the comment limit of 65 535 characters keeps the comment far under the cap, so the cut is the guard for a limit raised later. A cancelled or skipped run writes none. The baseline each pull request was compared with (the run, and how many of the suites could be compared), or why there was none (no run found, an artefact that has expired, a download over a limit), is a line of the diagnostics too. The comment above them is the first pull request commented on, with its own baseline, and without one when it has none. Inputs found per suite and files skipped join the diagnostics with the features that produce them.
 
 ### Limits
 
@@ -323,6 +325,9 @@ mascot = false                   # a line from Jax (guided and enhanced; on in e
 progress = false                 # a bar of the tests that passed (on in enhanced)
 alerts = false                   # the summary in a GitHub alert block (on in enhanced)
 other_checks = false             # list the commit's other check runs (needs checks: read)
+other_checks_open = false        # keep that table open when every check passed (guided and enhanced)
+updated_note = true              # a line saying the comment is updated in place (off in plain)
+test_delta = true                # the tests a pull request adds and removes against its base (off in plain)
 other_checks_ignore = []         # patterns for the names of checks to leave out of that table
 
 [comment.check_commands]
@@ -337,8 +342,8 @@ max_per_suite = 50
 flaky = false
 
 [baseline]
-branch = "main"                  # empty disables comparison
-workflow = "CI"                  # the workflow whose runs on the branch hold the results
+branch = "main"                  # where a baseline is looked for last; empty disables comparison
+workflow = "CI"                  # deprecated: accepted and ignored, the workflow is the run's own
 slower_percent = 25              # report a suite or step this much slower…
 slower_min_seconds = 5           # …and at least this many seconds slower
 
@@ -385,17 +390,21 @@ job = "Tests"                    # the job these results come from; its row leav
 | `suite.fail_on` | `warning` | For the findings formats: the lowest severity that fails, `note`, `warning` or `error`. A finding below it is skipped. An error for a JUnit suite |
 | `suite.run_locally` | `cargo nextest run` for nextest | What a command to run a failed test again starts with; an empty string turns it off. Only for `nextest` and `auto` suites |
 | `comment.other_checks` | `false` | List the commit's other check runs in a table of their own (GitHub, from `workflow_run`) |
+| `comment.test_delta` | `true`; `false` in `plain` | The tests the pull request adds and removes against its base, when a baseline was found. Refused when `true` with `plain`, and refused when `true` is written with an empty `baseline.branch`, which turns baselines off |
+| `comment.updated_note` | `true`; `false` in `plain` | A line before the footer saying the comment is updated in place with the latest results. Refused when `true` with `plain`. Not in the job summary |
+| `comment.other_checks_open` | `false` | Keep that table open, not folded into one line, when every check passed. Guided and enhanced only (refused with `plain`, which never folds it) |
 | `checks.per_suite` | `true` | One check run per suite |
 | `checks.combined` | empty | Name of an optional combined check |
 | `annotations.max_per_suite` | `50` | Annotation cap per suite, at most 500 |
 | `annotations.flaky` | `false` | Annotate flaky cases as warnings |
-| `baseline.branch` | `main` | Branch to compare against; empty disables |
-| `baseline.slower_percent`, `baseline.slower_min_seconds` | `25`, `5` | When a suite or step counts as slower |
+| `baseline.branch` | `main` | The branch a baseline is looked for on when the pull request's own base commit and base branch have no run (a stacked pull request, a release branch). At most 255 bytes with no control character. Empty turns baselines off, and then a `comment.test_delta` of `true` written in the file is an error |
+| `baseline.workflow` | none | **Deprecated.** Accepted so an existing file still loads, and has no effect: the workflow is the one of the triggering run, from the trusted event |
+| `baseline.slower_percent`, `baseline.slower_min_seconds` | `25`, `5` | When a suite or step counts as slower. Checked, and no effect until slower suites are reported |
 | `limits.*` | as above | Download and parse limits |
 
 `suite.path_prefix` is a relative path inside the repository, such as `apps/web/` (backslashes and `./` are tidied, and an absolute path, `..`, a drive letter, a URL or a control character is an error). It is put in front of every path the suite's reports name, whether it came from an attribute, a class name, a panic or a stack frame, because the JavaScript reporters write paths relative to where they ran (vitest's root, the directory `bun test` ran in, jest's root, Playwright's `testDir`). A frame's leading `..` climbs out of the prefix and never past the repository's root (`../src/x.js` with `e2e/` is `src/x.js`), and the result is checked again as a repository path. It applies to every flavour, nextest's panic paths included. The stack-frame rules are in [docs/inputs.md](docs/inputs.md#stack-frames).
 
-A setting for a later version is an error, not a setting that does nothing: `comment.mode` of `changes` or `failures`, `checks.per_suite = false`, and a non-empty `checks.combined` (v0.3). `comment.mascot`, `comment.progress` or `comment.alerts` set to `true` with `comment.style = "plain"` is an error too, because the plain style has none of them. A command in `comment.check_commands` or `suite.run_locally` is 1 to 200 printable ASCII characters with no backtick or backslash. The `[baseline]` keys are checked and have no effect until v0.3. `suite.format` must be `junit`, `sarif`, `clippy-json` or `cargo-audit-json`, and `suite.flavour`, `suite.run_locally` and `suite.fail_on` are errors where the format has no use for them. Numbers are limited: `max_failures` and `excerpt_lines` to 1000, `annotations.max_per_suite` to 500, `limits.max_files` to 10 000, `limits.max_file_bytes` to 256 MiB, `limits.max_cases` to a million and `limits.max_artifact_bytes` to a gibibyte. A title, a suite name and a check name are 1 to 100 printable characters, two suites may not share a check name, and there are at most 50 suites. The limits map to the downloads and the parser: `max_artifact_bytes` bounds the bytes downloaded for a run and the inflated bytes of an artefact, `max_files` the entries of an artefact, and `max_file_bytes` the inflated size of one file and the parser's input.
+A setting for a later version is an error, not a setting that does nothing: `comment.mode` of `changes` or `failures`, `checks.per_suite = false`, and a non-empty `checks.combined` (v0.3). `comment.mascot`, `comment.progress` or `comment.alerts` set to `true` with `comment.style = "plain"` is an error too, because the plain style has none of them. A command in `comment.check_commands` or `suite.run_locally` is 1 to 200 printable ASCII characters with no backtick or backslash. `baseline.branch` is read; `baseline.workflow` and the `slower_*` keys are checked and have no effect. `comment.test_delta = true` with `baseline.branch = ""` is an error naming both keys, since the line could never appear. `suite.format` must be `junit`, `sarif`, `clippy-json` or `cargo-audit-json`, and `suite.flavour`, `suite.run_locally` and `suite.fail_on` are errors where the format has no use for them. Numbers are limited: `max_failures` and `excerpt_lines` to 1000, `annotations.max_per_suite` to 500, `limits.max_files` to 10 000, `limits.max_file_bytes` to 256 MiB, `limits.max_cases` to a million and `limits.max_artifact_bytes` to a gibibyte. A title, a suite name and a check name are 1 to 100 printable characters, two suites may not share a check name, and there are at most 50 suites. The limits map to the downloads and the parser: `max_artifact_bytes` bounds the bytes downloaded for a run and the inflated bytes of an artefact, `max_files` the entries of an artefact, and `max_file_bytes` the inflated size of one file and the parser's input.
 
 Defaults when there is no file: `title` is the repository name in title case, and suites are inferred from artefacts matching `*-test-results*`, one suite per artefact, named from the artefact (`rust-test-results` becomes "Rust tests", `frontend-test-results` becomes "Frontend tests"), with `flavour = "auto"` and `required = false`, and the check named `<title> <suite name>`. The part before `-test-results` names the suite, so `e2e-test-results-1` and `e2e-test-results-2` are one suite, "E2e tests", read from `e2e-test-results*`. Only artefact names of letters, digits, `.`, `_` and `-` are used, because whoever wrote the workflow chose them (a fork included) and they become check names, and at most 20 suites are inferred. The suites are inferred at publish time from the run's artefact list, so they depend on the run.
 
@@ -410,7 +419,7 @@ pull_request (untrusted, read-only token)            workflow_run: completed (tr
 │ upload-artifact: rust-test-results, …     │ ──────▶ │ 2. sparse checkout .github/ of the default branch          │
 │ upload-artifact: event-file (event.json)  │         │ 3. pr-results publish: list + download artefacts (limits)  │
 └──────────────────────────────────────────┘         │ 4. parse, normalize, find and verify the pull request      │
-                                                      │ 5. (should) fetch baseline artefacts from the base branch │
+                                                      │ 5. read the base's baseline run (once per base, GitHub)   │
                                                       │ 6. check runs + annotations, sticky comment, job summary  │
                                                       └──────────────────────────────────────────────────────────┘
 ```
@@ -443,6 +452,45 @@ A fork controls `event.json`, so a forged file could name someone else's pull re
 4. If no pull request verifies, posts check runs (they are tied to the SHA) and no comment, and says so in the job summary.
 
 Before writing the comment it re-reads the pull request and skips it if it is closed or if `head.sha` has moved on. If the existing comment's marker carries a later run id for the same commit, it leaves the comment alone (S9). The check runs are written first and the comment last, so a refused comment (a 403 from a read-only token) still leaves the checks posted and makes the exit status non-zero. A push gets check runs and no comment (D39), and a cancelled or skipped run gets nothing. The reusable workflow sets `concurrency: pr-results-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}` with `cancel-in-progress: false`.
+
+### Added and removed tests
+
+A test's identity is its suite's name and project, its class name and its name, each with runs of whitespace collapsed. The configured title of a suite is not part of it, so renaming a suite in the settings does not make every test look new, and the status is not part of it either, so a skipped test that now runs is the same test. A renamed test is one removed and one added, which the sentence says. Duplicates are counted, so a test that appears twice in one run and once in the other is one added or removed. Every test of a JUnit suite counts, skipped ones included. The totals are exact, and the names kept for the list are the first 100 of each kind in name order.
+
+The comparison is made over the same sections on both sides, so a baseline whose artefacts do not match a configured suite leaves that suite out of it, and a run with no baseline (a first run, an expired artefact, a base with no results) says nothing, with no warning in the comment. Findings from SARIF, clippy and audit files and the `steps` flavour are not tests and are never compared. A section also sits out when its own files were not all read, or it has no tests, since the tests it did not read would show as removed. `required`, `job` and the title play no part.
+
+A section of the baseline is left out, and so is its counterpart in the run, when its artefact has expired, went over a download or size limit or could not be downloaded, when it has no matching file or no tests, and when a file of it could not be parsed. If every section is left out there is no baseline. None of this is an error and none is a warning in the comment; the job summary says which.
+
+### Finding the baseline
+
+The baseline is the artefacts of a completed run of the same workflow on the base, read like the run's own. The publisher looks for one only when the line is on (`comment.test_delta`, so never in the plain style), the host is GitHub, the trusted event names a workflow, `baseline.branch` is not empty and at least one section can be compared. Otherwise it makes exactly the requests it always did. It is done for each pull request the run is published to, since their bases can differ, and not for a push, which has no comment.
+
+The workflow is `workflow_run.workflow_id` of the trusted event, never a value from the uploaded event file, so a pull request cannot choose whose artefacts are read. An event without one has no baseline. The runs are looked for in this order, stopping at the first that is found:
+
+1. The run on exactly the pull request's `base.sha`.
+2. The newest run on the pull request's base branch (`base.ref`).
+3. The newest run on `baseline.branch`, unless that is the base branch, which was just asked. An empty `baseline.branch` still disables baselines altogether.
+
+The first run found is the baseline, even when it turns out to have nothing usable: the later lookups are not tried. The run that is being published is never its own baseline. A lookup the host cannot answer ends the search, leaves the comment as it was and is a line in the job summary.
+
+Each is one read-only request, `GET /repos/{o}/{r}/actions/workflows/{workflow_id}/runs` with `head_sha` or `branch`, `event=push`, `status=completed` and `per_page=10`, which needs no permission beyond `actions: read`. The branch is percent-encoded and must be 1 to 255 bytes with no control character, or no request is made. A run is accepted only if all of these hold:
+
+- Its status is `completed` and its event is `push`. A pull request's run on a branch of the same name is not a baseline.
+- Its conclusion is `success` or `failure`. A red base still has results to compare with; `cancelled`, `skipped`, `timed_out`, `neutral` and a missing conclusion have none worth comparing.
+- Its `head_repository` is this repository (names compared without regard to case). A fork's run of the same name never supplies a baseline, and neither does a run whose fork has been deleted.
+- It is on the commit or branch that was asked for.
+
+The newest accepted run is chosen by `created_at`, not by the order of the list. Only the first ten runs are read, so ten runs in a row that cannot be a baseline (cancelled ones, say) hide an older one: that is a miss, never a wrong baseline. `exclude_pull_requests` is not used, because it only empties each run's `pull_requests` list and does not leave out pull request runs. Forgejo has no such lookup and has no baseline for now (decision D78).
+
+### Reading the baseline
+
+The baseline run's artefacts are listed and read the way the run's own are: the same sections (artefact names, file patterns, flavours, `path_prefix`), the same reader and the same per-file, per-artefact and total limits. Only the sections that can be compared are read, so it never downloads more than the run's own sections would. The byte and file budget is a separate one, starting from nothing, so a large baseline cannot use up what the run's own results may have. A baseline that does not fit is left out of the comparison and never shrinks the run's results. A download that fails is the same as one over a limit, and unlike the run's own, never stops publishing.
+
+What is compared is described under *Added and removed tests*: the suites of the sections that both runs have, joined. The result is looked up once for each distinct base (base commit and base branch), however many pull requests share it, with one listing of the run's artefacts and one download of each artefact. In the comment, `against` is the pull request's base branch when the run was found on the base commit or the base branch, and `baseline.branch` when it was found there instead, which then says the base branch had no results. The fallback is not said when the two are the same branch.
+
+### One comment for each baseline
+
+A comment is rendered once when no pull request has a baseline. Otherwise it is rendered once for each distinct outcome (the comparison and the branch names), so pull requests with the same outcome share a body, and one without a baseline gets the body it would have had without any. Each body is deterministic. The size budget works on the body with its baseline in it, and the shortest form, written when GitHub refuses a comment as too large, is made with the same baseline. The check runs do not mention the baseline.
 
 ### Untrusted input rules
 
@@ -588,8 +636,8 @@ A manual workflow (`workflow_dispatch`, owner only) publishes the hostile fixtur
 | --- | --- |
 | **v0.1** | JUnit `generic`, `nextest` and `steps` flavours; `publish` in `workflow_run` with verified pull request, sticky comment and one check run per suite; `pr-results.toml` and defaults; `Safe` escaping, limits and budgets; `render`; the composite action and the reusable workflow; Linux `x86_64` and `aarch64` binaries; goldens and hostile fixtures |
 | v0.2 | vitest, bun, jest-junit and Playwright flavours with `path_prefix`; annotations with file and line (attributes, Rust panics, JavaScript stacks); flaky from nextest retries; job summary |
-| v0.3 | Baseline comparison against the base branch (new and pre-existing failures, added and removed tests, slower suites and steps); combined check; `comment.mode = changes`; stale-run guard hardening |
-| Unreleased | `comment.other_checks`: the commit's other check runs in the comment's own table; the guided style (the new default), the enhanced style and its extras (`symbols = "emoji"`, `mascot`, `progress`, `alerts`), commands to run a failed nextest test again, `other_checks_ignore` and `check_commands`; `suite.job`; `pr-results wrap`; `suite.format` of `sarif`, `clippy-json` and `cargo-audit-json`, with `suite.fail_on` |
+| v0.3 | Baseline comparison against the base branch (new and pre-existing failures, slower suites and steps; the added and removed tests are in Unreleased); combined check; `comment.mode = changes`; stale-run guard hardening |
+| Unreleased | `comment.other_checks`: the commit's other check runs in the comment's own table; the guided style (the new default), the enhanced style and its extras (`symbols = "emoji"`, `mascot`, `progress`, `alerts`), commands to run a failed nextest test again, `other_checks_ignore` and `check_commands`; `comment.other_checks_open`; `comment.test_delta`, the tests a pull request adds and removes against its base, read from the base's baseline run (`baseline.branch`); `comment.updated_note` (on by default in guided and enhanced); `suite.job`; `pr-results wrap`; `suite.format` of `sarif`, `clippy-json` and `cargo-audit-json`, with `suite.fail_on` |
 | v0.4 | Trends over N base runs (flaky rate, duration drift); Playwright attachment links; `steps-times` and `steps-json` inputs; Python, GUT and Gradle documented; graduation review |
 
 ## Open questions
@@ -619,6 +667,8 @@ Q5, Q8, Q10 and Q11 are answered in [docs/decisions.md](docs/decisions.md) (D38 
 - GitHub Enterprise Server: the base accepts a path (`https://host/api/v3`), and nothing else was tried. The blob host allowlist for github.com is from GitHub's documented storage names and was not checked against a live download; a name GitHub adds outside it would be refused until the list is widened.
 - That any workflow here runs on GitHub: `action.yml`, `publish.yml`, `publish-test-results.yml` and the new `ci.yml` jobs are checked by actionlint, zizmor (also `--pedantic`) and a local test of their shell steps, and nothing else. In particular: `workflow_run` runs the file from the default branch only, so the dogfood publisher is inert until merged; `uses: ./` and `github.action_path` in a composite action; `rustup` and a pinned toolchain on the runner for `build: source`; the sparse checkout of `.github`; `actions/upload-artifact` inside the `ci-rust` container (it needs the runner's Node); the concurrency group expression in a reusable workflow; and that the caller's four permissions reach the called job.
 - That `toml` reports a line for every kind of mistake in a settings file. Spans were checked for the cases in the tests.
+- Whether `base.sha` of a pull request is the base branch's tip or its merge base with the head, which GitHub's pages do not say. The baseline lookup tries the commit and then the branch, so either works, at the cost of a baseline that may be a little older than the branch's tip.
+- That a workflow's run list comes newest first. It did for this repository's own runs, and the pages do not promise it, so the lookup orders by `created_at` itself. `head_sha` must be the full forty-digit hash: an abbreviated one found nothing.
 - That the fixtures of the `workflow_run` event match a real payload. They are written by hand from GitHub's documentation with only the fields the tool reads.
 
 ## In-job publishing

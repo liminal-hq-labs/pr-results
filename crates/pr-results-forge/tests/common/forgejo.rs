@@ -43,6 +43,7 @@ impl FjEnv {
 		let host = Forgejo::new(fake.clone(), RepoSlug::parse(REPO).unwrap());
 		let run = WorkflowRun {
 			id: RunId(RUN),
+			workflow_id: None,
 			run_number: Some(NUMBER),
 			head_sha: Sha::parse(SHA).unwrap(),
 			head_branch: "feature".to_owned(),

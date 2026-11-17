@@ -256,9 +256,9 @@ impl State {
 				"repo": p.head_repo.as_ref().map(|r| repo_json(r, 11)),
 			},
 			"base": {
-				"label": "main",
-				"ref": "main",
-				"sha": "a".repeat(40),
+				"label": p.base_ref,
+				"ref": p.base_ref,
+				"sha": p.base_sha,
 				"repo": repo_json(&p.base_repo, 10),
 			},
 		})

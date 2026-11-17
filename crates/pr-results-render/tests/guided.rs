@@ -15,10 +15,11 @@ mod common;
 use std::fmt::Write as _;
 
 use common::{
-	assert_inert_all, guided_truncation_base, other, parse_text, scenarios, section, Scenario,
+	assert_inert_all, delta, guided_truncation_base, many_delta, other, parse_text, scenarios,
+	section, Scenario,
 };
 use pr_results_core::Flavour;
-use pr_results_render::{measure, CheckState, Degradation, Style, Symbols, Target};
+use pr_results_render::{job_summary, measure, CheckState, Degradation, Style, Symbols, Target};
 
 /// A nextest report with `passed` passing and `failed` failing tests, each 200 ms.
 fn report(passed: usize, failed: usize) -> String {
@@ -422,4 +423,293 @@ fn the_smallest_guided_comment_keeps_the_heading_the_totals_and_the_other_checks
 	for dropped in ["Run it locally", "Slowest tests", "need attention."] {
 		assert!(!text.contains(dropped), "{dropped}\n{text}");
 	}
+}
+
+fn with_checks(mut sc: Scenario, checks: &[(&str, CheckState)], open: bool) -> Scenario {
+	sc = sc.guided().with_other_checks(
+		checks
+			.iter()
+			.map(|(name, state)| other(name, *state))
+			.collect(),
+	);
+	sc.options.other_checks_open = open;
+	sc
+}
+
+#[test]
+fn an_open_table_is_not_folded_when_every_other_check_passed() {
+	let all_passed = [
+		("Format", CheckState::Passed),
+		("Clippy", CheckState::Passed),
+	];
+	let folded = body(&with_checks(run(3, 0), &all_passed, false));
+	assert!(
+		folded.contains("<summary>Other checks: 2 passed</summary>"),
+		"{folded}"
+	);
+	assert!(!folded.contains("#### Other checks"));
+
+	let open = body(&with_checks(run(3, 0), &all_passed, true));
+	assert!(open.contains("#### Other checks"), "{open}");
+	assert!(!open.contains("<summary>Other checks"), "{open}");
+	assert!(open.contains("| `Format` |") && open.contains("| `Clippy` |"));
+}
+
+#[test]
+fn a_table_with_a_failure_in_it_is_the_same_open_or_not() {
+	let mixed = [
+		("Format", CheckState::Passed),
+		("Security audit", CheckState::Failed),
+	];
+	assert_eq!(
+		body(&with_checks(run(3, 0), &mixed, false)),
+		body(&with_checks(run(3, 0), &mixed, true))
+	);
+}
+
+#[test]
+fn the_plain_style_never_folds_so_the_setting_changes_nothing() {
+	let mut plain = run(3, 0).with_other_checks(vec![other("Format", CheckState::Passed)]);
+	let off = body(&plain);
+	plain.options.other_checks_open = true;
+	assert_eq!(plain.options.style, Style::Plain);
+	assert_eq!(off, body(&plain));
+	assert!(off.contains("#### Other checks") && !off.contains("<summary>Other checks"));
+}
+
+#[test]
+fn a_comment_with_no_results_keeps_the_table_open_too() {
+	let none = || {
+		Scenario::new(
+			"t",
+			"Example checks",
+			vec![section("Rust tests", false, Vec::new())],
+		)
+		.comment_only()
+	};
+	let all_passed = [("Format", CheckState::Passed)];
+	let folded = body(&with_checks(none(), &all_passed, false));
+	assert!(
+		folded.contains("<summary>Other checks: 1 passed</summary>"),
+		"{folded}"
+	);
+	let open = body(&with_checks(none(), &all_passed, true));
+	assert!(
+		open.contains("#### Other checks") && !open.contains("<summary>Other checks"),
+		"{open}"
+	);
+}
+
+const NOTE: &str = "This comment is updated in place with the latest results.";
+
+#[test]
+fn the_comment_says_it_is_updated_in_place_just_before_the_footer() {
+	let text = body(&run(3, 1).guided());
+	assert_eq!(text.matches(NOTE).count(), 1, "{text}");
+	let (before, after) = text.split_once(NOTE).unwrap();
+	assert!(before.ends_with("\n\n"), "{text}");
+	assert!(after.starts_with("\n\nCommit ["), "{text}");
+
+	let enhanced = body(&run(3, 1).enhanced());
+	assert!(
+		enhanced.contains(&format!("\u{267b}\u{fe0f} {NOTE}")),
+		"{enhanced}"
+	);
+}
+
+#[test]
+fn the_note_follows_the_setting_and_the_plain_style_never_has_it() {
+	let mut off = run(3, 1).guided();
+	off.options.updated_note = false;
+	assert!(!body(&off).contains("updated in place"));
+
+	let mut plain = run(3, 1);
+	plain.options.updated_note = true;
+	assert_eq!(plain.options.style, Style::Plain);
+	assert!(!body(&plain).contains("updated in place"));
+}
+
+#[test]
+fn the_note_is_in_the_smallest_comment_and_in_one_with_no_results() {
+	let none = Scenario::new(
+		"t",
+		"Example checks",
+		vec![section("Rust tests", false, Vec::new())],
+	)
+	.comment_only()
+	.guided();
+	assert!(body(&none).contains(NOTE));
+
+	let mut tiny = run(3, 1).guided();
+	tiny.options.comment_limit = 600;
+	let c = tiny.comment();
+	assert!(
+		c.steps_taken.contains(&Degradation::Minimal),
+		"{:?}",
+		c.steps_taken
+	);
+}
+
+#[test]
+fn the_job_summary_leaves_the_note_out_since_it_is_written_once() {
+	for sc in [run(3, 1).guided(), run(3, 1).enhanced()] {
+		let c = sc.comment();
+		assert!(c.body.as_str().contains("updated in place"));
+		let summary = job_summary(&c);
+		assert!(
+			!summary.as_str().contains("updated in place"),
+			"{}",
+			summary.as_str()
+		);
+		assert!(!summary.as_str().contains("\n\n\n"));
+		assert!(summary.as_str().contains("Commit ["));
+	}
+}
+
+fn with_delta(sc: Scenario, d: pr_results_core::TestDelta, from: Option<&str>) -> Scenario {
+	sc.guided().with_baseline(d, "main", from)
+}
+
+#[test]
+fn the_comment_says_how_many_tests_were_added_and_removed() {
+	let both = body(&with_delta(
+		run(3, 0),
+		delta(
+			&[("a", "one"), ("a", "two"), ("a", "three")],
+			&[("a", "gone")],
+		),
+		None,
+	));
+	assert!(
+		both.contains(
+			"This pull request adds 3 tests and removes 1 test against `main`. A renamed test counts as both."
+		),
+		"{both}"
+	);
+	assert!(
+		both.contains("<summary>Tests added (3) and removed (1)</summary>"),
+		"{both}"
+	);
+
+	let added = body(&with_delta(run(3, 0), delta(&[("a", "one")], &[]), None));
+	assert!(
+		added.contains("This pull request adds 1 test against `main`."),
+		"{added}"
+	);
+	assert!(!added.contains("renamed"), "{added}");
+	assert!(
+		added.contains("<summary>Tests added (1)</summary>"),
+		"{added}"
+	);
+
+	let removed = body(&with_delta(
+		run(3, 0),
+		delta(&[], &[("a", "x"), ("a", "y")]),
+		None,
+	));
+	assert!(
+		removed.contains("This pull request removes 2 tests against `main`."),
+		"{removed}"
+	);
+	assert!(
+		removed.contains("<summary>Tests removed (2)</summary>"),
+		"{removed}"
+	);
+}
+
+#[test]
+fn it_says_nothing_when_the_tests_are_the_same_or_there_is_no_baseline() {
+	let same = body(&with_delta(run(3, 0), delta(&[], &[]), None));
+	assert!(!same.contains("This pull request"), "{same}");
+	let none = body(&run(3, 0).guided());
+	assert!(!none.contains("This pull request"), "{none}");
+}
+
+#[test]
+fn the_setting_and_the_plain_style_decide_whether_it_is_there() {
+	let d = || delta(&[("a", "one")], &[]);
+	let mut off = with_delta(run(3, 0), d(), None);
+	off.options.test_delta = false;
+	assert!(!body(&off).contains("This pull request"));
+
+	let mut plain = run(3, 0).with_baseline(d(), "main", None);
+	plain.options.test_delta = true;
+	assert_eq!(plain.options.style, Style::Plain);
+	assert!(!body(&plain).contains("This pull request"));
+}
+
+#[test]
+fn a_fallback_says_which_branch_had_no_results() {
+	let text = body(&with_delta(
+		run(3, 0),
+		delta(&[("a", "one")], &[]),
+		Some("fix/stacked"),
+	));
+	assert!(
+		text.contains(
+			"adds 1 test against `main`, because `fix/stacked` had no results to compare with."
+		),
+		"{text}"
+	);
+}
+
+#[test]
+fn the_names_are_listed_in_code_and_the_rest_are_counted() {
+	let text = body(&with_delta(run(3, 0), many_delta(33, 21), None));
+	assert!(
+		text.contains("- `core` \u{203a} `app` \u{203a} `new_000`"),
+		"{text}"
+	);
+	assert!(text.contains("`new_019`"), "{text}");
+	assert!(!text.contains("new_020"), "{text}");
+	assert!(text.contains("\u{2026}and 13 more tests."), "{text}");
+	assert!(text.contains("\u{2026}and 1 more test."), "{text}");
+}
+
+#[test]
+fn emoji_marks_the_two_lists_only_in_the_enhanced_style() {
+	let d = || delta(&[("a", "one")], &[("a", "two")]);
+	let enhanced = body(&run(3, 0).enhanced().with_baseline(d(), "main", None));
+	assert!(
+		enhanced.contains("\u{2795} Added:") && enhanced.contains("\u{2796} Removed:"),
+		"{enhanced}"
+	);
+	let guided = body(&with_delta(run(3, 0), d(), None));
+	assert!(
+		guided.contains("\nAdded:\n") && guided.contains("\nRemoved:\n"),
+		"{guided}"
+	);
+}
+
+#[test]
+fn a_comment_over_its_limit_gives_up_the_list_first_and_says_so() {
+	let big = || {
+		let mut sc = with_delta(run(3, 0), many_delta(40, 40), None);
+		sc.options.comment_limit = 100_000;
+		sc
+	};
+	let roomy = big().comment();
+	assert!(roomy.body.as_str().contains("<summary>Tests added"));
+	assert!(roomy.steps_taken.is_empty());
+
+	let mut tight = big();
+	tight.options.comment_limit = measure(&roomy.body) - 1;
+	let c = tight.comment();
+	assert!(
+		c.steps_taken.contains(&Degradation::ExtrasToCounts),
+		"{:?}",
+		c.steps_taken
+	);
+	let text = c.body.to_string();
+	assert!(
+		text.contains("This pull request adds 40 tests and removes 40 tests against `main`."),
+		"{text}"
+	);
+	assert!(!text.contains("<summary>Tests added"), "{text}");
+	assert!(
+		text.contains(
+			"The list of 40 added and 40 removed tests was left out to fit GitHub's size limit."
+		),
+		"{text}"
+	);
 }

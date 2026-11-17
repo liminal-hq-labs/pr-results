@@ -4,6 +4,25 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+### Added
+
+- `comment.other_checks_open` (decision D76): keeps the table of other checks open under `#### Other checks`, not folded into `Other checks: 5 passed`, when every check passed. It is for guided and enhanced and is refused with `style = "plain"`, which never folds the table. It changes nothing when a check is not passing, and the size budget's own fold of passing rows still applies.
+- The goldens `guided-other-checks-open` and `enhanced-other-checks-open`.
+- `comment.updated_note` (decision D77): one fixed line before the footer, `This comment is updated in place with the latest results.` (with ♻️ in front for emoji symbols), so a reader knows the comment is edited on every run. It is on in the guided and enhanced styles and refused as `true` with `style = "plain"`. It is left out of the job summary, which is written once. `Safe::without_line` in the core crate, and the guided and enhanced goldens carry the line.
+- `comment.test_delta` (decision D79, issue #37): one sentence after the summary, "This pull request adds 3 tests and removes 2 against `main`. A renamed test counts as both.", with a collapsed list of the names. It needs a baseline, which the publisher now reads (see the next entries), and it is on in the guided and enhanced styles and refused as `true` with `style = "plain"`. `pr_results_core::test_delta`, `TestDelta` and `TestId` compare two runs' tests, and `pr_results_render::Baseline` carries the result into `Input`.
+- Finding a baseline (decision D78, issue #37). `Host::baseline_run`, with `BaselineQuery` and `RunRef`, finds the newest completed `push` run of a workflow in the repository itself that ended in `success` or `failure`, by exact commit or by branch, so a fork's run of the same name and a cancelled run are never taken for a baseline. GitHub implements it with one read of `actions/workflows/{id}/runs` and no new permission, and the other hosts find none. `FakeForge` serves the route (`FakeRun`, `add_workflow_run`).
+- The publisher now compares a pull request's tests with its base's (decision D80, issue #37). For each pull request it looks for a baseline run on the base commit, then the base branch, then `baseline.branch`, reads that run's artefacts like the run's own with a budget of its own, and the comment says which tests were added and removed, and which branch it compared with when that was not the base branch. Only JUnit suites that are not `steps` are compared, and a suite the baseline cannot supply is left out on both sides. A base that is shared by several pull requests costs one lookup and one download, and a comment is rendered once for each distinct outcome. When there is no baseline the comment says nothing and the job summary says why. Plain output, Forgejo, `comment.test_delta = false` and an empty `baseline.branch` make the same requests as before, and no new permission is needed.
+- `baseline.branch` is read (default `main`; empty turns baselines off), and `comment.test_delta = true` written with an empty `baseline.branch` is an error naming both keys. `Plan::baseline_branch`, `Settings::baseline_branch`, the notes `BaselineNotFound`, `BaselineUnavailable`, `BaselineUnusable` and `BaselineUsed`, and the request goldens `baseline-by-commit`, `baseline-fallback` and `baseline-not-found`.
+- `Pull::base_ref` and `Pull::base_sha`, read from the API's `base.ref` and `base.sha` and left `None` when absent or malformed, and `WorkflowRun::workflow_id`, read from the trusted event's `workflow_run.workflow_id`.
+
+### Changed
+
+- **The default comment has one more line.** A settings file that says nothing about `comment.updated_note` now gets the note in the guided style, which is the default. Set `updated_note = false` to drop it. The plain style is unchanged byte for byte.
+- **Breaking for library users (0.x):** `Options` has new public fields, `other_checks_open`, `updated_note` and `test_delta`, and `Settings` has the same three. `pr_results_render::Input` has a new public field, `baseline` (`None` for no baseline).
+- **`baseline.workflow` is deprecated.** It is still accepted so an existing file loads, and has no effect: the baseline is taken from the workflow of the triggering run, which comes from the trusted event. `baseline.slower_percent` and `baseline.slower_min_seconds` are still checked and have no effect.
+- **Breaking for library users (0.x):** `Plan` has a new public field, `baseline_branch`, and `Note` has four new variants.
+- **Breaking for library users (0.x):** `Pull` has the fields `base_ref` and `base_sha`, `WorkflowRun` has `workflow_id` and `FakePull` has `base_ref` and `base_sha`. None of the crates is published.
+
 ## 0.3.0 — 2026-11-17
 
 ### Added

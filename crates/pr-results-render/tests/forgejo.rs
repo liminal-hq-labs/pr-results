@@ -158,6 +158,7 @@ fn without_a_run_number_the_forgejo_footer_links_the_run_id() {
 		title: "Example checks",
 		sections: &sections,
 		other_checks: &[],
+		baseline: None,
 		options: &options,
 	};
 	let body = pr_results_render::comment(&input).body.to_string();

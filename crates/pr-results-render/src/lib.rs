@@ -28,7 +28,9 @@ mod text;
 mod view;
 mod wording;
 
-use pr_results_core::{CommentKey, RepoPath, RepoSlug, RunId, Safe, ServerUrl, Sha, Suite};
+use pr_results_core::{
+	CommentKey, RepoPath, RepoSlug, RunId, Safe, ServerUrl, Sha, Suite, TestDelta,
+};
 
 /// The forge the output is for. It chooses the fixed words (a check run on GitHub, a commit
 /// status on Forgejo), the footer's links, whether failures carry their `path:line` (GitHub puts
@@ -106,6 +108,14 @@ pub struct Options {
 	pub progress: bool,
 	/// The summary in a GitHub alert block. Guided style on GitHub only.
 	pub alerts: bool,
+	/// What the pull request adds and removes in tests against its base, when a baseline was
+	/// found. Guided style only.
+	pub test_delta: bool,
+	/// A line saying the comment is updated in place with the latest results. Guided style only.
+	pub updated_note: bool,
+	/// The table of other checks stays open when every one passed, not folded into a line.
+	/// Guided style only: the plain style never folds it.
+	pub other_checks_open: bool,
 	/// Character limits, counted after escaping. Each is held to 65,535 when used, GitHub's own
 	/// limit for a check run's summary and text and just under its limit for a comment.
 	pub comment_limit: usize,
@@ -144,6 +154,9 @@ impl Default for Options {
 			mascot: false,
 			progress: false,
 			alerts: false,
+			test_delta: false,
+			updated_note: false,
+			other_checks_open: false,
 			comment_limit: 60_000,
 			summary_limit: 60_000,
 			text_limit: 60_000,
@@ -185,7 +198,21 @@ pub struct Input<'a> {
 	pub sections: &'a [Section<'a>],
 	/// The commit's other checks, for a table of their own. Empty when the setting is off.
 	pub other_checks: &'a [OtherCheck],
+	/// The tests this run has and its base's baseline lacks, and the other way round. `None` when
+	/// no baseline was found, which the comment does not mention.
+	pub baseline: Option<Baseline<'a>>,
 	pub options: &'a Options,
+}
+
+/// How the tests of this run differ from those of the pull request's base, and what they were
+/// compared with.
+#[derive(Debug, Clone, Copy)]
+pub struct Baseline<'a> {
+	pub delta: &'a TestDelta,
+	/// The branch the baseline results came from, shown in a code span.
+	pub against: &'a str,
+	/// The branch looked at first, when it had no results and `against` is the fallback.
+	pub fell_back_from: Option<&'a str>,
 }
 
 /// What a comment gives up to fit its limit, in the order it gives it up. A step that would

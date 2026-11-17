@@ -26,6 +26,7 @@ use serde_json::Value;
 
 use crate::api::ForgeError;
 use crate::archive::{read_zip, read_zip_filtered, ArchiveError, ArchiveLimits, Entry};
+use crate::baseline::{BaselineGap, Comparer, Resolved};
 use crate::host::{
 	Artifact, CheckRunInfo, CheckSpec, CommentAction, CommentSpec, Host, HostKind, Pull,
 	ResultSpec, StatusSpec, Tree, EXTERNAL_ID_PREFIX,
@@ -43,6 +44,10 @@ const EVENT_FILE_NAME: &str = "event.json";
 #[derive(Debug, Clone)]
 pub struct WorkflowRun {
 	pub id: RunId,
+	/// The workflow this is a run of, from the trusted event's `workflow_run.workflow_id`. A
+	/// baseline is looked for among runs of the same workflow. `None` when the event has none
+	/// (in-job publishing, an older payload).
+	pub workflow_id: Option<u64>,
 	/// The run's number, which names its page on Forgejo. Without it a link names the id.
 	pub run_number: Option<u64>,
 	pub head_sha: Sha,
@@ -99,6 +104,9 @@ pub struct Plan {
 	pub parse: Limits,
 	/// All artefacts downloaded for one run, in bytes.
 	pub max_download_bytes: u64,
+	/// The branch a baseline falls back to when the pull request's own base has no run to offer
+	/// (`baseline.branch`). Empty turns baselines off altogether.
+	pub baseline_branch: String,
 	/// The artefact that holds the pull request's `event.json`.
 	pub event_artifact: String,
 	/// Shown in the footer.
@@ -126,6 +134,7 @@ impl Plan {
 			archive: ArchiveLimits::default(),
 			parse: Limits::default(),
 			max_download_bytes: 100 * 1024 * 1024,
+			baseline_branch: "main".to_owned(),
 			event_artifact: "event-file".to_owned(),
 			tool_version,
 		}
@@ -198,6 +207,28 @@ pub enum Note {
 	AnnotationsRejected {
 		section: usize,
 		count: usize,
+	},
+	/// No run of the workflow on the pull request's base commit, its base branch or
+	/// `baseline.branch` could be a baseline.
+	BaselineNotFound {
+		pr: u64,
+	},
+	/// The baseline's runs or artefacts could not be listed.
+	BaselineUnavailable {
+		pr: u64,
+	},
+	/// A baseline run was found and none of the suites compared could be read from it.
+	BaselineUnusable {
+		pr: u64,
+		why: BaselineGap,
+	},
+	/// The pull request's tests were compared with those of run `run`, over `compared` of the
+	/// `of` suites that can be compared.
+	BaselineUsed {
+		pr: u64,
+		run: u64,
+		compared: usize,
+		of: usize,
 	},
 }
 
@@ -371,6 +402,24 @@ impl PublishReport {
 					"GitHub refused {count} annotations for {}.",
 					title(*section)
 				),
+				Note::BaselineNotFound { pr } => format!(
+					"No baseline run was found for pull request {pr}: the comment does not say which tests it adds or removes."
+				),
+				Note::BaselineUnavailable { pr } => format!(
+					"The baseline for pull request {pr} could not be listed: the comment does not say which tests it adds or removes."
+				),
+				Note::BaselineUnusable { pr, why } => format!(
+					"The baseline run for pull request {pr} was not used: {}.",
+					why.describe()
+				),
+				Note::BaselineUsed {
+					pr,
+					run,
+					compared,
+					of,
+				} => format!(
+					"Pull request {pr} was compared with run {run} over {compared} of {of} suites."
+				),
 			});
 		}
 		for f in &self.failures {
@@ -441,7 +490,8 @@ pub fn publish<H: Host>(
 
 	gh.begin_run();
 	let artifacts = gh.artifacts(run.id).map_err(at("listing artefacts"))?;
-	let loaded = load(gh, &artifacts, plan, &mut report)?;
+	let wanted: Vec<&SectionPlan> = plan.sections.iter().collect();
+	let loaded = load(gh, &artifacts, &wanted, plan, false, &mut report)?.inputs;
 	Ok(finish(
 		gh,
 		run,
@@ -515,6 +565,7 @@ fn finish<H: Host>(
 		title: &plan.title,
 		sections: &sections,
 		other_checks: &others,
+		baseline: None,
 		options: &plan.options,
 	};
 
@@ -531,6 +582,7 @@ fn finish<H: Host>(
 				plan,
 				&input,
 				&full,
+				loaded,
 				artifacts.unwrap_or(&[]),
 				&mut report,
 			);
@@ -544,6 +596,7 @@ fn finish<H: Host>(
 				plan,
 				&input,
 				&full,
+				loaded,
 				artifacts.unwrap_or(&[]),
 				&mut report,
 			);
@@ -558,87 +611,118 @@ fn finish<H: Host>(
 
 // ---- reading -------------------------------------------------------------------------------
 
-/// Reads the run's artefacts one at a time. An artefact is downloaded once even when several
-/// sections want it, only the entries some section asked for are inflated, and each archive is
-/// parsed and dropped before the next is fetched, so memory holds one archive and what it yields.
-/// The inflated bytes of everything kept are capped across the whole run by
-/// `plan.archive.max_total_bytes`.
-fn load<H: Host>(
+/// What [`load`] read: the inputs, and for each section how many files were parsed and the first
+/// reason it is incomplete, which is what a baseline needs to know and the run's own results do
+/// not (they are shown with what could be read, and the notes say the rest).
+pub(crate) struct Loaded {
+	pub inputs: Inputs,
+	pub files: Vec<usize>,
+	pub gaps: Vec<Option<BaselineGap>>,
+}
+
+/// Reads the artefacts of one run, one at a time, for `sections`. An artefact is downloaded once
+/// even when several sections want it, only the entries some section asked for are inflated, and
+/// each archive is parsed and dropped before the next is fetched, so memory holds one archive and
+/// what it yields. The inflated bytes of everything kept are capped across the whole read by
+/// `plan.archive.max_total_bytes`, and the bytes downloaded by `plan.max_download_bytes`: both
+/// counters start at nothing, so a caller that reads a second run has a budget of its own.
+///
+/// A download that fails is an error, unless `lenient`, which is for a baseline: it leaves the
+/// section out and says why in `gaps`.
+pub(crate) fn load<H: Host>(
 	gh: &H,
 	artifacts: &[Artifact],
+	sections: &[&SectionPlan],
 	plan: &Plan,
+	lenient: bool,
 	report: &mut PublishReport,
-) -> Result<Inputs, PublishError> {
-	let count = plan.sections.len();
+) -> Result<Loaded, PublishError> {
+	let count = sections.len();
 	let mut merged: Vec<Report> = (0..count).map(|_| Report::default()).collect();
 	let mut skipped = vec![0usize; count];
+	let mut files = vec![0usize; count];
+	let mut gaps: Vec<Option<BaselineGap>> = vec![None; count];
 	let mut downloaded: u64 = 0;
 	let mut inflated: u64 = 0;
 
 	let mut wanted: Vec<&Artifact> = artifacts
 		.iter()
-		.filter(|a| plan.sections.iter().any(|s| s.artifact.is_match(&a.name)))
+		.filter(|a| sections.iter().any(|s| s.artifact.is_match(&a.name)))
 		.collect();
 	wanted.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
 
 	for artifact in wanted {
-		let feeds: Vec<usize> = plan
-			.sections
+		let feeds: Vec<usize> = sections
 			.iter()
 			.enumerate()
 			.filter(|(_, s)| s.artifact.is_match(&artifact.name))
 			.map(|(i, _)| i)
 			.collect();
-		let refuse =
-			|report: &mut PublishReport, skipped: &mut [usize], note: &dyn Fn(usize) -> Note| {
-				for i in &feeds {
-					report.notes.push(note(*i));
-					if let Some(n) = skipped.get_mut(*i) {
-						*n += 1;
-					}
+		let mut refuse = |report: &mut PublishReport,
+		                  skipped: &mut [usize],
+		                  gap: BaselineGap,
+		                  note: &dyn Fn(usize) -> Option<Note>| {
+			for i in &feeds {
+				report.notes.extend(note(*i));
+				if let Some(n) = skipped.get_mut(*i) {
+					*n += 1;
 				}
-			};
+				if let Some(g) = gaps.get_mut(*i) {
+					g.get_or_insert(gap);
+				}
+			}
+		};
 		if artifact.expired {
-			refuse(report, &mut skipped, &|section| Note::ArtifactExpired {
-				section,
+			refuse(report, &mut skipped, BaselineGap::Expired, &|section| {
+				Some(Note::ArtifactExpired { section })
 			});
 			continue;
 		}
 		let keep = |name: &str| {
 			feeds
 				.iter()
-				.filter_map(|i| plan.sections.get(*i))
+				.filter_map(|i| sections.get(*i))
 				.any(|s| s.files.iter().any(|g| g.is_match(name)))
 		};
-		let entries = match fetch(gh, artifact, plan, &mut downloaded, inflated, &keep)? {
+		let fetched = match fetch(gh, artifact, plan, &mut downloaded, inflated, &keep) {
+			Ok(f) => f,
+			Err(_) if lenient => Fetched::Unavailable,
+			Err(e) => return Err(e),
+		};
+		let entries = match fetched {
 			Fetched::Entries(e) => e,
 			Fetched::Expired => {
-				refuse(report, &mut skipped, &|section| Note::ArtifactExpired {
-					section,
+				refuse(report, &mut skipped, BaselineGap::Expired, &|section| {
+					Some(Note::ArtifactExpired { section })
 				});
 				continue;
 			}
 			Fetched::TooLarge => {
-				refuse(report, &mut skipped, &|section| Note::ArtifactTooLarge {
-					section,
+				refuse(report, &mut skipped, BaselineGap::TooLarge, &|section| {
+					Some(Note::ArtifactTooLarge { section })
 				});
 				continue;
 			}
 			Fetched::Refused(why) => {
-				refuse(report, &mut skipped, &|section| Note::ArtifactRefused {
-					section,
-					why,
+				refuse(report, &mut skipped, BaselineGap::Refused, &|section| {
+					Some(Note::ArtifactRefused { section, why })
 				});
+				continue;
+			}
+			Fetched::Unavailable => {
+				refuse(report, &mut skipped, BaselineGap::Unavailable, &|_| None);
 				continue;
 			}
 		};
 		inflated =
 			inflated.saturating_add(entries.iter().map(|e| e.data.len() as u64).sum::<u64>());
 		for i in &feeds {
-			let (Some(section), Some(out), Some(skip)) = (
-				plan.sections.get(*i),
+			let (Some(section), Some(out), Some(skip), Some(read), Some(gap)) = (
+				sections.get(*i),
 				merged.get_mut(*i),
 				skipped.get_mut(*i),
+				files.get_mut(*i),
+				gaps.get_mut(*i),
 			) else {
 				continue;
 			};
@@ -654,10 +738,14 @@ fn load<H: Host>(
 					section.path_prefix.as_ref(),
 					section.fail_on,
 				) {
-					Ok(parsed) => out.suites.extend(parsed.suites),
+					Ok(parsed) => {
+						out.suites.extend(parsed.suites);
+						*read += 1;
+					}
 					Err(_) => {
 						report.notes.push(Note::InputUnreadable { section: *i });
 						*skip += 1;
+						gap.get_or_insert(BaselineGap::Unreadable);
 					}
 				}
 			}
@@ -665,15 +753,19 @@ fn load<H: Host>(
 		// `entries` is dropped here, before the next archive is downloaded.
 	}
 
-	let mut loaded = Inputs {
+	let mut inputs = Inputs {
 		suites: Vec::new(),
 		skipped,
 	};
 	for mut r in merged {
 		r.merge_same_named();
-		loaded.suites.push(r.suites);
+		inputs.suites.push(r.suites);
 	}
-	Ok(loaded)
+	Ok(Loaded {
+		inputs,
+		files,
+		gaps,
+	})
 }
 
 enum Fetched {
@@ -681,6 +773,8 @@ enum Fetched {
 	Expired,
 	TooLarge,
 	Refused(ArchiveError),
+	/// The download failed for a reason that is not the artefact's: only a baseline tolerates it.
+	Unavailable,
 }
 
 /// One artefact's wanted entries, or why it cannot be used. `inflated` is what the run has
@@ -1040,12 +1134,33 @@ fn event_hint<H: Host>(gh: &H, artifacts: &[Artifact], name: &str) -> Option<u64
 	doc.get("pull_request")?.get("number")?.as_u64()
 }
 
+/// One comment body per distinct baseline outcome, so pull requests with the same base share a
+/// render. The marker is the same in all of them.
+struct Variant {
+	resolved: Resolved,
+	full: Comment,
+	minimal: std::cell::OnceCell<Comment>,
+}
+
+/// `input` with `resolved` as its baseline.
+fn with_baseline<'a>(input: &Input<'a>, resolved: &'a Resolved) -> Input<'a> {
+	Input {
+		baseline: Some(resolved.as_baseline()),
+		..input.clone()
+	}
+}
+
+/// Writes the comment on each pull request that verifies. The body is rendered once when no
+/// pull request has a baseline, and once for each distinct baseline outcome otherwise. The job
+/// summary shows the first pull request commented on, with its baseline if it has one.
+#[allow(clippy::too_many_arguments)]
 fn post_comments<H: Host>(
 	gh: &H,
 	run: &WorkflowRun,
 	plan: &Plan,
 	input: &Input<'_>,
 	full: &Comment,
+	loaded: &Inputs,
 	artifacts: &[Artifact],
 	report: &mut PublishReport,
 ) {
@@ -1082,11 +1197,14 @@ fn post_comments<H: Host>(
 		});
 		return;
 	};
+	let mut comparer = Comparer::new(gh, run, plan, loaded);
+	let mut variants: Vec<Variant> = Vec::new();
 	let minimal: std::cell::OnceCell<Comment> = std::cell::OnceCell::new();
+	let mut first = true;
 	for pull in pulls {
 		let pr = pull.number;
-		match gh.pull(pr) {
-			Ok(Some(now)) if verifies(gh, run, &now) => {}
+		let now = match gh.pull(pr) {
+			Ok(Some(now)) if verifies(gh, run, &now) => now,
 			Ok(Some(now)) if !now.open => {
 				report.notes.push(Note::PullClosed { pr });
 				continue;
@@ -1099,24 +1217,53 @@ fn post_comments<H: Host>(
 				report.notes.push(Note::PullGone { pr });
 				continue;
 			}
+		};
+		let resolved = comparer
+			.as_mut()
+			.and_then(|c| c.resolve(&now, &mut report.notes));
+		let slot = resolved.map(|r| {
+			variants
+				.iter()
+				.position(|v| v.resolved == r)
+				.unwrap_or_else(|| {
+					variants.push(Variant {
+						full: comment(&with_baseline(input, &r)),
+						resolved: r,
+						minimal: std::cell::OnceCell::new(),
+					});
+					variants.len() - 1
+				})
+		});
+		let variant = slot.and_then(|i| variants.get(i));
+		let rendered = variant.map_or(full, |v| &v.full);
+		if std::mem::take(&mut first) && variant.is_some() {
+			report.job_summary = Some(job_summary(rendered).as_str().to_owned());
 		}
-		let mut body = full.body.as_str();
+		let mut body = rendered.body.as_str();
 		let mut result = gh.upsert_comment(&CommentSpec {
 			pr,
 			marker: &marker,
 			body,
 		});
 		if matches!(result, Err(ForgeError::Status { status: 422, .. })) {
-			let small = minimal.get_or_init(|| {
-				let options = Options {
-					comment_limit: 0,
-					..plan.options.clone()
-				};
-				comment(&Input {
-					options: &options,
-					..input.clone()
-				})
-			});
+			let options = Options {
+				comment_limit: 0,
+				..plan.options.clone()
+			};
+			let small = match variant {
+				Some(v) => v.minimal.get_or_init(|| {
+					comment(&Input {
+						options: &options,
+						..with_baseline(input, &v.resolved)
+					})
+				}),
+				None => minimal.get_or_init(|| {
+					comment(&Input {
+						options: &options,
+						..input.clone()
+					})
+				}),
+			};
 			body = small.body.as_str();
 			report.notes.push(Note::CommentMinimal { pr });
 			result = gh.upsert_comment(&CommentSpec {

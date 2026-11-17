@@ -12,11 +12,11 @@ use std::path::{Path, PathBuf};
 
 use pr_results_core::{
 	parse_audit_json, parse_clippy_json, parse_junit, parse_sarif, CommentKey, Flavour, Limits,
-	RepoSlug, RunId, ServerUrl, Severity, Sha, Suite,
+	RepoSlug, RunId, ServerUrl, Severity, Sha, Suite, TestDelta, TestId,
 };
 use pr_results_render::{
-	check, comment, measure, status, CheckState, Comment, Conclusion, Degradation, Input, Level,
-	Options, OtherCheck, RunContext, Section, StatusState, Style, Symbols, Target,
+	check, comment, measure, status, Baseline, CheckState, Comment, Conclusion, Degradation, Input,
+	Level, Options, OtherCheck, RunContext, Section, StatusState, Style, Symbols, Target,
 };
 
 pub const SHA: &str = "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334";
@@ -138,6 +138,9 @@ pub struct Scenario {
 	pub sections: Vec<OwnedSection>,
 	pub options: Options,
 	pub other_checks: Vec<OtherCheck>,
+	/// The tests added and removed against a baseline: what was compared with, and the branch
+	/// that was asked for first when that is a fallback.
+	pub baseline: Option<(TestDelta, String, Option<String>)>,
 	/// Whether the check runs and annotations are written too.
 	pub checks: bool,
 	pub target: Target,
@@ -151,6 +154,7 @@ impl Scenario {
 			sections,
 			options: Options::default(),
 			other_checks: Vec::new(),
+			baseline: None,
 			checks: true,
 			target: Target::GitHub,
 		}
@@ -167,10 +171,23 @@ impl Scenario {
 		self
 	}
 
+	pub fn with_baseline(mut self, delta: TestDelta, against: &str, from: Option<&str>) -> Self {
+		self.baseline = Some((delta, against.to_owned(), from.map(str::to_owned)));
+		self
+	}
+
+	/// The table of other checks stays open even when every one of them passed.
+	pub fn with_other_checks_open(mut self) -> Self {
+		self.options.other_checks_open = true;
+		self
+	}
+
 	/// The guided style, which is what the settings give when they say nothing.
 	pub fn guided(mut self) -> Self {
 		self.options.style = Style::Guided;
 		self.options.symbols = Symbols::Glyphs;
+		self.options.updated_note = true;
+		self.options.test_delta = true;
 		self
 	}
 
@@ -220,6 +237,14 @@ impl Scenario {
 			title: &self.title,
 			sections: &sections,
 			other_checks: &self.other_checks,
+			baseline: self
+				.baseline
+				.as_ref()
+				.map(|(delta, against, from)| Baseline {
+					delta,
+					against,
+					fell_back_from: from.as_deref(),
+				}),
 			options: &self.options,
 		};
 		f(&input)
@@ -481,6 +506,40 @@ pub fn other_with(name: &str, state: CheckState, command: &str) -> OtherCheck {
 }
 
 /// The checks of a project with a few jobs: all of them passing but one.
+fn test_id((suite, name): &(&str, &str)) -> TestId {
+	TestId {
+		suite: (*suite).to_owned(),
+		project: String::new(),
+		class: "app".to_owned(),
+		name: (*name).to_owned(),
+	}
+}
+
+/// The tests added and removed, each as a suite and a name.
+pub fn delta(added: &[(&str, &str)], removed: &[(&str, &str)]) -> TestDelta {
+	TestDelta {
+		added_total: added.len(),
+		removed_total: removed.len(),
+		added: added.iter().map(test_id).collect(),
+		removed: removed.iter().map(test_id).collect(),
+	}
+}
+
+/// More tests than the list shows: the totals are exact and the names are the first of each.
+pub fn many_delta(added: usize, removed: usize) -> TestDelta {
+	let named = |prefix: &str, n: usize| -> Vec<TestId> {
+		(0..n)
+			.map(|i| test_id(&("core", format!("{prefix}_{i:03}").as_str())))
+			.collect()
+	};
+	TestDelta {
+		added_total: added,
+		removed_total: removed,
+		added: named("new", added),
+		removed: named("old", removed),
+	}
+}
+
 fn project_checks(audit: CheckState) -> Vec<OtherCheck> {
 	vec![
 		other("Format", CheckState::Passed),
@@ -832,6 +891,55 @@ pub fn scenarios() -> Vec<Scenario> {
 		}),
 		Scenario::new("guided-all-pass", "Example checks", vec![pass()])
 			.with_other_checks(project_checks(CheckState::Passed)),
+		Scenario::new("guided-other-checks-open", "Example checks", vec![pass()])
+			.with_other_checks(project_checks(CheckState::Passed))
+			.with_other_checks_open(),
+		Scenario::new("guided-test-delta", "Example checks", vec![pass()]).with_baseline(
+			delta(
+				&[("core", "blit::new_edge"), ("core", "blit::clips")],
+				&[("core", "blit::old_edge")],
+			),
+			"main",
+			None,
+		),
+		Scenario::new(
+			"guided-test-delta-added-only",
+			"Example checks",
+			vec![pass()],
+		)
+		.with_baseline(delta(&[("core", "blit::new_edge")], &[]), "main", None),
+		Scenario::new(
+			"guided-test-delta-removed-only",
+			"Example checks",
+			vec![pass()],
+		)
+		.with_baseline(delta(&[], &[("core", "a"), ("core", "b")]), "main", None),
+		Scenario::new("guided-test-delta-fallback", "Example checks", vec![pass()]).with_baseline(
+			delta(&[("core", "blit::new_edge")], &[]),
+			"main",
+			Some("fix/issue-164-table-round-trip"),
+		),
+		Scenario::new("guided-test-delta-same", "Example checks", vec![pass()]).with_baseline(
+			delta(&[], &[]),
+			"main",
+			None,
+		),
+		Scenario::new("guided-test-delta-many", "Example checks", vec![pass()]).with_baseline(
+			many_delta(33, 21),
+			"main",
+			None,
+		),
+		Scenario::new("guided-test-delta-hostile", "Example checks", vec![pass()]).with_baseline(
+			delta(
+				&[(
+					"@everyone @owner/team GH-123 <img src=x onerror=alert(1)>",
+					"`x` [y](https://example.invalid) | pipe\nnew line",
+				)],
+				&[("[z](https://example.invalid)", "#1 GH-9 </details>")],
+			),
+			"@owner/team#1 `main` <b>",
+			Some("feat/[x](https://example.invalid)"),
+		),
 		Scenario::new("guided-failures", "Example checks", vec![fail()])
 			.with_other_checks(project_checks(CheckState::Failed)),
 		Scenario::new("guided-flaky", "Example checks", vec![flaky()]),
@@ -1006,6 +1114,17 @@ pub fn scenarios() -> Vec<Scenario> {
 	let mut enhanced = vec![
 		Scenario::new("enhanced-all-pass", "Example checks", vec![pass()])
 			.with_other_checks(project_checks(CheckState::Passed)),
+		Scenario::new("enhanced-other-checks-open", "Example checks", vec![pass()])
+			.with_other_checks(project_checks(CheckState::Passed))
+			.with_other_checks_open(),
+		Scenario::new("enhanced-test-delta", "Example checks", vec![pass()]).with_baseline(
+			delta(
+				&[("core", "blit::new_edge"), ("core", "blit::clips")],
+				&[("core", "blit::old_edge")],
+			),
+			"main",
+			None,
+		),
 		Scenario::new("enhanced-failures", "Example checks", vec![fail()])
 			.with_other_checks(project_checks(CheckState::Failed)),
 		Scenario::new("enhanced-flaky", "Example checks", vec![flaky()]),

@@ -174,7 +174,7 @@ impl Case {
 	}
 }
 
-fn collapse_ws(s: &str) -> String {
+pub(crate) fn collapse_ws(s: &str) -> String {
 	s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 

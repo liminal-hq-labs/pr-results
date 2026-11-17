@@ -239,3 +239,92 @@ fn a_suite_can_read_what_cargo_writes() {
 	}
 	assert!(err(&suite("format = \"cargo\"")).contains("\"clippy-json\" or \"cargo-audit-json\""));
 }
+
+#[test]
+fn the_other_checks_table_can_be_kept_open() {
+	assert!(!of("").other_checks_open);
+	assert!(!of("[comment]\nstyle = \"enhanced\"").other_checks_open);
+	for style in ["guided", "enhanced"] {
+		let s = of(&format!(
+			"[comment]\nstyle = \"{style}\"\nother_checks = true\nother_checks_open = true"
+		));
+		assert!(s.other_checks_open);
+		assert!(s.options().other_checks_open);
+	}
+	// The style is the default, so no `style` key means guided, which can fold the table.
+	assert!(of("[comment]\nother_checks_open = true").other_checks_open);
+	assert!(!of("[comment]\nother_checks_open = false").other_checks_open);
+}
+
+#[test]
+fn keeping_the_table_open_needs_a_style_that_folds_it() {
+	let text = "[comment]\nstyle = \"plain\"\nother_checks_open = true";
+	assert!(err(text).contains("`comment.other_checks_open` needs `comment.style`"));
+	// Switching it off is always allowed, so a file can move between styles.
+	of("[comment]\nstyle = \"plain\"\nother_checks_open = false");
+	assert!(err("[comment]\nother_checks_open = \"yes\"").contains("other_checks_open"));
+}
+
+#[test]
+fn the_updated_note_is_on_except_in_the_plain_style() {
+	assert!(of("").updated_note);
+	assert!(of("").options().updated_note);
+	assert!(of("[comment]\nstyle = \"enhanced\"").updated_note);
+	assert!(!of("[comment]\nstyle = \"plain\"").updated_note);
+	assert!(!of("[comment]\nupdated_note = false").updated_note);
+	assert!(!of("[comment]\nstyle = \"enhanced\"\nupdated_note = false").updated_note);
+	// Switching it off is always allowed, so a file can move between styles.
+	assert!(!of("[comment]\nstyle = \"plain\"\nupdated_note = false").updated_note);
+	assert!(err("[comment]\nstyle = \"plain\"\nupdated_note = true")
+		.contains("`comment.updated_note` needs `comment.style`"));
+	assert!(err("[comment]\nupdated_note = 1").contains("updated_note"));
+}
+
+#[test]
+fn the_test_delta_is_on_except_in_the_plain_style() {
+	assert!(of("").test_delta);
+	assert!(of("").options().test_delta);
+	assert!(of("[comment]\nstyle = \"enhanced\"").test_delta);
+	assert!(!of("[comment]\nstyle = \"plain\"").test_delta);
+	assert!(!of("[comment]\ntest_delta = false").test_delta);
+	assert!(!of("[comment]\nstyle = \"plain\"\ntest_delta = false").test_delta);
+	assert!(err("[comment]\nstyle = \"plain\"\ntest_delta = true")
+		.contains("`comment.test_delta` needs `comment.style`"));
+	assert!(err("[comment]\ntest_delta = \"yes\"").contains("test_delta"));
+}
+
+#[test]
+fn the_baseline_branch_defaults_to_main_and_empty_turns_baselines_off() {
+	assert_eq!(of("").baseline_branch, "main");
+	assert_eq!(
+		of("[baseline]\nbranch = \"develop\"").baseline_branch,
+		"develop"
+	);
+	assert_eq!(of("[baseline]\nbranch = \"\"").baseline_branch, "");
+	assert_eq!(of("[baseline]\nworkflow = \"CI\"").baseline_branch, "main");
+	assert!(err("[baseline]\nbranch = 3").contains("`baseline.branch` must be a string"));
+	assert!(
+		err(&format!("[baseline]\nbranch = \"{}\"", "x".repeat(256)))
+			.contains("`baseline.branch` must be at most 255 bytes")
+	);
+	assert!(err("[baseline]\nbranch = \"a\\nb\"").contains("no control character"));
+}
+
+#[test]
+fn asking_for_the_test_delta_with_no_baseline_branch_is_refused() {
+	let text = "[comment]\ntest_delta = true\n\n[baseline]\nbranch = \"\"\n";
+	let message = err(text);
+	assert!(message.contains("`comment.test_delta`"), "{message}");
+	assert!(message.contains("`baseline.branch`"), "{message}");
+	assert!(message.contains("line 2"), "{message}");
+	// The key and the table in either order, and under the enhanced style.
+	assert!(
+		err("[baseline]\nbranch = \"\"\n[comment]\nstyle = \"enhanced\"\ntest_delta = true")
+			.contains("`baseline.branch`")
+	);
+	// The default, an explicit off and the plain style are all fine with no branch.
+	let none = of("[baseline]\nbranch = \"\"");
+	assert!(none.test_delta && none.baseline_branch.is_empty());
+	assert!(!of("[comment]\ntest_delta = false\n[baseline]\nbranch = \"\"").test_delta);
+	assert!(!of("[comment]\nstyle = \"plain\"\n[baseline]\nbranch = \"\"").test_delta);
+}

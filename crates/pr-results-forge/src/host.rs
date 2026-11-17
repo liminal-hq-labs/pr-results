@@ -87,6 +87,46 @@ pub struct Pull {
 	/// `None` when the head repository has been deleted.
 	pub head_repo: Option<String>,
 	pub base_repo: Option<String>,
+	/// The branch the pull request merges into. `None` when the API gave none or gave one that
+	/// is not a plausible branch name (see [`ref_name`]).
+	pub base_ref: Option<String>,
+	/// The commit of the base branch the API reports. `None` when it is absent or is not a full
+	/// lower-case commit hash. Whether it is the branch's tip or its merge base with the head is
+	/// not something the API documents, so a baseline lookup falls back to the branch.
+	pub base_sha: Option<Sha>,
+}
+
+/// A branch name as the API reports it is kept to this many bytes.
+pub(crate) const REF_NAME_BYTES: usize = 255;
+
+/// `s` if it can be a branch name that is safe to carry around and to show later: 1 to
+/// [`REF_NAME_BYTES`] bytes with no control character. A longer name is refused and not cut,
+/// because half a branch name names another branch. Git's own rules for a ref are stricter, which
+/// is not this function's business: a name that Git would refuse simply matches nothing.
+pub(crate) fn ref_name(s: &str) -> Option<String> {
+	let ok = !s.is_empty() && s.len() <= REF_NAME_BYTES && !s.chars().any(char::is_control);
+	ok.then(|| s.to_owned())
+}
+
+/// Which workflow run to take a baseline from. The workflow is named by the caller, and the run
+/// must be a completed push run of that workflow in this repository itself, never a fork's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaselineQuery<'a> {
+	/// The run on exactly this commit, such as the pull request's base commit.
+	HeadSha(&'a Sha),
+	/// The newest run on this branch, such as the base branch or `baseline.branch`.
+	Branch(&'a str),
+}
+
+/// A workflow run found as a baseline, reduced to what choosing its artefacts needs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunRef {
+	pub id: RunId,
+	pub head_sha: Sha,
+	/// `None` when the API gave none or one that is not a plausible branch name.
+	pub head_branch: Option<String>,
+	/// `success` or `failure`: a run that ended any other way is never offered as a baseline.
+	pub conclusion: String,
 }
 
 /// A comment as listed: its body is only the first [`BODY_PREFIX_BYTES`] bytes.
@@ -194,12 +234,24 @@ pub trait Host {
 	fn check_runs(&self, _sha: &Sha) -> Result<Vec<CheckRunInfo>, ForgeError> {
 		Ok(Vec::new())
 	}
+	/// The newest completed push run of the workflow `workflow_id` in this repository that fits
+	/// `query` and ended in `success` or `failure`, whose artefacts are a baseline. A run from
+	/// a fork never qualifies. A host that cannot look for one has none to offer.
+	fn baseline_run(
+		&self,
+		_workflow_id: u64,
+		_query: &BaselineQuery<'_>,
+	) -> Result<Option<RunRef>, ForgeError> {
+		Ok(None)
+	}
 	fn upsert_result(&self, spec: &ResultSpec<'_>) -> Result<ResultWritten, ForgeError>;
 	fn upsert_comment(&self, spec: &CommentSpec<'_>) -> Result<CommentResult, ForgeError>;
 }
 
-/// A pull request as both forges report it: `number`, `state`, `head.{sha,ref,repo.full_name}`
-/// and `base.repo.full_name`. A head repository that has been deleted is `null`.
+/// A pull request as both forges report it: `number`, `state`, `head.{sha,ref,repo.full_name}`,
+/// `base.repo.full_name` and `base.{ref,sha}`. A head repository that has been deleted is `null`.
+/// The base's `ref` and `sha` are read leniently: a pull request is still read when they are
+/// missing or malformed.
 pub(crate) fn pull_from(v: &Value) -> Option<Pull> {
 	let repo = |side: &str| {
 		v.get(side)?
@@ -215,6 +267,16 @@ pub(crate) fn pull_from(v: &Value) -> Option<Pull> {
 		head_ref: v.get("head")?.get("ref")?.as_str()?.to_owned(),
 		head_repo: repo("head"),
 		base_repo: repo("base"),
+		base_ref: v
+			.get("base")
+			.and_then(|b| b.get("ref"))
+			.and_then(Value::as_str)
+			.and_then(ref_name),
+		base_sha: v
+			.get("base")
+			.and_then(|b| b.get("sha"))
+			.and_then(Value::as_str)
+			.and_then(Sha::parse),
 	})
 }
 
@@ -246,4 +308,90 @@ pub(crate) fn comment_from(c: &Value) -> Option<Comment> {
 			.to_owned(),
 		body: prefix(c.get("body").and_then(Value::as_str).unwrap_or("")),
 	})
+}
+
+#[cfg(test)]
+#[allow(
+	clippy::unwrap_used,
+	clippy::expect_used,
+	clippy::panic,
+	clippy::indexing_slicing
+)]
+mod tests {
+	use serde_json::json;
+
+	use super::*;
+
+	const SHA: &str = "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334";
+
+	fn pull(base: Value) -> Value {
+		json!({
+			"number": 7,
+			"state": "open",
+			"head": { "sha": SHA, "ref": "feature", "repo": { "full_name": "o/r" } },
+			"base": base,
+		})
+	}
+
+	#[test]
+	fn a_pull_request_reports_its_base_branch_and_commit() {
+		let base_sha = "a".repeat(40);
+		let p = pull_from(&pull(json!({
+			"ref": "main", "sha": base_sha, "repo": { "full_name": "o/r" },
+		})))
+		.unwrap();
+		assert_eq!(p.base_ref.as_deref(), Some("main"));
+		assert_eq!(p.base_sha, Sha::parse(&base_sha));
+		assert_eq!(p.base_repo.as_deref(), Some("o/r"));
+	}
+
+	#[test]
+	fn a_missing_base_ref_or_sha_does_not_fail_the_read() {
+		let p = pull_from(&pull(json!({ "repo": { "full_name": "o/r" } }))).unwrap();
+		assert_eq!((p.base_ref, p.base_sha), (None, None));
+		let p = pull_from(&pull(json!(null))).unwrap();
+		assert_eq!((p.base_ref, p.base_sha, p.base_repo), (None, None, None));
+	}
+
+	#[test]
+	fn a_malformed_base_ref_or_sha_is_dropped_and_the_pull_request_still_reads() {
+		let long = "b".repeat(REF_NAME_BYTES + 1);
+		for ref_value in [
+			json!(""),
+			json!(long),
+			json!("fea\nture"),
+			json!("fea\u{1b}[31mture"),
+			json!(7),
+			json!(["main"]),
+			json!(null),
+		] {
+			let p = pull_from(&pull(json!({ "ref": ref_value, "sha": SHA }))).unwrap();
+			assert_eq!(p.base_ref, None, "{ref_value}");
+			assert_eq!(p.base_sha, Sha::parse(SHA));
+		}
+		for sha_value in [
+			json!(""),
+			json!("abc123"),
+			json!(SHA.to_uppercase()),
+			json!(format!("{SHA}0")),
+			json!(7),
+			json!(null),
+		] {
+			let p = pull_from(&pull(json!({ "ref": "main", "sha": sha_value }))).unwrap();
+			assert_eq!(p.base_sha, None, "{sha_value}");
+			assert_eq!(p.base_ref.as_deref(), Some("main"));
+		}
+	}
+
+	#[test]
+	fn a_branch_name_is_kept_whole_or_not_at_all() {
+		assert_eq!(ref_name("release/1.x").as_deref(), Some("release/1.x"));
+		assert_eq!(ref_name("héron").as_deref(), Some("héron"));
+		let longest = "x".repeat(REF_NAME_BYTES);
+		assert_eq!(ref_name(&longest).as_deref(), Some(longest.as_str()));
+		assert_eq!(ref_name(&format!("{longest}x")), None);
+		assert_eq!(ref_name(""), None);
+		assert_eq!(ref_name("a\tb"), None);
+		assert_eq!(ref_name("a\u{7f}b"), None);
+	}
 }

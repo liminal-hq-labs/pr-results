@@ -142,7 +142,7 @@ Names, paths and failure text from a report reach a comment only through `Safe`,
 | --- | --- | --- | --- |
 | `workflow_run` event | Actions | `GITHUB_EVENT_PATH` of the publisher | Trusted: `workflow_run.id`, `head_sha`, `head_branch`, `head_repository.full_name`, `event`, `pull_requests[]` (empty for forks), `artifacts_url`, `html_url` and `conclusion` |
 | Uploaded pull request event file | `actions/upload-artifact` of `${{ github.event_path }}` in the CI run | artefact `event-file`, file `event.json` | **Untrusted.** A fork controls it. Used only as a tie-breaker: its `pull_request.number` (an `event.json` of at most 1 MiB) chooses among pull requests the trusted event and the API already matched to the run, and only when there is more than one |
-| Base-branch results (should) | the CI run on the base branch | that run's result artefacts | Trusted only when the run's `event` is `push`, its `head_repository` is the base repository and its branch is the base branch |
+| Base-branch results | the CI run on the base branch | that run's result artefacts | Trusted only when the run is a completed run of the same workflow (`workflow_run.workflow_id` of the trusted event) whose `event` is `push`, whose conclusion is `success` or `failure`, whose `head_repository` is the base repository and which is on the base commit or the base branch. Read for the sentence about added and removed tests, from the same artefact names and file patterns as the run's own, with a budget of its own; see [Finding the baseline](../SPEC.md#finding-the-baseline) |
 | Configuration | the repository | `.github/pr-results.toml` on the default branch | Trusted. Never read from the pull request head |
 
 ## Artefact names

@@ -352,6 +352,28 @@ impl Safe {
 		)
 	}
 
+	/// The text without any line that is exactly `line`, and without the blank line after it, so a
+	/// block set apart by blank lines leaves no double gap. Whole lines only, so no escape
+	/// sequence is split.
+	pub fn without_line(&self, line: &str) -> Safe {
+		let mut out = String::with_capacity(self.as_str().len());
+		let mut skip_blank = false;
+		for part in self.as_str().split_inclusive('\n') {
+			let content = part.strip_suffix('\n').unwrap_or(part);
+			if content == line {
+				skip_blank = true;
+				continue;
+			}
+			if skip_blank && content.is_empty() {
+				skip_blank = false;
+				continue;
+			}
+			skip_blank = false;
+			out.push_str(part);
+		}
+		Safe::from_checked(out)
+	}
+
 	/// The first `n` lines, each with the line break that ends it (the last one only if the text
 	/// has one there). A cut at a line boundary, so no escape sequence is split.
 	pub fn first_lines(&self, n: usize) -> Safe {

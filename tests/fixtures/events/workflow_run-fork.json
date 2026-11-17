@@ -3,6 +3,7 @@
   "workflow": { "id": 1001, "name": "CI", "path": ".github/workflows/ci.yml" },
   "workflow_run": {
     "id": 5000,
+    "workflow_id": 1001,
     "name": "CI",
     "event": "pull_request",
     "status": "completed",

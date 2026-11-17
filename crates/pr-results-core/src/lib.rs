@@ -11,6 +11,7 @@
 mod anonymize;
 mod ansi;
 mod cargo;
+mod delta;
 mod error;
 mod flavour;
 mod glob;
@@ -24,6 +25,7 @@ mod trusted;
 pub use anonymize::anonymize_junit;
 pub use ansi::strip_ansi;
 pub use cargo::{parse_audit_json, parse_clippy_json};
+pub use delta::{test_delta, TestDelta, TestId, MAX_LISTED};
 pub use error::ParseError;
 pub use glob::{Glob, GlobError, MAX_GLOB_BYTES};
 pub use junit::{parse_junit, parse_junit_in, Limits};

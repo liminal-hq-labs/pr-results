@@ -180,6 +180,7 @@ fn other_checks_table(
 	plan: &Plan,
 	symbols: Symbols,
 	guided: bool,
+	open: bool,
 	doc: &mut Doc,
 ) -> Option<u64> {
 	if checks.is_empty() {
@@ -198,8 +199,9 @@ fn other_checks_table(
 		.filter(|c| !(fold && c.state == CheckState::Passed))
 		.collect();
 
-	// A guided comment folds a table that holds nothing to act on into its summary line.
-	let all_passed = guided && checks.iter().all(|c| c.state == CheckState::Passed);
+	// A guided comment folds a table that holds nothing to act on into its summary line, unless
+	// the settings keep it open. The size budget's fold of passing rows (above) is separate.
+	let all_passed = guided && !open && checks.iter().all(|c| c.state == CheckState::Passed);
 	doc.blank();
 	if all_passed {
 		doc.line(t("<details>"));
@@ -253,6 +255,7 @@ fn render(
 	let tally = Tally::of(infos, i.other_checks);
 	let mood = tally.mood();
 	let mut doc = Doc::new();
+	let mut delta_cut: Option<Safe> = None;
 	doc.line(marker_line(i.ctx));
 	doc.line(heading(
 		i.ctx.target,
@@ -274,6 +277,9 @@ fn render(
 			doc.block(line);
 		}
 		doc.block(t(wording::minimal_note(target)));
+		if guided && o.updated_note {
+			doc.block(guided::updated_note(o.symbols));
+		}
 		doc.block(footer(i.ctx));
 		return doc.build();
 	}
@@ -283,6 +289,24 @@ fn render(
 		for lines in blocks {
 			doc.blank();
 			doc.lines(lines);
+		}
+		if o.test_delta {
+			if let Some(b) = i.baseline.as_ref().filter(|b| !b.delta.is_empty()) {
+				doc.block(guided::test_delta_sentence(b));
+				if plan.extras_as_counts {
+					delta_cut = Some(cat(&[
+						t("The list of "),
+						count(big(b.delta.added_total)),
+						t(" added and "),
+						count(big(b.delta.removed_total)),
+						t(" removed tests"),
+						t(wording::delta_left_out(target)),
+					]));
+				} else {
+					doc.blank();
+					doc.lines(guided::test_delta_list(b, o.symbols));
+				}
+			}
 		}
 	}
 
@@ -297,7 +321,14 @@ fn render(
 		]));
 	}
 
-	let others_folded = other_checks_table(i.other_checks, plan, o.symbols, guided, &mut doc);
+	let others_folded = other_checks_table(
+		i.other_checks,
+		plan,
+		o.symbols,
+		guided,
+		o.other_checks_open,
+		&mut doc,
+	);
 
 	let titles: Vec<&str> = i.sections.iter().map(|s| s.title).collect();
 	let multi = (titles.len() > 1).then_some(titles.as_slice());
@@ -340,6 +371,7 @@ fn render(
 	}
 
 	let mut notes: Vec<Safe> = Vec::new();
+	notes.extend(delta_cut);
 	if !flaky.is_empty() {
 		if plan.extras_as_counts {
 			let k = big(flaky.len());
@@ -397,6 +429,9 @@ fn render(
 		doc.block(note);
 	}
 
+	if guided && o.updated_note {
+		doc.block(guided::updated_note(o.symbols));
+	}
 	doc.block(footer(i.ctx));
 	doc.build()
 }
@@ -483,7 +518,17 @@ fn no_results_guided(i: &Input<'_>) -> Comment {
 			),
 		]));
 	}
-	other_checks_table(i.other_checks, &Plan::start(o), o.symbols, true, &mut doc);
+	other_checks_table(
+		i.other_checks,
+		&Plan::start(o),
+		o.symbols,
+		true,
+		o.other_checks_open,
+		&mut doc,
+	);
+	if o.updated_note {
+		doc.block(guided::updated_note(o.symbols));
+	}
 	doc.block(footer(i.ctx));
 	Comment {
 		body: doc.build(),
@@ -570,7 +615,11 @@ impl Open {
 }
 
 pub(crate) fn job_summary(c: &Comment, cap: usize) -> Safe {
-	let body = c.body.after_first_line();
+	let body = c
+		.body
+		.after_first_line()
+		.without_line(guided::UPDATED_NOTE)
+		.without_line(guided::UPDATED_NOTE_EMOJI);
 	if body.as_str().len() <= cap {
 		return body;
 	}
