@@ -45,6 +45,7 @@ struct Owned {
 	check_name: String,
 	required: bool,
 	suites: Vec<Suite>,
+	run_locally: Option<String>,
 }
 
 pub(crate) fn render(a: &RenderArgs, io: &mut Streams<'_>) -> Result<u8, CliError> {
@@ -66,6 +67,7 @@ pub(crate) fn render(a: &RenderArgs, io: &mut Streams<'_>) -> Result<u8, CliErro
 			required: s.required,
 			suites: &s.suites,
 			inputs_skipped: 0,
+			run_locally: s.run_locally.as_deref(),
 		})
 		.collect();
 	let input = Input {
@@ -156,6 +158,7 @@ fn sections(a: &RenderArgs, settings: &Settings, title: &str) -> Result<Vec<Owne
 			check_name: config::default_check_name(title, "tests"),
 			required: false,
 			suites: Vec::new(),
+			run_locally: None,
 		}];
 		reports = vec![Report::default()];
 		flavours = vec![a.flavour.unwrap_or(Flavour::Auto)];
@@ -171,6 +174,7 @@ fn sections(a: &RenderArgs, settings: &Settings, title: &str) -> Result<Vec<Owne
 					.unwrap_or_else(|| config::default_check_name(title, &s.name)),
 				required: s.required,
 				suites: Vec::new(),
+				run_locally: s.run_locally.clone(),
 			})
 			.collect();
 		reports = settings.suites.iter().map(|_| Report::default()).collect();

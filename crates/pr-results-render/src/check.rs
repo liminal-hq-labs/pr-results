@@ -177,7 +177,7 @@ fn summary(
 		for (k, e) in failures.iter().take(shown).enumerate() {
 			doc.blank();
 			let (lines, body) =
-				failure_lines(k + 1, m, e, None, plan.excerpt_lines, Target::GitHub);
+				failure_lines(k + 1, m, e, None, plan.excerpt_lines, Target::GitHub, None);
 			excerpts_cut |= plan.excerpt_lines < o.excerpt_lines && body > plan.excerpt_lines;
 			doc.lines(lines);
 		}

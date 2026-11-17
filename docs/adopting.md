@@ -108,6 +108,45 @@ files = ["**/junit.xml"]
 flavour = "nextest"
 ```
 
+### Comment styles
+
+The comment comes in three styles, set by `comment.style`. **`guided`** is the default: a summary in plain sentences, a list of what needs attention, a command to run a failed nextest test again, and the slowest tests. **`plain`** is the table, the failures and the footer, as the tool wrote them before the styles. **`enhanced`** is guided with emoji, a line from Jax, a progress bar and GitHub alert blocks, which suits a Liminal HQ project that wants them. Each extra is also a setting of its own, so a project can take one without the others:
+
+```toml
+# pr-results settings: the enhanced style, without Jax.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[comment]
+style = "enhanced"  # plain | guided | enhanced
+mascot = false      # any of mascot, progress and alerts can be switched off, or on in guided
+symbols = "glyphs"  # text | glyphs | emoji: ✓ ✗ ↻ – in place of the emoji
+```
+
+`mascot`, `progress` and `alerts` need the guided or the enhanced style: a file that turns one on in the plain style is refused. The progress bar writes its words first (`737 of 738 tests passed`) and the shapes after, so a screen reader reads the sentence before it reads the bar; set `symbols = "text"` for words with no marks at all. Alert blocks are written for GitHub only. Nothing from a report is put in an alert, in Jax's line or in the summary sentence: they hold fixed sentences and numbers, and the names are in the list under them.
+
+The command to run a failed test again is written for nextest suites, from the suite's binary and test name, and only when both are made of letters, digits and the few separators a Rust path has: a name that is not gets no command. It starts with `cargo nextest run`. A project that runs its tests under a feature set says so in the suite, and an empty string turns the command off:
+
+```toml
+# pr-results settings: a command that matches how the job ran the tests.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Tests (all-features)"
+artifact = "rust-test-results-all-features"
+flavour = "nextest"
+run_locally = "cargo nextest run --all-features"
+```
+
+The command makes the shape of what you paste safe. It does not make the code safe: the test is code from the pull request, so run it as you would anything from a pull request.
+
 ### Other checks in the comment
 
 A project whose CI is several jobs (format, clippy, audit) alongside the tests can have the comment say how each one ended, so it stands in for a script that posts such a summary:
@@ -123,6 +162,27 @@ schema = 1
 [comment]
 other_checks = true
 ```
+
+When the test jobs and the suites show the same thing, list the checks once. A project that runs its tests in a job per feature set has a suite and a check for each, and a failing test fails both, so the table would count the same problem twice. Leave the jobs out by name, and give the checks that stay a command, which the guided style shows beside one that failed:
+
+```toml
+# pr-results settings: the other jobs, without the ones the suites already show.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[comment]
+other_checks = true
+other_checks_ignore = ["Test (*)"]
+
+[comment.check_commands]
+"Security audit" = "cargo audit"
+"Format" = "cargo fmt --all -- --check"
+```
+
+The patterns are the language of the file patterns above: `*` matches any run of characters but `/`, so a name such as `build / test` needs `**`. A check that does not exist is not an error, so a pattern can stay when a job is renamed, and the cost is that a job that failed under a name nothing matches any more is shown again. In the guided style a table of other checks that all passed is folded into one line, `Other checks: 5 passed`, since there is nothing to act on.
 
 It needs nothing new in the publisher workflow: `checks: write` covers the read. The table lists the commit's other check runs, failed ones first, and leaves out the suites' own check runs and the publisher's own job. A failed check is also said in the heading, for example `All 696 passed, 1 other check needs attention`. It works in the `workflow_run` publisher on GitHub only: on Forgejo, and when publishing from the job itself (`--from`), it has no effect and the notes in the job summary say so.
 
@@ -379,7 +439,7 @@ It lists the run's artefacts, downloads the ones your suites name (an expired ar
 
 ## What the comment looks like
 
-Layout rules: a heading with the product's title and a one-phrase outcome, one table row per suite, failures first, everything long collapsed, no emoji. This is the Markdown the comment carries for a product with one failing step and a flaky Rust test (a hand-made example in the shape of the outputs in `tests/golden/`; the hash and run id are placeholders):
+Layout rules, for every style: a heading with the product's title and a one-phrase outcome, one table row per suite, failures first, everything long collapsed. There are no emoji unless the settings ask for them. This is the Markdown of the **plain** style for a product with one failing step and a flaky Rust test (a hand-made example in the shape of the outputs in `tests/golden/`; the hash and run id are placeholders):
 
 `````markdown
 <!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=19283746 -->
@@ -421,9 +481,53 @@ Commit [`3f9c2e1`](https://github.com/example/app/commit/3f9c2e1d4b5a69788796a5b
 
 Two rules shape it. A raw HTML line (`<details>`, `<summary>`, `</details>`) holds only fixed words and numbers, because Markdown inside it is not rendered, so every name sits on a Markdown line of its own, in a code span. And the names are the suite's title, the test suite, its group and the test, with the section's title in front only when the comment has more than one section. A column comparing each suite with the base branch arrives with baseline comparison in v0.3.
 
-When the comment is too long for GitHub it gives things up in a fixed order and says what it left out in a line of its own: the flaky list becomes a count, failure excerpts shrink to 8 and then 3 lines, failures are listed up to 20, then 5, then not at all, passing suites become one row, and last of all only the heading, the totals and the footer remain.
+The **guided** style, the default, writes the same run like this. The Desk steps are not nextest tests, so a failed step has no command; a failed nextest test would have a `Run it locally:` block under its excerpt:
 
-When everything passes, the comment shrinks to the heading, the table and the footer. When no results were uploaded it says so and links the run. When the CI run was cancelled or skipped, nothing is posted.
+`````markdown
+<!-- pr-results:1 key=ci sha=3f9c2e1d4b5a69788796a5b4c3d2e1f001122334 run=19283746 -->
+### Example checks: 1 failure in 2 suites
+
+1 failed test needs attention. 696 tests passed, 1 of them only after a retry.
+
+- ✗ 1 test failed in `Desk steps`.
+- ↻ 1 test in `Rust tests` passed only after a retry, so it may be flaky.
+
+| Suite | Result | Passed | Failed | Skipped | Flaky | Time |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `Desk steps` | ✗ **Failed** | 23 | 1 | 4 | 0 | 6 m 12 s |
+| `Rust tests` | ✓ Passed | 672 | 0 | 0 | 1 | 47.0 s |
+
+#### Failures
+
+(the failure and the flaky list are as in the plain style)
+
+<details>
+<summary>Slowest tests (5)</summary>
+
+| Test | Time |
+| --- | ---: |
+| `Desk steps` › `check (dos)` › `Emulator` › `Example binary in a headless emulator` | 18.2 s |
+| … | … |
+
+</details>
+`````
+
+The top of the **enhanced** style for a run where everything passed, with Jax, an alert block and the bar:
+
+`````markdown
+### ✅ Example checks: All 3 passed, 1 skipped
+
+> [!TIP]
+> 🦦 **Jax:** All clear. Every test passed.
+>
+> Everything passed: 3 tests (1 skipped) in 1 suite and 5 other checks, in 0.3 s of test time.
+
+3 of 3 tests passed ▰▰▰▰▰▰▰▰▰▰
+`````
+
+When the comment is too long for GitHub it gives things up in a fixed order and says what it left out in a line of its own: the passing other checks become one row, the flaky list becomes a count and the slowest tests are left out, failure excerpts shrink to 8 and then 3 lines, failures are listed up to 20, then 5, then not at all, passing suites become one row, and last of all only the heading, the totals and the footer remain.
+
+When everything passes, the plain comment shrinks to the heading, the table and the footer, and the guided one adds its summary sentence. When no results were uploaded it says so and links the run, and the guided style also says what to look at. When the CI run was cancelled or skipped, nothing is posted.
 
 ## Migrating from another reporter
 

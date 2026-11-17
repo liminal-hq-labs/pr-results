@@ -149,6 +149,7 @@ fn without_a_run_number_the_forgejo_footer_links_the_run_id() {
 		required: false,
 		suites: &sc.sections[0].suites,
 		inputs_skipped: 0,
+		run_locally: None,
 	}];
 	let options = pr_results_render::Options::default();
 	let input = pr_results_render::Input {
@@ -282,7 +283,7 @@ fn every_forgejo_golden_is_inert_for_forgejo() {
 			assert_inert_all(&sc);
 		}
 	}
-	assert_eq!(seen, 4);
+	assert_eq!(seen, 7);
 }
 
 #[test]

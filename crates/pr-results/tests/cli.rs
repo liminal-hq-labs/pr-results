@@ -173,7 +173,7 @@ fn render_writes_what_the_golden_scenarios_hold() {
 	let config = dir.join("rust.toml");
 	std::fs::write(
 		&config,
-		"title = \"Example checks\"\n\n[[suite]]\nname = \"Rust tests\"\ncheck = \"Example Rust tests\"\nartifact = \"x\"\nflavour = \"nextest\"\n",
+		"title = \"Example checks\"\n\n[comment]\nstyle = \"plain\"\n\n[[suite]]\nname = \"Rust tests\"\ncheck = \"Example Rust tests\"\nartifact = \"x\"\nflavour = \"nextest\"\n",
 	)
 	.unwrap();
 	let out = dir.join("out");

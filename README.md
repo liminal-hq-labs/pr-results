@@ -22,7 +22,7 @@ pr-results reads the test and check results your CI produces and posts them to t
 
 ## What the comment will look like
 
-This is a **mock** of the comment, written by hand in the shape of the renderer's output to show the layout. The example illustrates the layout; the publisher has also run on real pull requests.
+This is a **mock** of the comment in the plain style, written by hand in the shape of the renderer's output to show the layout. The example illustrates the layout; the publisher has also run on real pull requests.
 
 > ### Example checks: 1 failure in 2 suites
 >
@@ -44,6 +44,8 @@ This is a **mock** of the comment, written by hand in the shape of the renderer'
 > - `Rust tests` › `core` › `blit::clips_at_the_right_edge`: failed once, passed on attempt 2
 
 In the real comment each failure is a `<details open>` block and the flaky list is a collapsed `<details>`.
+
+The default, **guided**, style adds a summary in plain sentences, a list of what needs attention, a command to run a failed nextest test again and the slowest tests. The **enhanced** style adds emoji, a line from Jax, a progress bar and GitHub alert blocks, each of which is a setting of its own. **Plain** is the table, the failures and the footer. See [docs/adopting.md](docs/adopting.md#comment-styles).
 
 The full layout is in [docs/adopting.md](docs/adopting.md#what-the-comment-looks-like).
 

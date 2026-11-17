@@ -504,6 +504,8 @@ fn plan(settings: &Settings, title: &str, sections: Vec<SectionPlan>) -> Plan {
 	let mut plan = Plan::new(title, settings.key.clone(), sections, VERSION);
 	plan.post_comment = settings.mode == CommentMode::Always;
 	plan.other_checks = settings.other_checks;
+	plan.other_checks_ignore = settings.other_checks_ignore.clone();
+	plan.check_commands = settings.check_commands.clone();
 	plan.options = settings.options();
 	let l = &settings.limits;
 	plan.archive = ArchiveLimits {
@@ -546,6 +548,7 @@ fn configured_sections(settings: &Settings, title: &str) -> Result<Vec<SectionPl
 			files: s.files.clone(),
 			flavour: s.flavour,
 			path_prefix: s.path_prefix.clone(),
+			run_locally: s.run_locally.clone(),
 		});
 	}
 	Ok(out)
@@ -610,6 +613,7 @@ fn inferred_names<'a>(
 			files: vec![files],
 			flavour: Flavour::Auto,
 			path_prefix: None,
+			run_locally: None,
 		});
 	}
 	Ok(out)

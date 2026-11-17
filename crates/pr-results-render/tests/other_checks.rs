@@ -192,7 +192,8 @@ fn the_smallest_comment_still_names_a_failed_check() {
 	assert_eq!(c.steps_taken.last(), Some(&Degradation::Minimal));
 	let body = c.body.to_string();
 	assert!(body.contains("1 other check needs attention"), "{body}");
-	assert!(!body.contains("Other checks"), "{body}");
+	assert!(body.contains("Other checks: 1 failing."), "{body}");
+	assert!(!body.contains("#### Other checks"), "{body}");
 	assert_inert_all(&sc);
 }
 

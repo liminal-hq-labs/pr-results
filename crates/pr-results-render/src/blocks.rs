@@ -9,7 +9,7 @@
 
 use pr_results_core::{Case, Marker, Safe, Status, Suite, TrustedUrl};
 
-use crate::text::{big, cat, count, join, noun, num, t};
+use crate::text::{big, cat, count, join, noun, num, t, Piece};
 use crate::view::{excerpt, group_of, location_piece, suite_label, Counts, Entry, Verdict};
 use crate::{CheckState, RunContext, Symbols, Target};
 
@@ -20,6 +20,7 @@ const NAME_CHARS: usize = 200;
 const MESSAGE_CHARS: usize = 300;
 pub(crate) const TITLE_CHARS: usize = 120;
 const CHECK_CHARS: usize = 120;
+const COMMAND_CHARS: usize = 400;
 
 /// The table cell and failure prefix for a section: its title, in a code span.
 pub(crate) fn section_label(title: &str) -> Safe {
@@ -72,10 +73,40 @@ pub(crate) fn footer(ctx: &RunContext) -> Safe {
 	}
 }
 
-fn glyph(symbols: Symbols, mark: &'static str) -> Safe {
+/// What a mark in front of a status word says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Mark {
+	Pass,
+	Fail,
+	/// Passed only after a retry.
+	Flaky,
+	/// Skipped, or no results.
+	Skip,
+	Cancelled,
+	Running,
+	/// Needs a person's attention but is not a failure.
+	Warn,
+}
+
+/// The mark and the space after it, or nothing at all for plain text.
+pub(crate) fn mark(symbols: Symbols, kind: Mark) -> Safe {
 	match symbols {
 		Symbols::Text => Safe::default(),
-		Symbols::Glyphs => t(mark),
+		Symbols::Glyphs => t(match kind {
+			Mark::Pass => "\u{2713} ",
+			Mark::Fail | Mark::Warn => "\u{2717} ",
+			Mark::Flaky | Mark::Running => "\u{21bb} ",
+			Mark::Skip | Mark::Cancelled => "\u{2013} ",
+		}),
+		Symbols::Emoji => t(match kind {
+			Mark::Pass => "\u{2705} ",
+			Mark::Fail => "\u{274c} ",
+			Mark::Flaky => "\u{1f3b2} ",
+			Mark::Skip => "\u{23ed}\u{fe0f} ",
+			Mark::Cancelled => "\u{1f6ab} ",
+			Mark::Running => "\u{1f504} ",
+			Mark::Warn => "\u{26a0}\u{fe0f} ",
+		}),
 	}
 }
 
@@ -92,10 +123,10 @@ pub(crate) fn table_head(first: &'static str) -> [Safe; 2] {
 
 fn result_cell(verdict: Verdict, required: bool, symbols: Symbols) -> Safe {
 	match verdict {
-		Verdict::Failed => cat(&[glyph(symbols, "\u{2717} "), t("**Failed**")]),
-		Verdict::Passed => cat(&[glyph(symbols, "\u{2713} "), t("Passed")]),
-		Verdict::NoResults if required => cat(&[glyph(symbols, "\u{2013} "), t("**No results**")]),
-		Verdict::NoResults => cat(&[glyph(symbols, "\u{2013} "), t("No results")]),
+		Verdict::Failed => cat(&[mark(symbols, Mark::Fail), t("**Failed**")]),
+		Verdict::Passed => cat(&[mark(symbols, Mark::Pass), t("Passed")]),
+		Verdict::NoResults if required => cat(&[mark(symbols, Mark::Skip), t("**No results**")]),
+		Verdict::NoResults => cat(&[mark(symbols, Mark::Skip), t("No results")]),
 	}
 }
 
@@ -105,18 +136,28 @@ pub(crate) fn other_head() -> [Safe; 2] {
 
 fn state_cell(state: CheckState, symbols: Symbols) -> Safe {
 	match state {
-		CheckState::Failed => cat(&[glyph(symbols, "\u{2717} "), t("**Failed**")]),
-		CheckState::ActionRequired => cat(&[glyph(symbols, "\u{2717} "), t("**Action required**")]),
-		CheckState::Cancelled => cat(&[glyph(symbols, "\u{2013} "), t("Cancelled")]),
-		CheckState::Running => cat(&[glyph(symbols, "\u{21bb} "), t("Running")]),
-		CheckState::Skipped => cat(&[glyph(symbols, "\u{2013} "), t("Skipped")]),
-		CheckState::Passed => cat(&[glyph(symbols, "\u{2713} "), t("Passed")]),
+		CheckState::Failed => cat(&[mark(symbols, Mark::Fail), t("**Failed**")]),
+		CheckState::ActionRequired => cat(&[mark(symbols, Mark::Warn), t("**Action required**")]),
+		CheckState::Cancelled => cat(&[mark(symbols, Mark::Cancelled), t("Cancelled")]),
+		CheckState::Running => cat(&[mark(symbols, Mark::Running), t("Running")]),
+		CheckState::Skipped => cat(&[mark(symbols, Mark::Skip), t("Skipped")]),
+		CheckState::Passed => cat(&[mark(symbols, Mark::Pass), t("Passed")]),
 	}
 }
 
-/// One row of the other checks' table. `name` is untrusted, so it goes in a code span.
+/// A check's name. It was chosen by whoever wrote that workflow, so it goes in a code span.
+pub(crate) fn check_label(name: &str) -> Safe {
+	Safe::code_span(name, CHECK_CHARS)
+}
+
+/// A command from the settings, in a code span.
+pub(crate) fn command_span(command: &str) -> Safe {
+	Safe::code_span(command, COMMAND_CHARS)
+}
+
+/// One row of the other checks' table.
 pub(crate) fn other_row(name: &str, state: CheckState, symbols: Symbols) -> Safe {
-	other_row_labelled(&Safe::code_span(name, CHECK_CHARS), state, symbols)
+	other_row_labelled(&check_label(name), state, symbols)
 }
 
 /// The same with a label that is already `Safe`, such as the row that stands for several checks.
@@ -215,6 +256,7 @@ pub(crate) fn failure_lines(
 	section_title: Option<&str>,
 	excerpt_lines: usize,
 	target: Target,
+	command: Option<&Piece>,
 ) -> (Vec<Safe>, usize) {
 	let blank = Safe::default;
 	let mut lines = vec![
@@ -254,6 +296,12 @@ pub(crate) fn failure_lines(
 			lines.push(Safe::code_block(&x.piece, usize::MAX));
 		}
 	}
+	if let Some(command) = command {
+		lines.push(blank());
+		lines.push(t("Run it locally:"));
+		lines.push(blank());
+		lines.push(Safe::code_block(command, usize::MAX));
+	}
 	lines.push(blank());
 	lines.push(t("</details>"));
 	(lines, body_lines)
@@ -273,7 +321,7 @@ pub(crate) fn flaky_bullet(e: &Entry<'_>, section_title: Option<&str>, symbols: 
 	};
 	let mut parts = vec![
 		t("- "),
-		glyph(symbols, "\u{21bb} "),
+		mark(symbols, Mark::Flaky),
 		path_line(e, section_title),
 		t(": failed "),
 		times,
@@ -339,4 +387,53 @@ pub(crate) fn slowest(suites: &[Suite], n: usize) -> Vec<(&Suite, &Case)> {
 /// The section's title, when the comment holds more than one section and so a failure needs it.
 pub(crate) fn section_title<'a>(titles: Option<&[&'a str]>, e: &Entry<'_>) -> Option<&'a str> {
 	titles.and_then(|all| all.get(e.section)).copied()
+}
+
+/// A test shorter than this is not worth listing as slow: it would be shown as `0.0 s`.
+const SLOW_MS: u64 = 100;
+
+/// The slowest `n` cases across all sections that took at least [`SLOW_MS`], longest first, as the
+/// entries a failure line is made from.
+pub(crate) fn slowest_overall<'a>(sections: &'a [crate::Section<'a>], n: usize) -> Vec<Entry<'a>> {
+	let mut rows: Vec<Entry<'a>> = Vec::new();
+	for (index, section) in sections.iter().enumerate() {
+		for (suite, case) in slowest(section.suites, n) {
+			rows.push(Entry {
+				section: index,
+				suite,
+				case,
+			});
+		}
+	}
+	rows.sort_by_key(|e| std::cmp::Reverse(e.case.time_ms));
+	rows.retain(|e| e.case.time_ms >= SLOW_MS);
+	rows.truncate(n);
+	rows
+}
+
+/// The slowest tests as a collapsed table.
+pub(crate) fn slowest_block(rows: &[Entry<'_>], titles: Option<&[&str]>) -> Vec<Safe> {
+	let mut lines = vec![
+		t("<details>"),
+		cat(&[
+			t("<summary>Slowest tests ("),
+			num(rows.len()),
+			t(")</summary>"),
+		]),
+		Safe::default(),
+		t("| Test | Time |"),
+		t("| --- | ---: |"),
+	];
+	for e in rows {
+		lines.push(join(
+			&t(" | "),
+			&[
+				cat(&[t("| "), path_line(e, section_title(titles, e))]),
+				cat(&[Safe::duration_ms(e.case.time_ms), t(" |")]),
+			],
+		));
+	}
+	lines.push(Safe::default());
+	lines.push(t("</details>"));
+	lines
 }

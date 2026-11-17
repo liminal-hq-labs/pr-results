@@ -14,7 +14,7 @@ use std::ops::Range;
 
 use pr_results_core::{CommentKey, Flavour, Glob, RepoPath};
 use pr_results_forge::{BlobUrl, HostKind};
-use pr_results_render::{Options, Symbols};
+use pr_results_render::{Options, Style, Symbols};
 use toml::de::{DeArray, DeTable, DeValue};
 use toml::Spanned;
 
@@ -22,6 +22,8 @@ use toml::Spanned;
 const MAX_NAME_CHARS: usize = 100;
 const MAX_SUITES: usize = 50;
 const MAX_FILE_GLOBS: usize = 32;
+const MAX_NAME_GLOBS: usize = 50;
+const MAX_COMMAND_CHARS: usize = 200;
 
 /// What is wrong with a settings file, and on which line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +60,9 @@ pub struct SuiteSettings {
 	/// Put in front of every path the suite's reports name, so annotations land on repository
 	/// paths when the reporter's root is a subdirectory.
 	pub path_prefix: Option<RepoPath>,
+	/// What a command to run a failed test again starts with. `None` is the flavour's own and an
+	/// empty string turns the command off.
+	pub run_locally: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -106,9 +111,18 @@ pub struct Settings {
 	pub mode: CommentMode,
 	pub max_failures: usize,
 	pub excerpt_lines: usize,
+	pub style: Style,
 	pub symbols: Symbols,
+	/// Jax's line, the progress bar and the alert block of the enhanced style.
+	pub mascot: bool,
+	pub progress: bool,
+	pub alerts: bool,
 	/// List the commit's other check runs in the comment.
 	pub other_checks: bool,
+	/// Checks whose names match any of these are left out of that table.
+	pub other_checks_ignore: Vec<Glob>,
+	/// How to run a named check on your own machine, shown beside it when it fails.
+	pub check_commands: Vec<(String, String)>,
 	pub max_annotations: usize,
 	pub flaky_annotations: bool,
 	pub limits: Limits,
@@ -126,8 +140,14 @@ impl Default for Settings {
 			mode: CommentMode::Always,
 			max_failures: options.max_failures,
 			excerpt_lines: options.excerpt_lines,
-			symbols: options.symbols,
+			style: Style::Guided,
+			symbols: Symbols::Glyphs,
+			mascot: false,
+			progress: false,
+			alerts: false,
 			other_checks: false,
+			other_checks_ignore: Vec::new(),
+			check_commands: Vec::new(),
 			max_annotations: options.max_annotations,
 			flaky_annotations: options.flaky_annotations,
 			limits: Limits::default(),
@@ -151,6 +171,10 @@ impl Settings {
 			max_failures: self.max_failures,
 			excerpt_lines: self.excerpt_lines,
 			symbols: self.symbols,
+			style: self.style,
+			mascot: self.mascot,
+			progress: self.progress,
+			alerts: self.alerts,
 			max_annotations: self.max_annotations,
 			flaky_annotations: self.flaky_annotations,
 			..Options::default()
@@ -360,8 +384,14 @@ impl Reader<'_> {
 				"mode",
 				"max_failures",
 				"excerpt_lines",
+				"style",
 				"symbols",
+				"mascot",
+				"progress",
+				"alerts",
 				"other_checks",
+				"other_checks_ignore",
+				"check_commands",
 			],
 			"comment.",
 		)?;
@@ -397,17 +427,164 @@ impl Reader<'_> {
 		if let Some(n) = self.number(t, "excerpt_lines", "comment.", 0, 1000)? {
 			s.excerpt_lines = n as usize;
 		}
+		self.look(t, s)?;
+		if let Some(on) = self.boolean(t, "other_checks", "comment.")? {
+			s.other_checks = on;
+		}
+		if let Some(v) = self.find(t, "other_checks_ignore") {
+			s.other_checks_ignore = self.name_globs(v)?;
+		}
+		if let Some(table) = self.subtable(t, "check_commands")? {
+			s.check_commands = self.check_commands(table)?;
+		}
+		Ok(())
+	}
+
+	/// How the comment looks: the style, which chooses the defaults, then what is set by hand.
+	fn look(&self, t: &Table<'_>, s: &mut Settings) -> Result<(), ConfigError> {
+		let style = match self.string(t, "style", "comment.")? {
+			None => "guided".to_owned(),
+			Some((v, span)) => {
+				if !matches!(v.as_str(), "plain" | "guided" | "enhanced") {
+					return Err(self.err(
+						span,
+						"`comment.style` must be \"plain\", \"guided\" or \"enhanced\"",
+					));
+				}
+				v
+			}
+		};
+		let enhanced = style == "enhanced";
+		s.style = if style == "plain" {
+			Style::Plain
+		} else {
+			Style::Guided
+		};
+		s.symbols = match style.as_str() {
+			"plain" => Symbols::Text,
+			"guided" => Symbols::Glyphs,
+			_ => Symbols::Emoji,
+		};
 		if let Some((v, span)) = self.string(t, "symbols", "comment.")? {
 			s.symbols = match v.as_str() {
 				"text" => Symbols::Text,
 				"glyphs" => Symbols::Glyphs,
-				_ => return Err(self.err(span, "`comment.symbols` must be \"text\" or \"glyphs\"")),
+				"emoji" => Symbols::Emoji,
+				_ => {
+					return Err(self.err(
+						span,
+						"`comment.symbols` must be \"text\", \"glyphs\" or \"emoji\"",
+					))
+				}
 			};
 		}
-		if let Some(on) = self.boolean(t, "other_checks", "comment.")? {
-			s.other_checks = on;
+		for (name, slot) in [
+			("mascot", &mut s.mascot),
+			("progress", &mut s.progress),
+			("alerts", &mut s.alerts),
+		] {
+			*slot = enhanced;
+			if let Some(on) = self.boolean(t, name, "comment.")? {
+				if on && style == "plain" {
+					let at = self.find(t, name).map_or(0..0, |v| v.span());
+					return Err(self.err(
+						at,
+						format!(
+							"`comment.{name}` needs `comment.style` of \"guided\" or \"enhanced\""
+						),
+					));
+				}
+				*slot = on;
+			}
 		}
 		Ok(())
+	}
+
+	/// A list of up to 50 patterns for names, such as `["Test (*)"]`.
+	fn name_globs(&self, v: &Spanned<DeValue<'_>>) -> Result<Vec<Glob>, ConfigError> {
+		let DeValue::Array(items) = v.get_ref() else {
+			return Err(self.err(
+				v.span(),
+				"`comment.other_checks_ignore` must be a list of patterns",
+			));
+		};
+		if items.len() > MAX_NAME_GLOBS {
+			return Err(self.err(
+				v.span(),
+				format!(
+					"`comment.other_checks_ignore` must list at most {MAX_NAME_GLOBS} patterns"
+				),
+			));
+		}
+		let mut out = Vec::new();
+		for item in items.iter() {
+			let DeValue::String(p) = item.get_ref() else {
+				return Err(self.err(
+					item.span(),
+					"`comment.other_checks_ignore` must hold strings",
+				));
+			};
+			out.push(Glob::new(p).map_err(|e| {
+				self.err(
+					item.span(),
+					format!(
+						"`comment.other_checks_ignore` holds a pattern that cannot be used: {e}"
+					),
+				)
+			})?);
+		}
+		Ok(out)
+	}
+
+	/// `"Security audit" = "cargo audit"`: a check's name and how to run it, at most 50.
+	fn check_commands(&self, table: &Table<'_>) -> Result<Vec<(String, String)>, ConfigError> {
+		if table.len() > MAX_NAME_GLOBS {
+			return Err(self.err(
+				0..0,
+				format!("`comment.check_commands` must hold at most {MAX_NAME_GLOBS} checks"),
+			));
+		}
+		let mut out = Vec::new();
+		for (key, value) in table.iter() {
+			let name = self.name(
+				key.get_ref().as_ref(),
+				key.span(),
+				"a check name in `comment.check_commands`",
+			)?;
+			let DeValue::String(command) = value.get_ref() else {
+				return Err(self.err(
+					value.span(),
+					"a command in `comment.check_commands` must be a string",
+				));
+			};
+			out.push((
+				name,
+				self.command(
+					command,
+					value.span(),
+					"a command in `comment.check_commands`",
+				)?,
+			));
+		}
+		out.sort();
+		Ok(out)
+	}
+
+	/// A command to show: printable ASCII, 1 to 200 characters, with no backtick or backslash, so
+	/// it can go in a code span and a shell as it is.
+	fn command(&self, text: &str, span: Range<usize>, what: &str) -> Result<String, ConfigError> {
+		if text.is_empty()
+			|| text.len() > MAX_COMMAND_CHARS
+			|| !text
+				.chars()
+				.all(|c| (' '..='~').contains(&c) && !matches!(c, '`' | '\\'))
+		{
+			return Err(self.err(
+				span,
+				format!("{what} must be 1 to {MAX_COMMAND_CHARS} printable ASCII characters, with no backtick or backslash"),
+			));
+		}
+		Ok(text.to_owned())
 	}
 
 	fn checks(&self, t: &Table<'_>) -> Result<(), ConfigError> {
@@ -570,6 +747,7 @@ impl Reader<'_> {
 				"flavour",
 				"required",
 				"path_prefix",
+				"run_locally",
 			],
 			"suite.",
 		)?;
@@ -625,6 +803,19 @@ impl Reader<'_> {
 			})?),
 			_ => None,
 		};
+		let run_locally = match self.string(t, "run_locally", "suite.")? {
+			None => None,
+			Some((c, _)) if c.is_empty() => Some(c),
+			Some((c, span)) => {
+				if !matches!(flavour, Flavour::Auto | Flavour::Nextest) {
+					return Err(self.err(
+						span,
+						"`suite.run_locally` is for nextest suites: set `flavour` to \"nextest\" or \"auto\"",
+					));
+				}
+				Some(self.command(&c, span, "`suite.run_locally`")?)
+			}
+		};
 		Ok(SuiteSettings {
 			name,
 			check,
@@ -633,6 +824,7 @@ impl Reader<'_> {
 			flavour,
 			required,
 			path_prefix,
+			run_locally,
 		})
 	}
 

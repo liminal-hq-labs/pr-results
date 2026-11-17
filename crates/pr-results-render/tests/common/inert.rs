@@ -183,6 +183,7 @@ pub fn assert_inert(name: &str, md: &str, link_prefix: &str) {
 pub fn assert_inert_for(target: Target, name: &str, md: &str, link_prefix: &str) {
 	let mut fence: Option<usize> = None;
 	let mut depth = 0i64;
+	let mut in_alert = false;
 	for (number, line) in md.lines().enumerate() {
 		let at = format!("{name}: line {}", number + 1);
 		if let Some(open) = fence {
@@ -208,6 +209,33 @@ pub fn assert_inert_for(target: Target, name: &str, md: &str, link_prefix: &str)
 			!line.contains("pr-results:1") && !line.contains("<!--"),
 			"{at}: a marker after the first line: {line:?}"
 		);
+		// A quote is allowed only as a GitHub alert: its first line names one of the five kinds,
+		// and the lines after it are checked as the text they hold.
+		let mut line = line;
+		if line.starts_with('>') {
+			assert!(
+				target == Target::GitHub,
+				"{at}: a quote on Forgejo: {line:?}"
+			);
+			if let Some(kind) = line.strip_prefix("> [!") {
+				assert!(
+					matches!(
+						kind,
+						"TIP]" | "NOTE]" | "WARNING]" | "CAUTION]" | "IMPORTANT]"
+					),
+					"{at}: an alert of a kind we do not write: {line:?}"
+				);
+				in_alert = true;
+				continue;
+			}
+			assert!(
+				in_alert && (line == ">" || line.starts_with("> ")),
+				"{at}: a quote outside an alert: {line:?}"
+			);
+			line = line.strip_prefix("> ").unwrap_or("");
+		} else {
+			in_alert = false;
+		}
 		if trusted_html(line) {
 			match line {
 				"<details>" | "<details open>" => depth += 1,

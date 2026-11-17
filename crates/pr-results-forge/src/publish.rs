@@ -67,6 +67,8 @@ pub struct SectionPlan {
 	pub flavour: Flavour,
 	/// Put in front of every path the section's reports name.
 	pub path_prefix: Option<RepoPath>,
+	/// What a command to run a failed test again starts with; see `Section::run_locally`.
+	pub run_locally: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +80,10 @@ pub struct Plan {
 	pub post_comment: bool,
 	/// Whether to list the commit's other check runs in the comment (`comment.other_checks`).
 	pub other_checks: bool,
+	/// Checks whose names match any of these are left out of the table.
+	pub other_checks_ignore: Vec<Glob>,
+	/// How to run a named check on your own machine, shown beside it when it fails.
+	pub check_commands: Vec<(String, String)>,
 	/// The run this publisher is itself running in, when it is not the run being reported on. Its
 	/// own job is still going while it reads, so listing it would show a check that is never done.
 	pub own_run: Option<RunId>,
@@ -106,6 +112,8 @@ impl Plan {
 			key,
 			post_comment: true,
 			other_checks: false,
+			other_checks_ignore: Vec::new(),
+			check_commands: Vec::new(),
 			own_run: None,
 			sections,
 			options: Options::default(),
@@ -491,6 +499,7 @@ fn finish<H: Host>(
 			required: p.required,
 			suites,
 			inputs_skipped: *skipped,
+			run_locally: p.run_locally.as_deref(),
 		})
 		.collect();
 	let others = other_checks(gh, run, plan, artifacts.is_some(), &mut report);
@@ -760,10 +769,16 @@ fn other_checks<H: Host>(
 	listed
 		.iter()
 		.filter(|c| !c.ours && !plan.own_run.is_some_and(|own| in_run(c, own)))
+		.filter(|c| !plan.other_checks_ignore.iter().any(|g| g.is_match(&c.name)))
 		.take(MAX_OTHER_CHECKS)
 		.map(|c| OtherCheck {
 			name: c.name.clone(),
 			state: state_of(c),
+			command: plan
+				.check_commands
+				.iter()
+				.find(|(name, _)| *name == c.name)
+				.map(|(_, command)| command.clone()),
 		})
 		.collect()
 }

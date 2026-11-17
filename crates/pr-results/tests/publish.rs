@@ -394,7 +394,7 @@ fn a_run_with_no_results_says_so_and_stays_neutral() {
 	assert_eq!(fake.comments(7).len(), 1);
 	assert!(fake.comments(7)[0]
 		.body
-		.contains("No results were uploaded for this run."));
+		.contains("No test results arrived for this run, so there are no tests to show."));
 }
 
 #[test]
@@ -893,7 +893,10 @@ fn other_checks_are_listed_when_the_setting_is_on_and_the_publishers_own_job_is_
 	assert_eq!(o.code, 0, "{}", o.err);
 	let body = fake.comments(7)[0].body.clone();
 	assert!(body.contains("1 other check needs attention"), "{body}");
-	assert!(body.contains("| `Security audit` | **Failed** |"), "{body}");
+	assert!(
+		body.contains("| `Security audit` | \u{2717} **Failed** |"),
+		"{body}"
+	);
 	assert!(!body.contains("Publish"), "{body}");
 }
 

@@ -220,3 +220,69 @@ pub(crate) fn location_piece(case: &Case) -> Option<Piece> {
 	};
 	Some(Piece { text, omitted: 0 })
 }
+
+/// What `cargo nextest run` starts with when the settings name nothing else.
+const NEXTEST_PREFIX: &str = "cargo nextest run";
+
+/// A binary id as nextest writes one: a package name, optionally `::` and a test target.
+fn binary_id_ok(s: &str) -> bool {
+	let mut chars = s.chars();
+	chars
+		.next()
+		.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+		&& s.len() <= 120
+		&& s.chars()
+			.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '/' | '-'))
+}
+
+/// A test's path as Rust writes one: identifiers joined by `::`.
+fn test_name_ok(s: &str) -> bool {
+	let mut chars = s.chars();
+	chars
+		.next()
+		.is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+		&& s.len() <= 200
+		&& s.chars()
+			.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':'))
+}
+
+/// What the settings put in front of the filter: printable ASCII with no quote or backtick, or
+/// the flavour's own when none is set. An empty setting turns the command off.
+fn prefix_ok(s: &str) -> bool {
+	!s.is_empty()
+		&& s.len() <= 200
+		&& s.chars()
+			.all(|c| (' '..='~').contains(&c) && !matches!(c, '`' | '\'' | '\\'))
+}
+
+/// A command that runs just this failed nextest test again.
+///
+/// It is built only from words that are all ASCII letters, digits, `_` and `:` (and `-` and `/` in
+/// the binary id), and only when nothing was cut from either. Anything else gets no command, so
+/// no quote, `$`, backtick, `;`, line break or nextest filter syntax in a name can reach a shell
+/// or the filter. The filter uses `=` so each name is matched whole.
+pub(crate) fn nextest_command(prefix: Option<&str>, suite: &Suite, case: &Case) -> Option<Piece> {
+	if suite.flavour != Flavour::Nextest {
+		return None;
+	}
+	let prefix = prefix.unwrap_or(NEXTEST_PREFIX);
+	if !prefix_ok(prefix) {
+		return None;
+	}
+	let (binary, omitted) = if case.classname.as_str().is_empty() {
+		(suite.name.as_str(), suite.name.omitted())
+	} else {
+		(case.classname.as_str(), case.classname.omitted())
+	};
+	if omitted > 0 || case.name.omitted() > 0 {
+		return None;
+	}
+	let name = case.name.as_str();
+	if !binary_id_ok(binary) || !test_name_ok(name) {
+		return None;
+	}
+	Some(Piece {
+		text: format!("{prefix} -E 'binary_id(={binary}) & test(={name})'"),
+		omitted: 0,
+	})
+}

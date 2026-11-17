@@ -192,6 +192,7 @@ mod tests {
 			files: vec![Glob::new("**/*.xml").unwrap()],
 			flavour: Flavour::Generic,
 			path_prefix: RepoPath::parse("apps/web/"),
+			run_locally: None,
 		};
 		let plan = Plan::new(
 			"App",
