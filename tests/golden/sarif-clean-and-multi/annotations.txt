@@ -1,0 +1,5 @@
+check 0: 1 annotations, 0 not shown
+- failure web/app.js:40-40
+  title: javascript.lang.security.eval
+  message: eval of a dynamic string
+check 1: 0 annotations, 0 not shown

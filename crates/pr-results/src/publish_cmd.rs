@@ -550,6 +550,8 @@ fn configured_sections(settings: &Settings, title: &str) -> Result<Vec<SectionPl
 			path_prefix: s.path_prefix.clone(),
 			run_locally: s.run_locally.clone(),
 			job: s.job.clone(),
+			format: s.format,
+			fail_on: s.fail_on,
 		});
 	}
 	Ok(out)
@@ -616,6 +618,8 @@ fn inferred_names<'a>(
 			path_prefix: None,
 			run_locally: None,
 			job: None,
+			format: pr_results_core::InputFormat::Junit,
+			fail_on: pr_results_core::Severity::Warning,
 		});
 	}
 	Ok(out)

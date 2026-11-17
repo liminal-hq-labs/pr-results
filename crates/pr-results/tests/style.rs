@@ -169,3 +169,53 @@ fn a_suite_can_name_the_job_it_comes_from() {
 	let different = two.replacen("job = \"Tests\"", "job = \"Lint\"", 1);
 	of(&different);
 }
+
+#[test]
+fn a_suite_can_read_sarif_and_say_how_serious_a_finding_must_be_to_fail() {
+	use pr_results_core::{InputFormat, Severity};
+	let suite = |extra: &str| format!("[[suite]]\nname = \"a\"\nartifact = \"b\"\n{extra}");
+
+	let plain = of(&suite(""));
+	assert_eq!(plain.suites[0].format, InputFormat::Junit);
+	assert_eq!(plain.suites[0].fail_on, Severity::Warning);
+
+	let sarif = of(&suite("format = \"sarif\""));
+	assert_eq!(sarif.suites[0].format, InputFormat::Sarif);
+	assert_eq!(sarif.suites[0].fail_on, Severity::Warning);
+
+	for (word, level) in [
+		("note", Severity::Note),
+		("warning", Severity::Warning),
+		("error", Severity::Error),
+	] {
+		let s = of(&suite(&format!("format = \"sarif\"\nfail_on = \"{word}\"")));
+		assert_eq!(s.suites[0].fail_on, level, "{word}");
+	}
+	assert!(err(&suite("format = \"sarif\"\nfail_on = \"loud\""))
+		.contains("must be \"note\", \"warning\" or \"error\""));
+	assert!(err(&suite("format = \"sarif\"\nfail_on = 3")).contains("must be a string"));
+}
+
+#[test]
+fn a_findings_format_reads_sarif_files_unless_told_otherwise() {
+	let suite = |extra: &str| format!("[[suite]]\nname = \"a\"\nartifact = \"b\"\n{extra}");
+	let files = |s: &pr_results::config::Settings| s.suites[0].files[0].clone();
+	assert!(files(&of(&suite("format = \"sarif\""))).is_match("out/clippy.sarif"));
+	assert!(!files(&of(&suite("format = \"sarif\""))).is_match("out/junit.xml"));
+	assert!(files(&of(&suite(""))).is_match("out/junit.xml"));
+	assert!(files(&of(&suite("format = \"sarif\"\nfiles = [\"*.json\"]"))).is_match("a.json"));
+}
+
+#[test]
+fn a_setting_that_a_format_has_no_use_for_is_refused() {
+	let suite = |extra: &str| format!("[[suite]]\nname = \"a\"\nartifact = \"b\"\n{extra}");
+	assert!(err(&suite("fail_on = \"error\"")).contains("is for formats that report findings"));
+	assert!(err(&suite("format = \"sarif\"\nflavour = \"nextest\"")).contains("is for JUnit files"));
+	assert!(err(&suite(
+		"format = \"sarif\"\nrun_locally = \"cargo nextest run\""
+	))
+	.contains("is for nextest suites"));
+	assert!(err(&suite("format = \"junit\"\nfail_on = \"note\""))
+		.contains("is for formats that report findings"));
+	assert!(err(&suite("format = \"steps-json\"")).contains("use \"junit\" or \"sarif\""));
+}

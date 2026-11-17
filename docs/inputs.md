@@ -17,6 +17,7 @@ Everything here is untrusted input and is handled by the rules in [security.md](
 | Playwright JUnit | `reporter: [['junit', { outputFile }]]`, often sharded | one file per shard | `junit`, flavour `playwright` | Root `<testsuites id="" name="">`. A suite per project and spec file: `name` is the spec relative to `testDir` and `hostname` is the project. `classname` is the spec, `name` is `describe › title`. A failed `expect` is `<failure>` and a thrown error is `<error>`. The text holds every attempt as `Retry #n` sections. A flaky test is a plain pass. Attachments appear as `[[ATTACHMENT\|…]]` in `system-out` |
 | Python (planned) | `unittest-xml-reporting` or `pytest --junitxml` | any | `junit`, flavour `python` | `classname` is the dotted module path. `file` from pytest. Not a flavour yet: read it as `generic` |
 | Generic JUnit | anything else (Gradle, GUT, cargo2junit) | any | `junit`, flavour `generic` | Surefire-style attributes only |
+| SARIF | a scanner (CodeQL, Semgrep, Trivy), or clippy through a converter | `*-test-results` artefacts, `**/*.sarif` | `sarif` | A run is a suite, a result a case. See [SARIF](#sarif) |
 | Generic step JSON (could) | a script | any | `steps-json` | The schema is below |
 
 Detection with `flavour = "auto"` picks by the root's `name` attribute (`nextest-run`, `vitest tests`, `bun test`, `jest tests`), by `assertions` attributes (bun), by an empty `name` beside an `id` on the root (Playwright) and by `[[ATTACHMENT|` (Playwright), and falls back to `generic`. A jest-junit file whose `suiteName` was changed reads as `generic` until the suite sets `flavour = "jest"`.
@@ -107,6 +108,18 @@ Everything here was read from real output: the sample projects under `tests/samp
 - **Retries.** With `retries: 2` a test that kept failing has one `<failure>` or `<error>` whose text repeats the error under `Retry #1` and `Retry #2` headings, and `system-out` lists an attachment for every attempt. The reader does not split the text into attempts. A test that failed and then passed is a plain passing case; its only mark is an `error-context.md` attachment in `system-out`, which is a trace of the version, not a contract, and is not read. Playwright's JUnit cannot show a flaky test.
 - **Attachments** are paths relative to the XML file, not to the repository.
 - **Shards.** `--shard=1/2` splits the tests across projects and files, so a project's suites can arrive in different files; same-named suites of the same project merge.
+
+## SARIF
+
+`suite.format = "sarif"` reads SARIF 2.x. The rules are in [SPEC.md](../SPEC.md#inputs); in short:
+
+- A run is a suite, named by its tool. A result is a case named by its rule, grouped by its file, with the first location's file and line, so the check run annotates the line.
+- `fail_on` (`warning` by default) is the lowest severity that fails. Findings below it are counted as skipped. `suppressions` and level `none` are skipped, and `kind = "pass"` is a pass.
+- A run with no results is one passing case, so a clean scan shows as a pass.
+- Paths come from `artifactLocation.uri`. Only a relative path inside the repository is used; an absolute path, a URL or a path that climbs out of the repository leaves the finding without a file, and it is still reported.
+- Only the fields above are read and the rest are skipped without being stored, so a large report costs what its findings cost. The usual limits apply, and a file that cannot be read is counted and left out, as for JUnit.
+
+Rust projects can get SARIF from clippy with `clippy-sarif` (`cargo clippy --message-format=json | clippy-sarif > clippy.sarif`), and many scanners write it directly (`semgrep --sarif`, `trivy --format sarif`, CodeQL's `database analyze`).
 
 ## How report text is shown
 

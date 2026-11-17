@@ -112,6 +112,8 @@ pub fn section(title: &str, check: &str, artifact: &str) -> SectionPlan {
 		path_prefix: None,
 		run_locally: None,
 		job: None,
+		format: pr_results_core::InputFormat::Junit,
+		fail_on: pr_results_core::Severity::Warning,
 	}
 }
 

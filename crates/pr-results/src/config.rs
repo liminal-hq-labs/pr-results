@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 
-use pr_results_core::{CommentKey, Flavour, Glob, RepoPath};
+use pr_results_core::{CommentKey, Flavour, Glob, InputFormat, RepoPath, Severity};
 use pr_results_forge::{BlobUrl, HostKind};
 use pr_results_render::{Options, Style, Symbols};
 use toml::de::{DeArray, DeTable, DeValue};
@@ -66,6 +66,10 @@ pub struct SuiteSettings {
 	/// The name of the job this suite's results come from. With `comment.other_checks`, that job's
 	/// row is left out of the table while it agrees with the suite.
 	pub job: Option<String>,
+	/// How the suite's files are written.
+	pub format: InputFormat,
+	/// For a findings format, the lowest severity that fails.
+	pub fail_on: Severity,
 }
 
 #[derive(Debug, Clone)]
@@ -752,6 +756,7 @@ impl Reader<'_> {
 				"path_prefix",
 				"run_locally",
 				"job",
+				"fail_on",
 			],
 			"suite.",
 		)?;
@@ -772,30 +777,57 @@ impl Reader<'_> {
 				format!("`suite.artifact` is not a usable pattern: {e}"),
 			)
 		})?;
-		let files = match self.find(t, "files") {
-			None => vec![self.default_glob()?],
-			Some(v) => self.globs(v)?,
-		};
-		if let Some((f, span)) = self.string(t, "format", "suite.")? {
-			match f.as_str() {
-				"junit" => {}
+		let format = match self.string(t, "format", "suite.")? {
+			None => InputFormat::Junit,
+			Some((f, span)) => match f.as_str() {
 				"steps-times" | "steps-json" => {
 					return Err(self.err(
 						span,
-						"`suite.format` of \"steps-times\" and \"steps-json\" is not supported: only \"junit\"",
+						"`suite.format` of \"steps-times\" and \"steps-json\" is not supported: use \"junit\" or \"sarif\"",
 					))
 				}
-				_ => return Err(self.err(span, "`suite.format` must be \"junit\"")),
-			}
-		}
+				other => InputFormat::from_name(other).ok_or_else(|| {
+					self.err(span, "`suite.format` must be \"junit\" or \"sarif\"")
+				})?,
+			},
+		};
+		let files = match self.find(t, "files") {
+			None => vec![self.default_glob(format)?],
+			Some(v) => self.globs(v)?,
+		};
 		let flavour = match self.string(t, "flavour", "suite.")? {
 			None => Flavour::Auto,
-			Some((f, span)) => Flavour::from_name(&f).ok_or_else(|| {
-				self.err(
-					span,
-					"`suite.flavour` must be auto, nextest, vitest, bun, jest, playwright, steps or generic",
-				)
-			})?,
+			Some((f, span)) => {
+				if format != InputFormat::Junit {
+					return Err(self.err(
+						span,
+						"`suite.flavour` is for JUnit files: leave it out for a findings format",
+					));
+				}
+				Flavour::from_name(&f).ok_or_else(|| {
+					self.err(
+						span,
+						"`suite.flavour` must be auto, nextest, vitest, bun, jest, playwright, steps or generic",
+					)
+				})?
+			}
+		};
+		let fail_on = match self.string(t, "fail_on", "suite.")? {
+			None => Severity::Warning,
+			Some((v, span)) => {
+				if format == InputFormat::Junit {
+					return Err(self.err(
+						span,
+						"`suite.fail_on` is for formats that report findings: set `suite.format` to \"sarif\"",
+					));
+				}
+				Severity::from_name(&v).ok_or_else(|| {
+					self.err(
+						span,
+						"`suite.fail_on` must be \"note\", \"warning\" or \"error\"",
+					)
+				})?
+			}
 		};
 		let required = self.boolean(t, "required", "suite.")?.unwrap_or(false);
 		let path_prefix = match self.string(t, "path_prefix", "suite.")? {
@@ -811,7 +843,9 @@ impl Reader<'_> {
 			None => None,
 			Some((c, _)) if c.is_empty() => Some(c),
 			Some((c, span)) => {
-				if !matches!(flavour, Flavour::Auto | Flavour::Nextest) {
+				if format != InputFormat::Junit
+					|| !matches!(flavour, Flavour::Auto | Flavour::Nextest)
+				{
 					return Err(self.err(
 						span,
 						"`suite.run_locally` is for nextest suites: set `flavour` to \"nextest\" or \"auto\"",
@@ -834,11 +868,13 @@ impl Reader<'_> {
 			path_prefix,
 			run_locally,
 			job,
+			format,
+			fail_on,
 		})
 	}
 
-	fn default_glob(&self) -> Result<Glob, ConfigError> {
-		Glob::new("**/*.xml").map_err(|e| ConfigError {
+	fn default_glob(&self, format: InputFormat) -> Result<Glob, ConfigError> {
+		Glob::new(format.default_files()).map_err(|e| ConfigError {
 			line: None,
 			message: e.to_string(),
 		})

@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::CliError;
-use pr_results_core::{parse_junit_in, Report};
+use pr_results_core::{parse_report, Report};
 use pr_results_forge::{Inputs, Plan};
 
 pub(crate) type LocalFile = (String, String, Vec<u8>);
@@ -158,11 +158,13 @@ pub(crate) fn read(files: &[LocalFile], plan: &Plan) -> Inputs {
 		for (_, _, data) in files.iter().filter(|(a, n, _)| {
 			section.artifact.is_match(a) && section.files.iter().any(|g| g.is_match(n))
 		}) {
-			match parse_junit_in(
+			match parse_report(
 				data,
+				section.format,
 				section.flavour,
 				&plan.parse,
 				section.path_prefix.as_ref(),
+				section.fail_on,
 			) {
 				Ok(parsed) => report.suites.extend(parsed.suites),
 				Err(_) => skipped += 1,
@@ -179,7 +181,7 @@ pub(crate) fn read(files: &[LocalFile], plan: &Plan) -> Inputs {
 mod tests {
 	#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 	use super::*;
-	use pr_results_core::{CommentKey, Flavour, Glob, RepoPath};
+	use pr_results_core::{CommentKey, Flavour, Glob, InputFormat, RepoPath, Severity};
 	use pr_results_forge::SectionPlan;
 
 	#[test]
@@ -194,6 +196,8 @@ mod tests {
 			path_prefix: RepoPath::parse("apps/web/"),
 			run_locally: None,
 			job: None,
+			format: InputFormat::Junit,
+			fail_on: Severity::Warning,
 		};
 		let plan = Plan::new(
 			"App",

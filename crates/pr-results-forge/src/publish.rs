@@ -15,8 +15,8 @@ use std::cell::Cell;
 use std::fmt;
 
 use pr_results_core::{
-	parse_junit_in, CommentKey, Flavour, Glob, Limits, Marker, RepoPath, Report, RunId, Safe,
-	ServerUrl, Sha, Status, Suite, TrustedUrl,
+	parse_report, CommentKey, Flavour, Glob, InputFormat, Limits, Marker, RepoPath, Report, RunId,
+	Safe, ServerUrl, Severity, Sha, Status, Suite, TrustedUrl,
 };
 use pr_results_render::{
 	check_with_paths, comment, job_summary, status, CheckState, Comment, Conclusion, Input,
@@ -71,6 +71,10 @@ pub struct SectionPlan {
 	pub run_locally: Option<String>,
 	/// The name of the job the section's results come from; see `Section::job`.
 	pub job: Option<String>,
+	/// How the section's files are written, and (for a findings format) how serious a finding
+	/// has to be to fail.
+	pub format: InputFormat,
+	pub fail_on: Severity,
 }
 
 #[derive(Debug, Clone)]
@@ -642,11 +646,13 @@ fn load<H: Host>(
 				.iter()
 				.filter(|e| section.files.iter().any(|g| g.is_match(&e.name)))
 			{
-				match parse_junit_in(
+				match parse_report(
 					&entry.data,
+					section.format,
 					section.flavour,
 					&plan.parse,
 					section.path_prefix.as_ref(),
+					section.fail_on,
 				) {
 					Ok(parsed) => out.suites.extend(parsed.suites),
 					Err(_) => {

@@ -948,3 +948,150 @@ fn a_suite_that_names_its_job_replaces_that_jobs_row_in_the_comment() {
 	assert!(!body.contains("`Tests`"), "{body}");
 	assert!(body.contains("Other checks: 1 passed"), "{body}");
 }
+
+const CLIPPY_SARIF_CONFIG: &str = "schema = 1\ntitle = \"CI\"\n\n[[suite]]\nname = \"Clippy\"\ncheck = \"CI Clippy\"\nartifact = \"clippy-test-results\"\nformat = \"sarif\"\n";
+
+#[test]
+fn findings_in_a_sarif_artefact_become_a_suite_with_annotations() {
+	let dir = scratch("sarif");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"clippy-test-results",
+		&[("clippy.sarif", &fixture("sarif/clippy.sarif"))],
+	);
+	fake.set_tree(
+		SHA,
+		&[
+			"crates/pr-results-forge/src/publish.rs",
+			"src/lib.rs",
+			"src/a b.rs",
+		],
+		false,
+	);
+	let config = dir.join("pr-results.toml");
+	std::fs::write(&config, CLIPPY_SARIF_CONFIG).unwrap();
+	let vars = publisher_env(&dir, &pr_event());
+
+	let o = invoke(
+		&["publish", "--config", config.to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let checks = fake.check_runs();
+	assert_eq!(checks.len(), 1);
+	assert_eq!(checks[0].name, "CI Clippy");
+	assert_eq!(checks[0].conclusion.as_deref(), Some("failure"));
+	assert_eq!(
+		checks[0].annotations.len(),
+		2,
+		"one at each failing finding"
+	);
+	let first = checks[0].annotations[0].to_string();
+	assert!(
+		first.contains("crates/pr-results-forge/src/publish.rs"),
+		"{first}"
+	);
+	assert!(first.contains("454"), "{first}");
+	let body = fake.comments(7)[0].body.clone();
+	assert!(body.contains("`clippy::too_many_arguments`"), "{body}");
+	assert!(
+		body.contains("| `Clippy` | \u{2717} **Failed** | 0 | 2 | 1 | 0 |"),
+		"{body}"
+	);
+}
+
+#[test]
+fn the_threshold_decides_which_findings_fail_the_check() {
+	let dir = scratch("sarif-threshold");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"clippy-test-results",
+		&[("clippy.sarif", &fixture("sarif/clippy.sarif"))],
+	);
+	let config = dir.join("pr-results.toml");
+	std::fs::write(
+		&config,
+		format!("{CLIPPY_SARIF_CONFIG}fail_on = \"error\"\n"),
+	)
+	.unwrap();
+	let vars = publisher_env(&dir, &pr_event());
+
+	let o = invoke(
+		&["publish", "--config", config.to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let body = fake.comments(7)[0].body.clone();
+	assert!(
+		body.contains("| `Clippy` | \u{2717} **Failed** | 0 | 1 | 2 | 0 |"),
+		"{body}"
+	);
+}
+
+#[test]
+fn a_clean_scan_passes_and_an_unreadable_file_is_counted_not_fatal() {
+	let dir = scratch("sarif-clean");
+	let fake = github_with_pr();
+	artifact(
+		&fake,
+		"clippy-test-results",
+		&[
+			("clean.sarif", &fixture("sarif/clean.sarif")),
+			("broken.sarif", "{ not sarif"),
+		],
+	);
+	let config = dir.join("pr-results.toml");
+	std::fs::write(&config, CLIPPY_SARIF_CONFIG).unwrap();
+	let vars = publisher_env(&dir, &pr_event());
+
+	let o = invoke(
+		&["publish", "--config", config.to_str().unwrap()],
+		&vars,
+		&Factory::new(&fake),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	assert_eq!(fake.check_runs()[0].conclusion.as_deref(), Some("success"));
+	let body = fake.comments(7)[0].body.clone();
+	assert!(body.contains("1 input file was skipped"), "{body}");
+}
+
+#[test]
+fn render_reads_sarif_with_the_same_settings() {
+	let dir = scratch("sarif-render");
+	let config = dir.join("pr-results.toml");
+	std::fs::write(
+		&config,
+		CLIPPY_SARIF_CONFIG.replace("clippy-test-results", "x"),
+	)
+	.unwrap();
+	let file = dir.join("clippy.sarif");
+	std::fs::write(&file, fixture("sarif/clippy.sarif")).unwrap();
+	let out = dir.join("out");
+
+	let o = invoke(
+		&[
+			"render",
+			"--config",
+			config.to_str().unwrap(),
+			file.to_str().unwrap(),
+			"--out",
+			out.to_str().unwrap(),
+		],
+		&std::collections::BTreeMap::new(),
+		&Factory::new(&github_with_pr()),
+	);
+
+	assert_eq!(o.code, 0, "{}", o.err);
+	let comment = std::fs::read_to_string(out.join("comment.md")).unwrap();
+	assert!(
+		comment.contains("`clippy::too_many_arguments`"),
+		"{comment}"
+	);
+}

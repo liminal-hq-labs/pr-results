@@ -37,6 +37,8 @@ pub enum ParseError {
 	Structure(&'static str),
 	/// The XML is not well formed. The offset is a byte position in the input.
 	Malformed { offset: u64 },
+	/// The JSON is not valid, or is not shaped as the format requires.
+	NotJson { line: usize, column: usize },
 }
 
 impl fmt::Display for ParseError {
@@ -69,6 +71,9 @@ impl fmt::Display for ParseError {
 				f.write_str("the input uses an entity or character reference that is not accepted")
 			}
 			Self::UnexpectedRoot => f.write_str("the root element is not testsuites or testsuite"),
+			Self::NotJson { line, column } => {
+				write!(f, "the input is not valid at line {line}, column {column}")
+			}
 			Self::Structure(what) => {
 				write!(f, "the elements are not arranged as JUnit requires: {what}")
 			}

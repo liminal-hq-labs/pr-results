@@ -11,7 +11,8 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use pr_results_core::{
-	parse_junit, CommentKey, Flavour, Limits, RepoSlug, RunId, ServerUrl, Sha, Suite,
+	parse_junit, parse_sarif, CommentKey, Flavour, Limits, RepoSlug, RunId, ServerUrl, Severity,
+	Sha, Suite,
 };
 use pr_results_render::{
 	check, comment, measure, status, CheckState, Comment, Conclusion, Degradation, Input, Level,
@@ -67,6 +68,18 @@ pub fn load(files: &[&str], flavour: Flavour) -> Vec<Suite> {
 	for file in files {
 		let bytes = std::fs::read(fixtures_dir().join(file)).unwrap();
 		let parsed = parse_junit(&bytes, flavour, &Limits::default()).unwrap();
+		report.suites.extend(parsed.suites);
+	}
+	report.merge_same_named();
+	report.suites
+}
+
+/// The suites of SARIF fixtures, failing at `fail_on` and above.
+pub fn load_sarif(files: &[&str], fail_on: Severity) -> Vec<Suite> {
+	let mut report = pr_results_core::Report::default();
+	for file in files {
+		let bytes = std::fs::read(fixtures_dir().join(file)).unwrap();
+		let parsed = parse_sarif(&bytes, &Limits::default(), None, fail_on).unwrap();
 		report.suites.extend(parsed.suites);
 	}
 	report.merge_same_named();
@@ -858,6 +871,63 @@ pub fn scenarios() -> Vec<Scenario> {
 		sc.checks = sc.target == Target::GitHub && sc.name != "guided-awkward-names";
 	}
 	all.extend(guided);
+
+	// Findings from a SARIF file, shown as the suite they are, with annotations in the check run.
+	all.push(
+		Scenario::new(
+			"sarif-findings",
+			"Example checks",
+			vec![section(
+				"Clippy",
+				false,
+				load_sarif(&["sarif/clippy.sarif"], Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"sarif-errors-only",
+			"Example checks",
+			vec![section(
+				"Clippy",
+				false,
+				load_sarif(&["sarif/clippy.sarif"], Severity::Error),
+			)],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"sarif-clean-and-multi",
+			"Example checks",
+			vec![
+				section(
+					"Scanners",
+					false,
+					load_sarif(&["sarif/multi-run.sarif"], Severity::Warning),
+				),
+				section(
+					"Semgrep",
+					false,
+					load_sarif(&["sarif/clean.sarif"], Severity::Warning),
+				),
+			],
+		)
+		.guided(),
+	);
+	all.push(
+		Scenario::new(
+			"sarif-hostile",
+			"Example checks",
+			vec![section(
+				"Scan",
+				false,
+				load_sarif(&["sarif/hostile.sarif"], Severity::Warning),
+			)],
+		)
+		.guided(),
+	);
 
 	// Everything the enhanced style adds, and what it leaves out on Forgejo.
 	let mut enhanced = vec![

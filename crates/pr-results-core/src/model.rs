@@ -224,6 +224,64 @@ impl Flavour {
 	}
 }
 
+/// How a suite's files are read. A suite's `format` is how its files are written, and its flavour
+/// (for JUnit) is which tool wrote them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InputFormat {
+	/// JUnit XML, read as the suite's flavour.
+	#[default]
+	Junit,
+	/// SARIF 2.1.0, the static-analysis results format.
+	Sarif,
+}
+
+impl InputFormat {
+	pub fn name(self) -> &'static str {
+		match self {
+			Self::Junit => "junit",
+			Self::Sarif => "sarif",
+		}
+	}
+
+	pub fn from_name(name: &str) -> Option<Self> {
+		[Self::Junit, Self::Sarif]
+			.into_iter()
+			.find(|f| f.name() == name)
+	}
+
+	/// The files a suite reads when its settings name none.
+	pub fn default_files(self) -> &'static str {
+		match self {
+			Self::Junit => "**/*.xml",
+			Self::Sarif => "**/*.sarif",
+		}
+	}
+}
+
+/// How serious a finding is. A suite that reads findings fails at or above its threshold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Severity {
+	Note,
+	Warning,
+	Error,
+}
+
+impl Severity {
+	pub fn name(self) -> &'static str {
+		match self {
+			Self::Note => "note",
+			Self::Warning => "warning",
+			Self::Error => "error",
+		}
+	}
+
+	pub fn from_name(name: &str) -> Option<Self> {
+		[Self::Note, Self::Warning, Self::Error]
+			.into_iter()
+			.find(|s| s.name() == name)
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Suite {
 	pub name: Untrusted,

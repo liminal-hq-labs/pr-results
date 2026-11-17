@@ -222,7 +222,7 @@ fn only_junit_is_a_format_and_only_known_flavours_exist() {
 	assert!(Settings::parse(&suite("format = \"junit\"")).is_ok());
 	assert!(err(&suite("format = \"steps-times\"")).contains("not supported"));
 	assert!(err(&suite("format = \"steps-json\"")).contains("not supported"));
-	assert!(err(&suite("format = \"tap\"")).contains("must be \"junit\""));
+	assert!(err(&suite("format = \"tap\"")).contains("must be \"junit\" or \"sarif\""));
 	assert!(err(&suite("flavour = \"mocha\"")).contains("`suite.flavour` must be"));
 	for f in [
 		"auto",

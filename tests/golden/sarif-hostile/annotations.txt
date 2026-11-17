@@ -1,0 +1,7 @@
+check 0: 2 annotations, 0 not shown
+- failure src/x.rs:1-1
+  title: bad-lines
+  message: a line of zero and a line that does not fit
+- failure src/ok.rs:7-7
+  title: ok
+  message: a real location

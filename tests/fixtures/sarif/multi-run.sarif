@@ -1,0 +1,19 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "semgrep" } },
+      "results": [
+        {
+          "ruleId": "javascript.lang.security.eval",
+          "level": "error",
+          "message": { "text": "eval of a dynamic string" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "web/app.js" }, "region": { "startLine": 40 } } }
+          ]
+        }
+      ]
+    },
+    { "tool": { "driver": { "name": "trivy" } }, "results": [] }
+  ]
+}

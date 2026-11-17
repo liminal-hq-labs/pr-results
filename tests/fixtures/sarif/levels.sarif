@@ -1,0 +1,19 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "scan" } },
+      "results": [
+        { "ruleId": "passes", "kind": "pass", "level": "none", "message": { "text": "ok" } },
+        { "ruleId": "informs", "kind": "informational", "message": { "text": "fyi" } },
+        { "ruleId": "not-applicable", "kind": "notApplicable", "message": { "text": "n/a" } },
+        { "ruleId": "waived", "level": "error", "message": { "text": "waived" }, "suppressions": [{ "kind": "inSource" }] },
+        { "ruleId": "silent", "level": "none", "message": { "text": "no level" } },
+        { "ruleId": "default-level", "message": { "text": "a result with no level is a warning" } },
+        { "ruleId": "needs-review", "kind": "review", "level": "error", "message": { "text": "review" } },
+        { "message": { "text": "no rule id" }, "level": "error" },
+        { "ruleId": "markdown-only", "level": "error", "message": { "markdown": "**bold** text" } }
+      ]
+    }
+  ]
+}

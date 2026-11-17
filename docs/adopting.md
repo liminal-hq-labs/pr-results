@@ -394,6 +394,41 @@ If the `suiteName` option is set, add `flavour = "jest"` to the suite: the file 
     if-no-files-found: ignore
 ```
 
+### Static-analysis results: SARIF
+
+A scanner that writes SARIF needs no wrapper and no converter. Upload the file and read it as a suite of its own. A finding becomes a failure at the line it names, in the comment and as an annotation in the diff:
+
+```yaml
+- name: Scan
+  run: semgrep --config auto --sarif --output results/semgrep.sarif
+
+- name: Upload the scan
+  if: always()
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: semgrep-test-results
+    path: results/semgrep.sarif
+    if-no-files-found: ignore
+```
+
+```toml
+# pr-results settings: a scanner's SARIF as a suite.
+#
+# (c) Copyright 2026 Liminal HQ, Scott Morris
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+schema = 1
+
+[[suite]]
+name = "Semgrep"
+artifact = "semgrep-test-results"
+format = "sarif"
+fail_on = "warning"  # note | warning | error: findings below it are counted as skipped
+job = "Scan"
+```
+
+`fail_on` decides which findings fail the check: at or above it, a finding fails; below it, it is skipped and does not turn the job red. A scan with no findings shows as one passing case. Only a relative path inside the repository gets an annotation, so set `path_prefix` when the tool reports paths from a subdirectory. Findings are counted as tests in the comment's sentences and table.
+
 ### Any command: wrap it
 
 A job that runs a formatter, a linter or an audit already knows whether it passed and what it printed. `pr-results wrap` runs the command once, exactly as before, and writes down how it ended, so the comment shows why it failed and nobody has to open the job. Use the action, and put the command after `--`:
