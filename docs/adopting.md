@@ -163,6 +163,8 @@ schema = 1
 other_checks = true
 ```
 
+When every one of the other checks passed, the guided and enhanced styles fold the table into one line, `Other checks: 5 passed`, since there is nothing to act on. A project whose comment stands in for a script that gave every job a line can keep the table open with `other_checks_open = true` under `[comment]`. It makes no difference when a check is failing, because the table is open then.
+
 When the test jobs and the suites show the same thing, list the checks once. A project that runs its tests in a job per feature set has a suite and a check for each, and a failing test fails both, so the table would count the same problem twice. Tell each suite which job it comes from with `job`, and that job's row is left out. The row is left out only while the job and the suite agree: a job that failed and uploaded no results, or passed while its tests failed, still gets its row, since those are what the table is for. Give the checks that stay a command, which the guided style shows beside one that failed:
 
 ```toml
@@ -648,6 +650,8 @@ The **guided** style, the default, writes the same run like this. The Desk steps
 | … | … |
 
 </details>
+
+This comment is updated in place with the latest results.
 `````
 
 The top of the **enhanced** style for a run where everything passed, with Jax, an alert block and the bar:

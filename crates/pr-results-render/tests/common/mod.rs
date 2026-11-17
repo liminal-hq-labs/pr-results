@@ -167,10 +167,17 @@ impl Scenario {
 		self
 	}
 
+	/// The table of other checks stays open even when every one of them passed.
+	pub fn with_other_checks_open(mut self) -> Self {
+		self.options.other_checks_open = true;
+		self
+	}
+
 	/// The guided style, which is what the settings give when they say nothing.
 	pub fn guided(mut self) -> Self {
 		self.options.style = Style::Guided;
 		self.options.symbols = Symbols::Glyphs;
+		self.options.updated_note = true;
 		self
 	}
 
@@ -832,6 +839,9 @@ pub fn scenarios() -> Vec<Scenario> {
 		}),
 		Scenario::new("guided-all-pass", "Example checks", vec![pass()])
 			.with_other_checks(project_checks(CheckState::Passed)),
+		Scenario::new("guided-other-checks-open", "Example checks", vec![pass()])
+			.with_other_checks(project_checks(CheckState::Passed))
+			.with_other_checks_open(),
 		Scenario::new("guided-failures", "Example checks", vec![fail()])
 			.with_other_checks(project_checks(CheckState::Failed)),
 		Scenario::new("guided-flaky", "Example checks", vec![flaky()]),
@@ -1006,6 +1016,9 @@ pub fn scenarios() -> Vec<Scenario> {
 	let mut enhanced = vec![
 		Scenario::new("enhanced-all-pass", "Example checks", vec![pass()])
 			.with_other_checks(project_checks(CheckState::Passed)),
+		Scenario::new("enhanced-other-checks-open", "Example checks", vec![pass()])
+			.with_other_checks(project_checks(CheckState::Passed))
+			.with_other_checks_open(),
 		Scenario::new("enhanced-failures", "Example checks", vec![fail()])
 			.with_other_checks(project_checks(CheckState::Failed)),
 		Scenario::new("enhanced-flaky", "Example checks", vec![flaky()]),

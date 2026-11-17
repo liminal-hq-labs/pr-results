@@ -345,3 +345,16 @@ fn lines_are_cut_whole_and_a_fence_closer_is_only_backticks() {
 	assert_eq!(Safe::tildes(3).as_str(), "~~~");
 	assert_eq!(Safe::backticks(100_000).as_str().len(), 65_536);
 }
+
+#[test]
+fn a_line_can_be_dropped_with_the_blank_line_after_it() {
+	let text = Safe::trusted("a\n\nnote\n\nfooter\n");
+	assert_eq!(text.without_line("note").as_str(), "a\n\nfooter\n");
+	// Only a whole line matches, and a line that is not there changes nothing.
+	assert_eq!(text.without_line("not").as_str(), text.as_str());
+	assert_eq!(text.without_line("gone").as_str(), text.as_str());
+	// Every copy goes, and a note at the end leaves no stray blank line.
+	let twice = Safe::trusted("note\n\nb\n\nnote\n");
+	assert_eq!(twice.without_line("note").as_str(), "b\n\n");
+	assert_eq!(Safe::default().without_line("note").as_str(), "");
+}

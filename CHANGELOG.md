@@ -6,11 +6,16 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ### Added
 
+- `comment.other_checks_open` (decision D76): keeps the table of other checks open under `#### Other checks`, not folded into `Other checks: 5 passed`, when every check passed. It is for guided and enhanced and is refused with `style = "plain"`, which never folds the table. It changes nothing when a check is not passing, and the size budget's own fold of passing rows still applies.
+- The goldens `guided-other-checks-open` and `enhanced-other-checks-open`.
+- `comment.updated_note` (decision D77): one fixed line before the footer, `This comment is updated in place with the latest results.` (with ♻️ in front for emoji symbols), so a reader knows the comment is edited on every run. It is on in the guided and enhanced styles and refused as `true` with `style = "plain"`. It is left out of the job summary, which is written once. `Safe::without_line` in the core crate, and the guided and enhanced goldens carry the line.
 - Groundwork for the baseline of a pull request (decision D78, issue #37), not yet used by the publisher. `Host::baseline_run`, with `BaselineQuery` and `RunRef`, finds the newest completed `push` run of a workflow in the repository itself that ended in `success` or `failure`, by exact commit or by branch, so a fork's run of the same name and a cancelled run are never taken for a baseline. GitHub implements it with one read of `actions/workflows/{id}/runs` and no new permission, and the other hosts find none. `FakeForge` serves the route (`FakeRun`, `add_workflow_run`).
 - `Pull::base_ref` and `Pull::base_sha`, read from the API's `base.ref` and `base.sha` and left `None` when absent or malformed, and `WorkflowRun::workflow_id`, read from the trusted event's `workflow_run.workflow_id`.
 
 ### Changed
 
+- **The default comment has one more line.** A settings file that says nothing about `comment.updated_note` now gets the note in the guided style, which is the default. Set `updated_note = false` to drop it. The plain style is unchanged byte for byte.
+- **Breaking for library users (0.x):** `Options` has new public fields, `other_checks_open` and `updated_note`, and `Settings` has the same two.
 - **Breaking for library users (0.x):** `Pull` has the fields `base_ref` and `base_sha`, `WorkflowRun` has `workflow_id` and `FakePull` has `base_ref` and `base_sha`. None of the crates is published.
 
 ## 0.3.0 — 2026-11-17
