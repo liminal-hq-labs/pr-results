@@ -43,6 +43,10 @@ const EVENT_FILE_NAME: &str = "event.json";
 #[derive(Debug, Clone)]
 pub struct WorkflowRun {
 	pub id: RunId,
+	/// The workflow this is a run of, from the trusted event's `workflow_run.workflow_id`. A
+	/// baseline is looked for among runs of the same workflow. `None` when the event has none
+	/// (in-job publishing, an older payload).
+	pub workflow_id: Option<u64>,
 	/// The run's number, which names its page on Forgejo. Without it a link names the id.
 	pub run_number: Option<u64>,
 	pub head_sha: Sha,

@@ -72,6 +72,7 @@ pub fn parse_event(bytes: &[u8]) -> Result<Event, &'static str> {
 		.unwrap_or_default();
 	let workflow_run = slug(run, &["head_repository", "full_name"]).map(|head_repo| WorkflowRun {
 		id: RunId(id),
+		workflow_id: run.get("workflow_id").and_then(Value::as_u64),
 		run_number: run.get("run_number").and_then(Value::as_u64),
 		head_sha,
 		head_branch: text(run, &["head_branch"]).unwrap_or_default().to_owned(),
@@ -153,6 +154,7 @@ pub fn parse_in_job(
 		default_branch: String::new(),
 		run: Some(WorkflowRun {
 			id: RunId(id),
+			workflow_id: None,
 			run_number: number,
 			head_sha,
 			head_branch,
@@ -162,4 +164,74 @@ pub fn parse_in_job(
 			pull_requests: pulls,
 		}),
 	})
+}
+
+#[cfg(test)]
+#[allow(
+	clippy::unwrap_used,
+	clippy::expect_used,
+	clippy::panic,
+	clippy::indexing_slicing
+)]
+mod tests {
+	use serde_json::json;
+
+	use super::*;
+
+	fn event(workflow_id: Option<Value>) -> Vec<u8> {
+		let mut run = json!({
+			"id": 5000,
+			"event": "push",
+			"head_branch": "main",
+			"head_sha": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+			"head_repository": { "full_name": "example/app" },
+			"repository": { "full_name": "example/app" },
+		});
+		if let Some(id) = workflow_id {
+			run["workflow_id"] = id;
+		}
+		json!({
+			"workflow_run": run,
+			"repository": { "full_name": "example/app", "default_branch": "main" },
+		})
+		.to_string()
+		.into_bytes()
+	}
+
+	fn workflow_id(bytes: &[u8]) -> Option<u64> {
+		parse_event(bytes).unwrap().run.unwrap().workflow_id
+	}
+
+	#[test]
+	fn the_workflow_is_read_from_the_trusted_event() {
+		assert_eq!(workflow_id(&event(Some(json!(1001)))), Some(1001));
+	}
+
+	#[test]
+	fn an_event_without_a_usable_workflow_id_still_parses() {
+		for id in [
+			None,
+			Some(json!(null)),
+			Some(json!("1001")),
+			Some(json!(-1)),
+			Some(json!(1.5)),
+		] {
+			assert_eq!(workflow_id(&event(id.clone())), None, "{id:?}");
+		}
+	}
+
+	#[test]
+	fn an_in_job_event_has_no_workflow_id() {
+		let doc = json!({
+			"repository": { "full_name": "example/app" },
+			"after": "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334",
+			"ref": "refs/heads/main",
+		})
+		.to_string();
+		let run = parse_in_job(doc.as_bytes(), "push", 9, None)
+			.unwrap()
+			.run
+			.unwrap();
+		assert_eq!(run.workflow_id, None);
+	}
 }

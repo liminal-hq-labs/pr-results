@@ -22,6 +22,7 @@ pub const REPO: &str = "example/app";
 pub const SHA: &str = "3f9c2e1d4b5a69788796a5b4c3d2e1f001122334";
 pub const OLD_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub const RUN: u64 = 5000;
+pub const WORKFLOW: u64 = 1001;
 pub const BOT: &str = DEFAULT_BOT_LOGIN;
 
 pub struct Env {
@@ -41,6 +42,7 @@ impl Env {
 		let gh = GitHub::new(fake.clone(), RepoSlug::parse(REPO).unwrap(), BOT);
 		let run = WorkflowRun {
 			id: RunId(RUN),
+			workflow_id: Some(WORKFLOW),
 			run_number: Some(77),
 			head_sha: Sha::parse(SHA).unwrap(),
 			head_branch: "feature".to_owned(),
