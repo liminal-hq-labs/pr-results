@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## Unreleased
 
+## 0.4.1 — 2026-11-17
+
 ### Fixed
 
 - The sentence on the tests a pull request adds and removes counted a test once for each section it ran in, so a project that runs the same tests under several feature sets saw its counts multiplied (`jira-tui` saw 6 added and 4 removed for 3 and 2) and each name listed once for each section. The comparison is now of the distinct tests, so a test that runs in several sections is one test. Found on the first real pull request after v0.4.0. Decision D79 says so.
