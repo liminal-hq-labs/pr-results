@@ -8,11 +8,12 @@
 //! a section in the settings does not make every test look new. Status is not part of it either:
 //! a test that was skipped and now runs is the same test.
 //!
-//! A renamed test is a removed test and an added one, which the comment says. The comparison
-//! counts duplicates, so a test that appears twice in one run and once in the other is one
-//! added or removed.
+//! A renamed test is a removed test and an added one, which the comment says. The comparison is
+//! of the distinct tests, not of how often each appears: a project that runs the same tests in
+//! several sections (a matrix of feature sets, say) has each test once however many sections it
+//! is in, so adding a test to all of them is one test added, not one for each section.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use crate::model::{collapse_ws, Suite};
 
@@ -48,8 +49,8 @@ impl TestDelta {
 	}
 }
 
-fn tally(suites: &[Suite]) -> BTreeMap<TestId, usize> {
-	let mut counts: BTreeMap<TestId, usize> = BTreeMap::new();
+fn distinct(suites: &[Suite]) -> BTreeSet<TestId> {
+	let mut found: BTreeSet<TestId> = BTreeSet::new();
 	for suite in suites {
 		let suite_name = collapse_ws(suite.name.as_str());
 		let project = suite
@@ -64,34 +65,22 @@ fn tally(suites: &[Suite]) -> BTreeMap<TestId, usize> {
 				class: collapse_ws(case.classname.as_str()),
 				name: collapse_ws(case.name.as_str()),
 			};
-			*counts.entry(id).or_insert(0) += 1;
+			found.insert(id);
 		}
 	}
-	counts
+	found
 }
 
 /// The tests in `current` that `baseline` lacks, and the other way round.
 pub fn test_delta(current: &[Suite], baseline: &[Suite]) -> TestDelta {
-	let now = tally(current);
-	let then = tally(baseline);
-	let mut delta = TestDelta::default();
-	for (id, &n) in &now {
-		let extra = n.saturating_sub(then.get(id).copied().unwrap_or(0));
-		take(&mut delta.added_total, &mut delta.added, id, extra);
-	}
-	for (id, &n) in &then {
-		let missing = n.saturating_sub(now.get(id).copied().unwrap_or(0));
-		take(&mut delta.removed_total, &mut delta.removed, id, missing);
-	}
-	delta
-}
-
-fn take(total: &mut usize, listed: &mut Vec<TestId>, id: &TestId, times: usize) {
-	*total = total.saturating_add(times);
-	for _ in 0..times {
-		if listed.len() >= MAX_LISTED {
-			break;
-		}
-		listed.push(id.clone());
+	let now = distinct(current);
+	let then = distinct(baseline);
+	let added: Vec<&TestId> = now.difference(&then).collect();
+	let removed: Vec<&TestId> = then.difference(&now).collect();
+	TestDelta {
+		added_total: added.len(),
+		removed_total: removed.len(),
+		added: added.into_iter().take(MAX_LISTED).cloned().collect(),
+		removed: removed.into_iter().take(MAX_LISTED).cloned().collect(),
 	}
 }

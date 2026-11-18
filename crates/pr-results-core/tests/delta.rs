@@ -75,14 +75,28 @@ fn whitespace_is_not_a_difference_but_the_class_and_the_suite_are() {
 }
 
 #[test]
-fn a_duplicate_counts_each_time() {
+fn a_test_in_several_sections_is_one_test() {
+	// The same tests run under three feature sets: one is added, not three.
+	let one = run("app", &[("c", "t")]);
+	let mut base = one.clone();
+	base.extend(one.clone());
+	base.extend(one.clone());
+	let mut now = base.clone();
+	now.extend(run("app", &[("c", "new")]));
+	now.extend(run("app", &[("c", "new")]));
+	let delta = test_delta(&now, &base);
+	assert_eq!((delta.added_total, delta.removed_total), (1, 0));
+	assert_eq!(names(&delta.added), ["new"]);
+	let back = test_delta(&base, &now);
+	assert_eq!((back.added_total, back.removed_total), (0, 1));
+}
+
+#[test]
+fn a_test_listed_twice_in_a_run_is_one_test() {
 	let one = run("app", &[("c", "t")]);
 	let two = run("app", &[("c", "t"), ("c", "t")]);
-	let delta = test_delta(&two, &one);
-	assert_eq!((delta.added_total, delta.removed_total), (1, 0));
-	assert_eq!(delta.added.len(), 1);
-	let back = test_delta(&one, &two);
-	assert_eq!((back.added_total, back.removed_total), (0, 1));
+	assert!(test_delta(&two, &one).is_empty());
+	assert!(test_delta(&one, &two).is_empty());
 }
 
 #[test]
