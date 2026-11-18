@@ -44,9 +44,9 @@ runs:
       if: inputs.build == 'release'
       shell: bash
       env:
-        PR_RESULTS_TAG: v0.4.0
-        PR_RESULTS_SHA256_X86_64: e98fafbe99ab2d8599c1c193874195ce35335a9fbded49eefd2a8ae00b3e31f9
-        PR_RESULTS_SHA256_AARCH64: 889972421a17f7d0fd00c10cabd4e341182d7d23db3dce13c2f7458f98f5a86b
+        PR_RESULTS_TAG: v0.4.1
+        PR_RESULTS_SHA256_X86_64: c69e8380d64f532478da9d64416c0bdd1098fdb3b2e2eee1abbf9c2873eb8437
+        PR_RESULTS_SHA256_AARCH64: 73962940af78f80138d5e14356fd1f0e41d38bd233d9cd9cec5215ea3304071e
       run: |
         set -euo pipefail
         case "$(uname -m)" in
